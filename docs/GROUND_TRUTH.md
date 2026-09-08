@@ -41,4 +41,21 @@ Consequences baked into the code:
 - Pair decimals are read for every launch. ETH is 18, stables are 6, stock tokens vary.
 - `snipeTaxSeconds` is read at start; the wait loop never assumes a number.
 - Reserved share is read per curve, never assumed to be 28.57 %.
-- Tempo at read time: 35 launches in 3 000 blocks (~5 min).
+- Tempo: 183–210 launches per 3 000 blocks (~5 min) across every reading taken so far.
+
+## The population — 2026-09-09, 400 000 blocks back from block 58 025 000
+
+Counted by walking `TokenLaunched` and `PoolGraduated` in 20 000-block ranges.
+
+| | |
+|---|---|
+| launches | 25 789 |
+| graduations | 308 |
+| base graduation rate | **1.19 %** |
+| implied tempo | 193 launches per 3 000 blocks |
+
+This is the number every claim about picking launches on this chain has to be measured against, and
+it is why `accuracy` derives its significance bar from the base rate instead of using a fixed one: at
+1.2 %, a bucket of thirty launches with no graduation in it is the most likely outcome whether a
+filter works or not. Showing that a filter doubles the rate takes roughly 318 judged launches inside
+the filter.
