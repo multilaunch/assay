@@ -3,173 +3,493 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>hoodterm board</title>
+<title>hoodterm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root{
-    --bg:#0d1117; --panel:#141a22; --panel2:#1a2130; --rule:#232c3a; --rule2:#33405 4;
-    --ink:#e6edf3; --ink2:#9aa7b8; --ink3:#5f6c7e;
-    --fire:#7ee787; --watch:#e3b341; --skip:#5f6c7e; --bad:#f8836b; --acc:#6cb6ff;
-    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 var(--mono)}
-  header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--rule);background:var(--panel);position:sticky;top:0;z-index:5;flex-wrap:wrap}
-  h1{font-size:14px;margin:0;letter-spacing:.06em}
-  .tag{font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:3px;border:1px solid var(--rule2);color:var(--ink2)}
-  .tag.live{color:#0d1117;background:var(--bad);border-color:var(--bad);font-weight:700}
-  .tag.dry{color:var(--fire);border-color:var(--fire)}
-  .spacer{flex:1}
-  button{font:inherit;background:var(--panel2);color:var(--ink);border:1px solid var(--rule2);border-radius:4px;padding:4px 10px;cursor:pointer}
-  button:hover{border-color:var(--acc);color:var(--acc)}
-  button.primary{background:var(--fire);color:#0d1117;border-color:var(--fire);font-weight:700}
-  button.stop{background:var(--watch);color:#0d1117;border-color:var(--watch);font-weight:700}
-  button:disabled{opacity:.4;cursor:not-allowed}
-  input{font:inherit;width:62px;background:var(--bg);color:var(--ink);border:1px solid var(--rule2);border-radius:4px;padding:3px 6px}
-  main{display:grid;grid-template-columns:1fr 380px;gap:0;align-items:start}
-  @media(max-width:940px){main{grid-template-columns:1fr}}
-  #feed{padding:8px 16px 60px;min-height:70vh}
-  aside{border-left:1px solid var(--rule);padding:12px 14px 60px;position:sticky;top:47px;max-height:calc(100vh - 47px);overflow:auto}
-  @media(max-width:940px){aside{border-left:none;border-top:1px solid var(--rule);position:static;max-height:none}}
-  h2{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3);margin:14px 0 8px;font-weight:600}
-  h2:first-child{margin-top:0}
-  .card{border:1px solid var(--rule);border-left-width:3px;border-radius:5px;background:var(--panel);padding:8px 11px;margin-bottom:6px;cursor:pointer}
-  .card:hover{border-color:var(--rule2);border-left-color:var(--acc)}
-  .card.FIRE{border-left-color:var(--fire)}
-  .card.WATCH{border-left-color:var(--watch)}
-  .card.SKIP{border-left-color:var(--skip);opacity:.72}
-  .row1{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
-  .sym{color:var(--acc);font-weight:600}
-  .nm{color:var(--ink2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .score{font-weight:700;min-width:26px;text-align:right}
-  .FIRE .score{color:var(--fire)} .WATCH .score{color:var(--watch)} .SKIP .score{color:var(--skip)}
-  .bar{height:3px;background:var(--rule);border-radius:2px;margin:5px 0 4px;overflow:hidden}
-  .bar>i{display:block;height:100%;background:var(--acc)}
-  .meta{color:var(--ink3);font-size:11.5px;display:flex;gap:12px;flex-wrap:wrap}
-  .why{color:var(--watch);font-size:11.5px;margin-top:3px}
-  .bad{color:var(--bad)}
-  .ok{color:var(--fire)}
-  .drawer{margin-top:8px;padding-top:8px;border-top:1px dashed var(--rule2);font-size:11.5px;color:var(--ink2);display:none}
-  .card.open .drawer{display:block}
-  .drawer div{margin:2px 0}
-  .drawer a{color:var(--acc)}
-  .pos{border:1px solid var(--rule);border-radius:5px;background:var(--panel);padding:7px 10px;margin-bottom:5px}
-  .pos .top{display:flex;align-items:baseline;gap:8px}
-  .rule{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:11.5px;color:var(--ink2)}
-  .rule label{flex:1}
-  #log{font-size:11px;color:var(--ink3);max-height:150px;overflow:auto}
-  #log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .pulse{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--skip)}
-  .pulse.on{background:var(--fire)}
-  .empty{color:var(--ink3);padding:20px 0}
+/* ============================================================================
+   Tokens. Clinical data, dark ground.
+   Chrome is achromatic; colour belongs to the data and to nothing else.
+   ========================================================================= */
+:root{
+  /* neutral ramp, tinted hue 220 at chroma <= 0.012 — never pure grey */
+  --n-950: oklch(13.5% 0.008 220);
+  --n-900: oklch(16.5% 0.009 220);
+  --n-850: oklch(19.5% 0.010 220);
+  --n-800: oklch(23%   0.011 220);
+  --n-700: oklch(30%   0.012 220);
+  --n-600: oklch(42%   0.012 220);
+  /* contrast-pinned: --ink-subtle must clear 4.5:1 on --surface-2, the deepest
+     surface it ever sits on. 55% measured 3.76:1; 61% measures 4.84:1. */
+  --n-500: oklch(61%   0.012 220);
+  --n-400: oklch(68%   0.010 220);
+  --n-200: oklch(86%   0.007 220);
+  --n-50:  oklch(96%   0.004 220);
+
+  /* semantic surfaces: four layers, each a real lightness step, never a gradient */
+  --bg:        var(--n-950);
+  --surface:   var(--n-900);
+  --surface-2: var(--n-850);
+  --surface-3: var(--n-800);
+  --border:    oklch(100% 0 0 / 8%);
+  --border-strong: oklch(100% 0 0 / 14%);
+  --ink:       var(--n-50);
+  --ink-muted: var(--n-400);
+  --ink-subtle:var(--n-500);
+
+  /* the one accent: interaction only — focus, links, the armed state */
+  --accent:      oklch(72% 0.13 195);
+  --accent-dim:  oklch(52% 0.09 195);
+  --accent-wash: oklch(72% 0.13 195 / 12%);
+  --accent-ink:  oklch(16% 0.02 195);
+
+  /* data encoding. these three appear on numbers and nowhere else */
+  --ok:    oklch(74% 0.15 155);
+  --warn:  oklch(80% 0.14 80);
+  --crit:  oklch(68% 0.19 25);
+  --ok-wash:   oklch(74% 0.15 155 / 13%);
+  --warn-wash: oklch(80% 0.14 80 / 13%);
+  --crit-wash: oklch(68% 0.19 25 / 14%);
+
+  --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px;
+  --r-1: 3px; --r-2: 5px; --r-3: 8px;
+  --row: 30px;
+  --top-h: 44px;
+  --fs-micro: 11px;
+  --pane-h-sm: 62vh;   /* height of the table pane once the rail stacks below it */
+  --t-fast: 90ms;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--sans); font-size:13px; line-height:1.45;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  /* app shell: the page itself never scrolls, the panes do */
+  display:flex; flex-direction:column; overflow:hidden;
+}
+.num{font-family:var(--mono); font-variant-numeric:tabular-nums; font-feature-settings:"zero" 1}
+:focus-visible{outline:2px solid var(--accent); outline-offset:1px; border-radius:var(--r-1)}
+
+/* ---- chrome ------------------------------------------------------------- */
+.top{
+  display:flex; align-items:center; flex-wrap:wrap; gap:var(--s-4);
+  flex:none; min-height:var(--top-h); padding:0 var(--s-4);
+  background:var(--surface); border-bottom:1px solid var(--border);
+  z-index:20;
+}
+.brand{font-weight:600; letter-spacing:-.01em; font-size:14px}
+.brand b{color:var(--accent)}
+.chip{
+  font-size:11px; font-weight:500; letter-spacing:.08em; text-transform:uppercase;
+  padding:3px 8px; border-radius:var(--r-1); border:1px solid var(--border-strong);
+  color:var(--ink-muted); white-space:nowrap;
+}
+.chip.live{background:var(--crit); border-color:var(--crit); color:oklch(18% 0.03 25); font-weight:600}
+.chip.armed{background:var(--ok); border-color:var(--ok); color:oklch(18% 0.03 155); font-weight:600}
+.grow{flex:1}
+
+.stats{display:flex; gap:var(--s-5); align-items:baseline}
+.stat{display:flex; flex-direction:column; gap:1px; line-height:1.2}
+.stat .k{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-subtle)}
+.stat .v{font-size:13px; font-weight:500}
+
+.dot{width:6px; height:6px; border-radius:50%; background:var(--n-700); flex:none; transition:background var(--t-fast)}
+.dot.beat{background:var(--accent)}
+
+button{
+  font:inherit; font-size:12px; font-weight:500;
+  background:var(--surface-3); color:var(--ink);
+  border:1px solid var(--border-strong); border-radius:var(--r-2);
+  padding:5px 12px; cursor:pointer; transition:background var(--t-fast), border-color var(--t-fast);
+}
+button:hover{background:var(--n-700); border-color:var(--accent-dim)}
+button.go{background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600}
+button.go:hover{background:oklch(66% 0.13 195)}
+button.halt{background:var(--warn); border-color:var(--warn); color:oklch(20% 0.03 80); font-weight:600}
+button.halt:hover{background:oklch(74% 0.14 80)}
+button:disabled{opacity:.45; cursor:not-allowed}
+button.mini{padding:2px 7px; font-size:11px}
+
+/* ---- shell -------------------------------------------------------------- */
+.shell{display:grid; grid-template-columns:minmax(0,1fr) 320px; flex:1; min-height:0}
+main{display:flex; flex-direction:column; min-width:0; min-height:0}
+
+.toolbar{
+  display:flex; align-items:center; flex-wrap:wrap; gap:var(--s-2);
+  padding:var(--s-2) var(--s-4); border-bottom:1px solid var(--border);
+  background:var(--bg); flex:none; z-index:15;
+}
+.seg{display:flex; flex:none; border:1px solid var(--border-strong); border-radius:var(--r-2); overflow:hidden}
+.seg button{border:0; border-radius:0; background:transparent; padding:4px 11px; color:var(--ink-muted)}
+.seg button+button{border-left:1px solid var(--border)}
+.seg button[aria-pressed="true"]{background:var(--surface-3); color:var(--ink)}
+input[type=search],input[type=number]{
+  font:inherit; font-size:12px; background:var(--bg); color:var(--ink);
+  border:1px solid var(--border-strong); border-radius:var(--r-2); padding:4px 9px;
+}
+input[type=search]{width:200px; font-family:var(--mono)}
+input[type=search]::placeholder{color:var(--ink-subtle)}
+
+/* ---- the table is the product ------------------------------------------- */
+/* .wrap is the scrollport on both axes: it is what makes the header sticky and
+   what keeps a 940px table off the page's own horizontal axis on a phone. */
+.wrap{flex:1; min-height:0; overflow:auto; overscroll-behavior:contain}
+table{width:100%; border-collapse:collapse; min-width:940px}
+thead th{
+  position:sticky; top:0; z-index:10;
+  background:var(--bg); border-bottom:1px solid var(--border-strong);
+  font-size:10px; font-weight:600; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--ink-subtle); text-align:left; padding:6px var(--s-3); white-space:nowrap;
+}
+thead th.r{text-align:right}
+tbody tr.row{height:var(--row); border-bottom:1px solid var(--border); cursor:pointer}
+tbody tr.row:hover{background:var(--surface)}
+tbody tr.row[aria-expanded="true"]{background:var(--surface-2)}
+td{padding:0 var(--s-3); white-space:nowrap; vertical-align:middle}
+td.r{text-align:right}
+
+/* the severity stripe: shape, not just colour */
+td.stripe{width:3px; padding:0; position:relative}
+td.stripe::after{content:""; position:absolute; inset:3px auto 3px 0; width:3px; border-radius:0 2px 2px 0; background:var(--n-700)}
+tr.v-FIRE td.stripe::after{background:var(--ok)}
+tr.v-WATCH td.stripe::after{background:var(--warn)}
+tr.v-SKIP  td.stripe::after{background:transparent}
+tr.v-SKIP{color:var(--ink-muted)}
+
+.score{font-weight:600; font-size:13px}
+tr.v-FIRE .score{color:var(--ok)}
+tr.v-WATCH .score{color:var(--warn)}
+tr.v-SKIP .score{color:var(--ink-subtle)}
+
+.sym{font-family:var(--mono); font-weight:500; color:var(--ink)}
+.nm{color:var(--ink-muted); margin-left:var(--s-2)}
+.idcell{max-width:1px; width:34%; overflow:hidden; text-overflow:ellipsis}
+
+/* risk cells carry their own verdict, so you never read prose to see the problem */
+.q{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:12px; padding:1px 5px; border-radius:var(--r-1)}
+.q.ok{color:var(--ok)}
+.q.warn{color:var(--warn); background:var(--warn-wash)}
+.q.crit{color:var(--crit); background:var(--crit-wash)}
+.q.none{color:var(--ink-subtle)}
+
+.pairtag{font-family:var(--mono); font-size:11px; color:var(--ink-subtle)}
+.pairtag.alt{color:var(--warn)}
+
+.curve{display:flex; align-items:center; gap:var(--s-2); justify-content:flex-end}
+.track{width:52px; height:3px; background:var(--n-700); border-radius:2px; overflow:hidden}
+.track>i{display:block; height:100%; background:var(--accent); border-radius:2px}
+.pctv{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:11px; color:var(--ink-muted); width:34px; text-align:right}
+
+.flag{font-family:var(--mono); font-size:10px; color:var(--crit); border:1px solid var(--crit); border-radius:var(--r-1); padding:0 4px; margin-left:var(--s-1)}
+
+/* expanded detail */
+tr.detail>td{padding:var(--s-3) var(--s-4) var(--s-4) calc(var(--s-3) + 3px); background:var(--surface-2); border-bottom:1px solid var(--border-strong); white-space:normal}
+.dgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:var(--s-2) var(--s-5)}
+.dl{display:flex; gap:var(--s-2); font-size:12px; line-height:1.5}
+.dl dt{color:var(--ink-subtle); min-width:74px; flex:none}
+.dl dd{margin:0; font-family:var(--mono); font-size:11.5px; overflow-wrap:anywhere}
+.reasons{margin-top:var(--s-3); font-size:11.5px; color:var(--ink-muted); line-height:1.7}
+.reasons b{color:var(--ink); font-weight:500}
+.blocked{margin-top:var(--s-2); font-size:11.5px; color:var(--warn)}
+.desc{margin:0 0 var(--s-3); color:var(--ink-muted); font-size:12px; max-width:78ch}
+a{color:var(--accent); text-decoration:none}
+a:hover{text-decoration:underline}
+.links{margin-top:var(--s-3); display:flex; gap:var(--s-3); font-size:11.5px; font-family:var(--mono)}
+
+/* ---- rail --------------------------------------------------------------- */
+.rail{border-left:1px solid var(--border); background:var(--surface); display:flex; flex-direction:column; min-width:0; min-height:0; overflow-y:auto}
+.sec{border-bottom:1px solid var(--border); padding:var(--s-3) var(--s-4)}
+.sec:last-child{flex:1; min-height:0; display:flex; flex-direction:column}
+.sec h2{
+  margin:0 0 var(--s-3); font-size:10px; font-weight:600; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--ink-subtle); display:flex; align-items:center; gap:var(--s-2);
+}
+.sec h2 .count{font-family:var(--mono); color:var(--ink-muted)}
+
+.pos{border:1px solid var(--border); border-radius:var(--r-2); background:var(--surface-2); padding:var(--s-2) var(--s-3); margin-bottom:var(--s-2)}
+.pos-top{display:flex; align-items:baseline; gap:var(--s-2)}
+.pos-top .sym{font-size:12px}
+.pnl{font-family:var(--mono); font-variant-numeric:tabular-nums; font-weight:600; font-size:12px; margin-left:auto}
+.pnl.up{color:var(--ok)} .pnl.down{color:var(--crit)}
+.pos-meta{font-size:11px; color:var(--ink-subtle); margin-top:2px; font-family:var(--mono)}
+
+.rule{display:flex; align-items:center; gap:var(--s-2); margin-bottom:var(--s-2)}
+.rule label{flex:1; font-size:11.5px; color:var(--ink-muted)}
+.rule input{width:66px; text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums}
+
+#log{overflow:auto; font-family:var(--mono); font-size:var(--fs-micro); line-height:1.65; color:var(--ink-muted); flex:1; min-height:80px}
+#log div{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+#log time{color:var(--ink-subtle); margin-right:var(--s-2)}
+#log .hi{color:var(--ok)}
+#log .lo{color:var(--crit)}
+
+.empty{color:var(--ink-subtle); font-size:12px; padding:var(--s-4) 0; text-align:center}
+.sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
+
+/* ---- the few things the script needs to say, said in tokens ------------- */
+.cell-meta{font-size:var(--fs-micro); color:var(--ink-muted)}
+.cell-dim{font-size:var(--fs-micro); color:var(--ink-subtle)}
+.t-dim{color:var(--ink-subtle)}
+.t-warn{color:var(--warn)}
+.t-crit{color:var(--crit)}
+.flag.pass{color:var(--ok); border-color:var(--ok)}
+.chip.sm{padding:1px 6px}
+.pos-act{margin-top:var(--s-2)}
+
+/* ---- responsive --------------------------------------------------------- */
+@media(max-width:1080px){
+  /* rail stacks under the table; the page scrolls, the table pane still doesn't */
+  body{overflow:auto}
+  .shell{grid-template-columns:minmax(0,1fr); flex:none}
+  main{height:var(--pane-h-sm); min-height:320px}
+  .rail{border-left:0; border-top:1px solid var(--border); overflow-y:visible}
+}
+@media(max-width:640px){
+  .top{gap:var(--s-3); padding:var(--s-2) var(--s-3); row-gap:var(--s-2)}
+  .top .grow{display:none}
+  .stats{order:2; width:100%; justify-content:space-between; gap:var(--s-3)}
+  .toolbar{padding:var(--s-2) var(--s-3); row-gap:var(--s-2)}
+  .toolbar .grow{display:none}
+  input[type=search]{flex:1; min-width:0; width:auto}
+}
+
+@media (prefers-reduced-motion: reduce){*{transition:none !important; animation:none !important}}
 </style>
 </head>
 <body>
-<header>
-  <h1>hoodterm</h1>
-  <span class="tag" id="mode">…</span>
-  <span class="tag" id="state">paused</span>
-  <span class="spacer"></span>
-  <span class="pulse" id="pulse" title="engine heartbeat"></span>
-  <span id="spent" class="tag">0 spent</span>
-  <button id="toggle" class="primary">start</button>
+
+<header class="top">
+  <span class="brand">hood<b>term</b></span>
+  <span class="chip" id="mode">…</span>
+  <span class="chip" id="state">paused</span>
+  <span class="grow"></span>
+  <div class="stats">
+    <div class="stat"><span class="k">seen</span><span class="v num" id="s-seen">0</span></div>
+    <div class="stat"><span class="k">passing</span><span class="v num" id="s-fire">0</span></div>
+    <div class="stat"><span class="k">open</span><span class="v num" id="s-open">0</span></div>
+    <div class="stat"><span class="k">spent</span><span class="v num" id="s-spent">0.0000</span></div>
+  </div>
+  <span class="dot" id="pulse" title="engine heartbeat"></span>
+  <button id="toggle" class="go">start</button>
 </header>
 
-<main>
-  <section id="feed"><div class="empty">waiting for the first launch…</div></section>
-  <aside>
-    <h2>positions</h2>
-    <div id="positions"><div class="empty">none</div></div>
-    <h2>rules</h2>
-    <div id="rules"></div>
-    <h2>log</h2>
-    <div id="log"></div>
+<div class="shell">
+  <main>
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="Filter by verdict">
+        <button data-f="all" aria-pressed="true">all</button>
+        <button data-f="FIRE" aria-pressed="false">fire</button>
+        <button data-f="WATCH" aria-pressed="false">watch</button>
+        <button data-f="passing" aria-pressed="false">passing rules</button>
+      </div>
+      <input type="search" id="q" placeholder="filter by symbol, name, address" aria-label="Filter launches">
+      <span class="grow"></span>
+      <span class="chip" id="feedstat">connecting</span>
+    </div>
+
+    <div class="wrap">
+      <table>
+        <caption class="sr">Live pons v2 launches, newest first</caption>
+        <thead>
+          <tr>
+            <th scope="col" aria-label="Verdict"></th>
+            <th scope="col" class="r">score</th>
+            <th scope="col">launch</th>
+            <th scope="col" class="r">opening buy</th>
+            <th scope="col" class="r">tax</th>
+            <th scope="col" class="r">exempt</th>
+            <th scope="col">pair</th>
+            <th scope="col" class="r">curve</th>
+            <th scope="col" class="r">deployer</th>
+            <th scope="col" class="r">read</th>
+          </tr>
+        </thead>
+        <tbody id="feed"></tbody>
+      </table>
+      <div class="empty" id="feed-empty">waiting for the first launch</div>
+    </div>
+  </main>
+
+  <aside class="rail">
+    <section class="sec">
+      <h2>positions <span class="count" id="pos-count">0</span></h2>
+      <div id="positions"><div class="empty">none</div></div>
+    </section>
+    <section class="sec">
+      <h2>rules</h2>
+      <div id="rules"></div>
+    </section>
+    <section class="sec">
+      <h2>log</h2>
+      <div id="log" role="log" aria-live="polite"></div>
+    </section>
   </aside>
-</main>
+</div>
 
 <script>
+"use strict";
 const $ = (s) => document.querySelector(s);
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
-let LIVE = false, PAUSED = true, BOUNDS = {};
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
+const hhmmss = (t) => new Date(t).toTimeString().slice(0, 8);
 
-function logLine(t) {
+let LIVE = false, PAUSED = true, BOUNDS = {}, FILTER = "all", QUERY = "";
+let seen = 0, passing = 0;
+
+/* Risk bands. These mirror the scoring rules, so a cell's colour and the score
+   always tell the same story, and an unreadable value is never mistaken for a good one. */
+const bandBuy = (v) => v == null ? "crit" : v === 0 ? "none" : v < 1 ? "none" : v <= 6 ? "ok" : v <= 10 ? "warn" : "crit";
+const bandTax = (v) => v == null ? "crit" : v <= 200 ? "ok" : v <= 500 ? "warn" : "crit";
+const bandEx  = (n) => n == null ? "crit" : n === 0 ? "ok" : n <= 3 ? "warn" : "crit";
+
+function logLine(text, cls) {
   const d = document.createElement("div");
-  d.textContent = `${new Date().toTimeString().slice(0, 8)}  ${t}`;
+  d.innerHTML = `<time>${hhmmss(Date.now())}</time><span class="${cls || ""}">${esc(text)}</span>`;
   $("#log").prepend(d);
-  while ($("#log").childElementCount > 80) $("#log").lastElementChild.remove();
+  while ($("#log").childElementCount > 120) $("#log").lastElementChild.remove();
 }
 
-function launchCard(e) {
-  const el = document.createElement("div");
-  el.className = `card ${e.verdict}`;
-  const pct = e.progress != null ? Math.round(e.progress * 100) : 0;
-  const dev = e.devPct != null ? `${e.devPct.toFixed(2)}%` : "?";
-  const tax = e.taxBps != null ? `${e.taxBps / 100}%` : "?";
-  const ex = e.exempt ? e.exempt.length : "?";
-  const devCls = e.devPct == null ? "bad" : e.devPct > 10 ? "bad" : e.devPct >= 1 && e.devPct <= 6 ? "ok" : "";
-  const exCls = e.exempt == null ? "bad" : e.exempt.length > 3 ? "bad" : "";
-  el.innerHTML = `
-    <div class="row1">
-      <span class="sym">${esc(e.symbol ? "$" + e.symbol : e.token.slice(0, 10))}</span>
-      <span class="nm">${esc(e.name)}</span>
-      ${e.fire ? '<span class="tag dry">fire</span>' : ""}
-      <span class="score">${e.score}</span>
+function matches(e) {
+  if (FILTER === "FIRE" && e.verdict !== "FIRE") return false;
+  if (FILTER === "WATCH" && e.verdict !== "WATCH") return false;
+  if (FILTER === "passing" && !e.fire) return false;
+  if (!QUERY) return true;
+  return `${e.symbol || ""} ${e.name || ""} ${e.token} ${e.deployer}`.toLowerCase().includes(QUERY);
+}
+
+function detailRow(e) {
+  const tr = document.createElement("tr");
+  tr.className = "detail";
+  const soc = [
+    e.socials?.x && `<a href="${esc(e.socials.x)}" target="_blank" rel="noopener">x</a>`,
+    e.socials?.web && `<a href="${esc(e.socials.web)}" target="_blank" rel="noopener">website</a>`,
+    e.socials?.tg && `<a href="${esc(e.socials.tg)}" target="_blank" rel="noopener">telegram</a>`,
+  ].filter(Boolean).join(" · ") || '<span class="t-dim">none</span>';
+  tr.innerHTML = `<td colspan="10">
+    ${e.description ? `<p class="desc">${esc(e.description)}</p>` : ""}
+    <div class="dgrid">
+      <dl class="dl"><dt>token</dt><dd>${esc(e.token)}</dd></dl>
+      <dl class="dl"><dt>deployer</dt><dd>${esc(e.deployer)}${e.deployerPrior != null ? ` · ${e.deployerPrior} prior, ${e.deployerGraduated} graduated` : ""}</dd></dl>
+      <dl class="dl"><dt>fees to</dt><dd>${e.feeRecipient ? (e.feeToDeployer ? "deployer" : `<span class="t-warn">third party</span> ${esc(e.feeRecipient)}`) : "?"}</dd></dl>
+      <dl class="dl"><dt>socials</dt><dd>${soc}</dd></dl>
+      ${e.exempt && e.exempt.length ? `<dl class="dl"><dt>exempt</dt><dd>${e.exempt.map(esc).join("<br>")}</dd></dl>` : ""}
     </div>
-    <div class="bar"><i style="width:${pct}%"></i></div>
-    <div class="meta">
-      <span>buy <b class="${devCls}">${dev}</b></span>
-      <span>tax <b>${tax}</b></span>
-      <span>exempt <b class="${exCls}">${ex}</b></span>
-      <span>${esc(e.pair)}</span>
-      <span>${pct}%</span>
-      ${e.farmTwins ? `<span class="bad">farm ×${e.farmTwins}</span>` : ""}
-      ${e.deployerPrior != null ? `<span>dev ${e.deployerPrior}/${e.deployerGraduated}</span>` : ""}
+    <div class="reasons">${(e.reasons || []).map((r) => `<b>${esc(r.split(" ")[0])}</b> ${esc(r.slice(r.indexOf(" ") + 1))}`).join(" &nbsp;·&nbsp; ")}</div>
+    ${e.flags && e.flags.length ? `<div class="blocked">${esc(e.flags.join(" · "))}</div>` : ""}
+    ${e.why && e.why.length ? `<div class="blocked">refused: ${esc(e.why.join("; "))}</div>` : ""}
+    <div class="links">
+      <a href="${esc(e.links.pons)}" target="_blank" rel="noopener">pons</a>
+      <a href="${esc(e.links.explorer)}" target="_blank" rel="noopener">explorer</a>
+      <span class="t-dim">read in ${e.readMs} ms</span>
+      ${e.errors && e.errors.length ? `<span class="t-crit">${esc(e.errors.length)} read${e.errors.length > 1 ? "s" : ""} failed</span>` : ""}
     </div>
-    ${e.why && e.why.length ? `<div class="why">${esc(e.why.join(" · "))}</div>` : ""}
-    <div class="drawer">
-      ${e.description ? `<div>${esc(e.description)}</div>` : ""}
-      <div>${(e.reasons || []).map(esc).join(" · ")}</div>
-      ${e.flags && e.flags.length ? `<div class="bad">${esc(e.flags.join(" · "))}</div>` : ""}
-      <div>deployer ${esc(e.deployer)}</div>
-      ${e.feeRecipient ? `<div>fees → ${e.feeToDeployer ? "deployer" : `<span class="bad">third party</span> ${esc(e.feeRecipient)}`}</div>` : ""}
-      ${e.exempt && e.exempt.length ? `<div>exempt: ${e.exempt.map(esc).join(", ")}</div>` : ""}
-      <div><a href="${esc(e.links.pons)}" target="_blank" rel="noopener">pons</a> · <a href="${esc(e.links.explorer)}" target="_blank" rel="noopener">explorer</a> · read ${e.readMs} ms</div>
-      ${e.errors && e.errors.length ? `<div class="bad">${esc(e.errors.join(" · "))}</div>` : ""}
-    </div>`;
-  el.addEventListener("click", () => el.classList.toggle("open"));
-  return el;
+  </td>`;
+  return tr;
+}
+
+function launchRow(e) {
+  const tr = document.createElement("tr");
+  tr.className = `row v-${e.verdict}`;
+  tr.tabIndex = 0;
+  tr.setAttribute("aria-expanded", "false");
+  const pct = e.progress != null ? e.progress * 100 : 0;
+  const buy = e.devPct == null ? "?" : `${e.devPct.toFixed(2)}%`;
+  const tax = e.taxBps == null ? "?" : `${e.taxBps / 100}%`;
+  const exn = e.exempt == null ? "?" : e.exempt.length;
+  const devTxt = e.deployerPrior == null ? "—" : e.deployerPrior === 0 ? "fresh" : `${e.deployerGraduated}/${e.deployerPrior}`;
+  tr.innerHTML = `
+    <td class="stripe"></td>
+    <td class="r"><span class="score num">${e.score}</span></td>
+    <td class="idcell"><span class="sym">${esc(e.symbol ? "$" + e.symbol : e.token.slice(0, 10))}</span><span class="nm">${esc(e.name)}</span>${e.farmTwins ? `<span class="flag">farm ×${e.farmTwins}</span>` : ""}${e.fire ? `<span class="flag pass">passes</span>` : ""}</td>
+    <td class="r"><span class="q ${bandBuy(e.devPct)}">${buy}</span></td>
+    <td class="r"><span class="q ${bandTax(e.taxBps)}">${tax}</span></td>
+    <td class="r"><span class="q ${bandEx(e.exempt ? e.exempt.length : null)}">${exn}</span></td>
+    <td><span class="pairtag ${e.pairNative ? "" : "alt"}">${esc(e.pair)}</span></td>
+    <td class="r"><div class="curve"><div class="track"><i style="width:${pct.toFixed(0)}%"></i></div><span class="pctv">${pct.toFixed(0)}%</span></div></td>
+    <td class="r"><span class="num cell-meta">${devTxt}</span></td>
+    <td class="r"><span class="num cell-dim">${e.readMs}</span></td>`;
+
+  let open = null;
+  const toggle = () => {
+    if (open) { open.remove(); open = null; tr.setAttribute("aria-expanded", "false"); return; }
+    open = detailRow(e);
+    open.hidden = tr.hidden;
+    tr.after(open);
+    tr.setAttribute("aria-expanded", "true");
+  };
+  tr.addEventListener("click", toggle);
+  tr.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(); } });
+  tr._data = e;
+  return tr;
 }
 
 function addLaunch(e) {
-  const feed = $("#feed");
-  const empty = feed.querySelector(".empty");
-  if (empty) empty.remove();
-  feed.prepend(launchCard(e));
-  while (feed.childElementCount > 150) feed.lastElementChild.remove();
+  seen++;
+  if (e.fire) passing++;
+  $("#s-seen").textContent = seen;
+  $("#s-fire").textContent = passing;
+  const body = $("#feed");
+  const row = launchRow(e);
+  if (!matches(e)) row.hidden = true;
+  body.prepend(row);
+  while (body.childElementCount > 400) body.lastElementChild.remove();
+  updateEmpty();
+}
+
+function applyFilter() {
+  for (const tr of $("#feed").children) {
+    // a detail row is only ever as visible as the row it belongs to, so a filter
+    // can never leave an expanded panel floating under someone else's launch
+    if (tr.classList.contains("detail")) {
+      tr.hidden = tr.previousElementSibling ? tr.previousElementSibling.hidden : true;
+      continue;
+    }
+    tr.hidden = !matches(tr._data);
+  }
+  updateEmpty();
+}
+
+/* the table must never be silently blank: say whether we are waiting for the
+   chain or whether the filter simply matched nothing */
+function updateEmpty() {
+  const rows = $("#feed").querySelectorAll("tr.row");
+  const visible = [...rows].filter((r) => !r.hidden).length;
+  const el = $("#feed-empty");
+  el.hidden = visible > 0;
+  el.textContent = rows.length === 0 ? "waiting for the first launch" : "no launch matches this filter";
 }
 
 function renderPositions(list) {
   const box = $("#positions");
+  const open = list.filter((p) => p.status === "open");
+  $("#pos-count").textContent = open.length;
+  $("#s-open").textContent = open.length;
   if (!list.length) { box.innerHTML = '<div class="empty">none</div>'; return; }
   box.innerHTML = "";
-  for (const p of [...list].reverse()) {
+  for (const p of [...list].reverse().slice(0, 12)) {
     const el = document.createElement("div");
     el.className = "pos";
-    const cls = p.pnlPct >= 0 ? "ok" : "bad";
+    const up = p.pnlPct >= 0;
     el.innerHTML = `
-      <div class="top">
+      <div class="pos-top">
         <span class="sym">$${esc(p.symbol)}</span>
-        <span class="${cls}">${p.pnlPct >= 0 ? "+" : ""}${p.pnlPct.toFixed(1)}%</span>
-        <span class="spacer"></span>
-        <span class="tag">${p.status}${p.dryRun ? " dry" : ""}</span>
+        <span class="chip sm">${p.status}${p.dryRun ? " dry" : ""}</span>
+        <span class="pnl ${up ? "up" : "down"}">${up ? "+" : ""}${p.pnlPct.toFixed(1)}%</span>
       </div>
-      ${p.status === "open" ? `<div style="margin-top:5px"><button data-close="${esc(p.id)}">close now</button></div>` : ""}
-      ${p.exits.map((x) => `<div class="meta">exit: ${esc(x.reason)}</div>`).join("")}`;
+      <div class="pos-meta">in ${(Number(p.entryQuote) / 10 ** p.pairDecimals).toFixed(4)} ${esc(p.pair)}${p.exits.length ? " · " + esc(p.exits[p.exits.length - 1].reason) : ""}</div>
+      ${p.status === "open" ? `<div class="pos-act"><button class="mini" data-close="${esc(p.id)}">close now</button></div>` : ""}`;
     box.append(el);
   }
-  box.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", async () => {
+  box.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
     b.disabled = true;
-    const r = await fetch("/close", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: b.dataset.close }) }).then((x) => x.json());
-    logLine(r.ok ? `closed: ${(r.pnlPct >= 0 ? "+" : "") + r.pnlPct.toFixed(1)}% on ${r.venue}` : `close failed: ${r.error}`);
+    const r = await fetch("/close", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: b.dataset.close }) }).then((x) => x.json()).catch(() => ({ ok: false, error: "request failed" }));
+    logLine(r.ok ? `closed ${(r.pnlPct >= 0 ? "+" : "") + r.pnlPct.toFixed(1)}% on ${r.venue}` : `close refused: ${r.error}`, r.ok ? "hi" : "lo");
   }));
 }
 
@@ -180,10 +500,11 @@ function renderRules(rules) {
     const b = BOUNDS[key] || { min: 0, max: 1000 };
     const row = document.createElement("div");
     row.className = "rule";
-    row.innerHTML = `<label for="r-${key}">${esc(key)}</label><input id="r-${key}" type="number" min="${b.min}" max="${b.max}" value="${value}">`;
+    const label = key.replace(/([A-Z])/g, " $1").toLowerCase().trim();
+    row.innerHTML = `<label for="r-${key}">${esc(label)}</label><input id="r-${key}" type="number" min="${b.min}" max="${b.max}" value="${value}">`;
     row.querySelector("input").addEventListener("change", async (ev) => {
-      const r = await fetch("/rule", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key, value: Number(ev.target.value) }) }).then((x) => x.json());
-      if (r.ok) { ev.target.value = r.value; logLine(`${key} → ${r.value}`); } else logLine(`rule refused: ${r.error}`);
+      const r = await fetch("/rule", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key, value: Number(ev.target.value) }) }).then((x) => x.json()).catch(() => ({ ok: false, error: "request failed" }));
+      if (r.ok) { ev.target.value = r.value; logLine(`${label} → ${r.value}`); } else logLine(`rule refused: ${r.error}`, "lo");
     });
     box.append(row);
   }
@@ -191,54 +512,72 @@ function renderRules(rules) {
 
 function setPaused(p) {
   PAUSED = p;
-  $("#state").textContent = p ? "paused" : LIVE ? "armed" : "running";
+  const st = $("#state");
+  st.textContent = p ? "paused" : LIVE ? "armed" : "running";
+  st.className = "chip" + (p ? "" : LIVE ? " armed" : "");
   const b = $("#toggle");
   b.textContent = p ? (LIVE ? "arm live" : "start") : "stop";
-  b.className = p ? "primary" : "stop";
+  b.className = p ? "go" : "halt";
 }
 
 $("#toggle").addEventListener("click", async () => {
-  const to = PAUSED ? "/resume" : "/pause";
-  const r = await fetch(to, { method: "POST" }).then((x) => x.json());
+  const r = await fetch(PAUSED ? "/resume" : "/pause", { method: "POST" }).then((x) => x.json());
   setPaused(r.paused);
+});
+document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+  FILTER = b.dataset.f;
+  document.querySelectorAll(".seg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  applyFilter();
+}));
+$("#q").addEventListener("input", (e) => { QUERY = e.target.value.trim().toLowerCase(); applyFilter(); });
+document.addEventListener("keydown", (e) => {
+  // never shadow a browser shortcut: cmd+P must still print, ctrl+/ must still be the browser's
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable]")) {
+    if (e.key === "Escape") e.target.blur();
+    return;
+  }
+  if (e.key === "p") $("#toggle").click();
+  if (e.key === "/") { e.preventDefault(); $("#q").focus(); }
 });
 
 async function boot() {
   const s = await fetch("/state").then((r) => r.json());
   LIVE = s.live; BOUNDS = s.bounds;
-  $("#mode").textContent = LIVE ? "LIVE" : "dry run";
-  $("#mode").className = `tag ${LIVE ? "live" : "dry"}`;
+  $("#mode").textContent = LIVE ? "live" : "dry run";
+  $("#mode").className = "chip" + (LIVE ? " live" : "");
   setPaused(s.paused);
   renderRules(s.rules);
   renderPositions(s.positions);
+  $("#s-spent").textContent = (Number(s.spent) / 1e18).toFixed(4);
   for (const e of s.recent) if (e.kind === "launch") addLaunch(e);
+  $("#feedstat").textContent = "connected";
   logLine("connected");
 
   const src = new EventSource("/events");
+  src.onopen = () => { $("#feedstat").textContent = "connected"; };
   src.onmessage = (m) => {
     const e = JSON.parse(m.data);
-    if (e.kind === "launch") addLaunch(e);
-    else if (e.kind === "positions") renderPositions(e.positions);
-    else if (e.kind === "pulse") {
-      $("#pulse").classList.add("on");
-      setTimeout(() => $("#pulse").classList.remove("on"), 600);
-      $("#spent").textContent = `${(Number(e.spent) / 1e18).toFixed(4)} spent · ${e.open} open`;
+    switch (e.kind) {
+      case "launch": addLaunch(e); break;
+      case "positions": renderPositions(e.positions); break;
+      case "pulse":
+        $("#pulse").classList.add("beat");
+        setTimeout(() => $("#pulse").classList.remove("beat"), 500);
+        $("#s-spent").textContent = (Number(e.spent) / 1e18).toFixed(4);
+        $("#s-open").textContent = e.open;
+        break;
+      case "state": setPaused(e.paused); break;
+      case "fire": logLine(`entered ${e.symbol} at tax ${(e.taxBps / 100).toFixed(2)}% after ${e.waitedMs} ms`, "hi"); break;
+      case "exit": logLine(`exit ${e.symbol} ${(e.pnlPct >= 0 ? "+" : "") + e.pnlPct.toFixed(1)}% — ${e.reason}`, e.pnlPct >= 0 ? "hi" : "lo"); break;
+      case "hold": logLine(`held ${e.symbol}: tax still ${(e.taxBps / 100).toFixed(1)}%`); break;
+      case "swept": logLine(`${e.symbol} is between the curve and the pool`); break;
+      case "index": logLine(`deployer index: ${e.launches} launches, ${e.graduations} graduated`); break;
+      case "error": logLine(`${e.where}: ${e.message}`, "lo"); break;
     }
-    else if (e.kind === "state") setPaused(e.paused);
-    else if (e.kind === "fire") logLine(`FIRE ${e.symbol} at tax ${(e.taxBps / 100).toFixed(2)}% after ${e.waitedMs} ms`);
-    else if (e.kind === "exit") logLine(`exit ${e.symbol} ${(e.pnlPct >= 0 ? "+" : "") + e.pnlPct.toFixed(1)}%: ${e.reason}`);
-    else if (e.kind === "hold") logLine(`hold ${e.symbol}: tax still ${(e.taxBps / 100).toFixed(1)}%`);
-    else if (e.kind === "swept") logLine(`${e.symbol}: between the curve and the pool`);
-    else if (e.kind === "index") logLine(`deployer index: ${e.launches} launches, ${e.graduations} graduations`);
-    else if (e.kind === "error") logLine(`error ${e.where}: ${e.message}`);
   };
-  src.onerror = () => logLine("stream dropped, reconnecting…");
+  src.onerror = () => { $("#feedstat").textContent = "reconnecting"; };
 }
-
-document.addEventListener("keydown", (e) => {
-  if (e.target.tagName === "INPUT") return;
-  if (e.key === "p") $("#toggle").click();
-});
 
 boot();
 </script>
