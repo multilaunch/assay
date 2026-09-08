@@ -37,6 +37,15 @@ const HTML = () => {
   throw new Error("board html not found");
 };
 
+/**
+ * A board that can be read but not driven.
+ *
+ * Behind a proxy the four verbs can be fenced off by matching on the method, and that works right
+ * up until someone edits the proxy config. Enforcing it here means a public dashboard is read-only
+ * because the process it is talking to will not do anything else, whatever reaches it.
+ */
+const readOnly = (): boolean => /^(1|true|yes)$/i.test(process.env.BOARD_READONLY ?? "");
+
 /** Host names this board answers to. Behind a proxy, add the public one via BOARD_HOSTS. */
 const knownHosts = (): Set<string> => {
   const extra = (process.env.BOARD_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
@@ -188,12 +197,14 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     });
 
   const hosts = knownHosts();
+  const frozen = readOnly();
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const path = url.pathname;
 
     const refused = guard(req, hosts);
     if (refused) { json(res, 403, { error: refused }); return; }
+    if (frozen && req.method === "POST") { json(res, 403, { error: "this board is read only" }); return; }
 
     if (req.method === "GET" && (path === "/" || path === "/index.html")) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
@@ -203,7 +214,7 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
 
     if (req.method === "GET" && path === "/state") {
       json(res, 200, {
-        live: opts.live, paused: engine.isPaused(), spent: engine.spent().toString(),
+        live: opts.live, paused: engine.isPaused(), spent: engine.spent().toString(), readOnly: frozen,
         taxSeconds, taxStartBps,
         rules: Object.fromEntries(Object.keys(EDITABLE).map((k) => [k, engine.rules[k as EditableKey]])),
         bounds: EDITABLE, recent, positions: positionsPayload(),

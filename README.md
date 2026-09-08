@@ -259,6 +259,10 @@ What changes when the board is not on loopback any more:
   behind basic auth over TLS, and additionally pins the four verbs that move money — all of them
   `POST`, while every read is a `GET` — to a source-IP allowlist that defaults to nobody. Full
   control without either is still one `ssh -N -L 4663:127.0.0.1:4663` away.
+- **A public board should not be a control panel.** `BOARD_READONLY=1` makes the four verbs that
+  move money answer 403 in the process itself and hides their controls on the page, so read access
+  and control access stop being the same thing. The proxy allowlist does this too, but it is a
+  config file; this one travels with the process.
 - **`PRIVATE_KEY` is now on a machine you rent.** Root on the box, a volume snapshot, or the
   provider's console all read it, and no file mode changes that. Use a wallet funded with
   `SESSION_BUDGET_ETH` and nothing else: it is the only one of the limits an attacker cannot edit.

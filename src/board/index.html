@@ -402,7 +402,7 @@ const I18N = {
     s_pos:"positions", s_rules:"rules", s_log:"log",
 
     st_paused:"paused", st_armed:"armed", st_running:"running",
-    m_live:"live", m_dry:"dry run",
+    m_live:"live", m_dry:"dry run", m_readonly:"read only",
     b_start:"start", b_stop:"stop", b_arm:"arm live",
     net_connecting:"connecting", net_connected:"connected", net_reconnecting:"reconnecting",
     blank_wait:"waiting for the first launch", blank_filter:"no launch matches this filter",
@@ -472,7 +472,7 @@ const I18N = {
     s_pos:"позиции", s_rules:"правила", s_log:"лог",
 
     st_paused:"пауза", st_armed:"заряжен", st_running:"идёт",
-    m_live:"боевой", m_dry:"вхолостую",
+    m_live:"боевой", m_dry:"вхолостую", m_readonly:"только чтение",
     b_start:"старт", b_stop:"стоп", b_arm:"зарядить",
     net_connecting:"подключаюсь", net_connected:"на связи", net_reconnecting:"переподключаюсь",
     blank_wait:"ждём первый запуск", blank_filter:"под фильтр ничего не попало",
@@ -548,7 +548,7 @@ const t = (key, vars) => {
 
 
 let LIVE = false, PAUSED = true, BOUNDS = {}, FILTER = "all", QUERY = "";
-let RULES = {}, POSITIONS = [], LINK = "net_connecting";
+let RULES = {}, POSITIONS = [], LINK = "net_connecting", FROZEN = false;
 let TAX_SECONDS = 3;
 let seen = 0, passing = 0;
 const rows = [];                       // newest first, for the age and decay ticks
@@ -777,7 +777,7 @@ function renderPositions(list) {
         <span class="pnl ${up ? "up" : "dn"}">${up ? "+" : ""}${p.pnlPct.toFixed(1)}%</span>
       </div>
       <div class="sub">${esc(t("pos_in", { x: (Number(p.entryQuote) / 10 ** p.pairDecimals).toFixed(4), pair: p.pair }))}${p.exits.length ? " · " + esc(p.exits[p.exits.length - 1].reason) : ""}</div>
-      ${p.status === "open" ? `<div class="pos-act"><button class="mini" data-close="${esc(p.id)}">${esc(t("close_now"))}</button></div>` : ""}`;
+      ${p.status === "open" && !FROZEN ? `<div class="pos-act"><button class="mini" data-close="${esc(p.id)}">${esc(t("close_now"))}</button></div>` : ""}`;
     box.append(el);
   }
   box.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", async (ev) => {
@@ -796,7 +796,7 @@ function renderRules(rules) {
     const label = I18N[LANG]["r_" + key] ? t("r_" + key) : key.replace(/([A-Z])/g, " $1").toLowerCase().trim();
     const row = document.createElement("div");
     row.className = "rule";
-    row.innerHTML = `<label for="r-${key}">${esc(label)}</label><input id="r-${key}" type="number" min="${b.min}" max="${b.max}" value="${value}">`;
+    row.innerHTML = `<label for="r-${key}">${esc(label)}</label><input id="r-${key}" type="number" min="${b.min}" max="${b.max}" value="${value}"${FROZEN ? " disabled" : ""}>`;
     row.querySelector("input").addEventListener("change", async (ev) => {
       const r = await fetch("/rule", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key, value: Number(ev.target.value) }) }).then((x) => x.json()).catch(() => ({ ok: false, error: t("log_req_failed") }));
       if (r.ok) { ev.target.value = r.value; RULES = { ...RULES, [key]: r.value }; say(t("log_rule", { k: label, v: r.value })); } else say(t("log_rule_refused", { e: r.error }), "r");
@@ -835,10 +835,11 @@ document.addEventListener("keydown", (e) => {
 
 async function boot() {
   const s = await fetch("/state").then((r) => r.json());
-  LIVE = s.live; BOUNDS = s.bounds;
+  LIVE = s.live; BOUNDS = s.bounds; FROZEN = s.readOnly === true;
+  $("#toggle").hidden = FROZEN;
   if (s.taxSeconds) TAX_SECONDS = s.taxSeconds;
-  $("#mode").textContent = LIVE ? t("m_live") : t("m_dry");
-  $("#mode").className = "tag" + (LIVE ? " crit" : "");
+  $("#mode").textContent = FROZEN ? t("m_readonly") : LIVE ? t("m_live") : t("m_dry");
+  $("#mode").className = "tag" + (LIVE && !FROZEN ? " crit" : "");
   setPaused(s.paused);
   renderRules(s.rules);
   renderPositions(s.positions);
@@ -888,7 +889,7 @@ function applyLang(lang) {
   for (const b of document.querySelectorAll(".langs button")) b.setAttribute("aria-pressed", String(b.dataset.lang === LANG));
 
   setPaused(PAUSED);
-  $("#mode").textContent = LIVE ? t("m_live") : t("m_dry");
+  $("#mode").textContent = FROZEN ? t("m_readonly") : LIVE ? t("m_live") : t("m_dry");
   $("#link").textContent = t(LINK);
   renderRules(RULES);
   renderPositions(POSITIONS);
@@ -972,6 +973,8 @@ function paintStep() {
 
 function tourGo(i) {
   if (i < 0 || i >= TOUR.length) { tourEnd(); return; }
+  // a read-only board has no start button, and pointing at nothing is worse than stopping short
+  if (FROZEN && TOUR[i].sel === "#toggle") { tourEnd(); return; }
   TOUR_AT = i;
   const target = document.querySelector(TOUR[i].sel);
   if (target) target.scrollIntoView({ block: "nearest", behavior: "smooth" });
