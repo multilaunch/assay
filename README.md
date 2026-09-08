@@ -88,6 +88,7 @@ only reads. `.env` works as shipped on the public endpoints.
 | `fees <token>` | who is paid on this token and every claim | no |
 | `dev <address>` | every launch by one deployer, with its phase | no |
 | `positions` | open and closed positions, marked live | no |
+| `accuracy` | what the score has actually been worth, from your own journal | no |
 | `wallet` | the signer: address, balance, unclaimed creator fees | yes |
 | `buy <token> <amt>` | buy wherever it trades: curve before graduation, v4 pool after | `--live` only |
 | `sell <token> [pct]` | sell a share of your balance, routed the same way | `--live` only |
@@ -119,7 +120,14 @@ which nothing fires whatever the score. A wallet funded with only the budget can
 
 The board binds loopback only and has no route that buys on demand. Its four verbs are pause, resume,
 close a position, and edit one of five bounded rules — which take effect on the next launch, so you can
-watch `minScore` reshape the feed while it runs.
+watch `minScore` reshape the feed while it runs. Loopback is not on its own a fence: any page you have
+open can post a form to `127.0.0.1`, and any hostname an attacker controls can be pointed at it, so
+every request has to name a host the board answers to and every write has to be same-origin JSON.
+`BOARD_READONLY=1` drops the four verbs entirely, for a board that is meant to be looked at.
+
+The page carries a nine-stop walkthrough pinned to real elements rather than to a screenshot, so it
+cannot drift out of date; it runs itself once on a first visit and lives behind the **guide** button
+after that. English and Russian, switchable without a reload.
 
 **Venue routing.** `buy`, `sell` and the engine all go through the same router. Before graduation the curve is the venue. After it, the Uniswap v4 pool behind the
 pons hook, keyed by the pair token and tick spacing *the factory recorded for that launch*. Between the
@@ -151,18 +159,52 @@ That last block matters more than it looks. Every other rule is skipped when its
 without it a launch nobody could read *outscores* one that was read and looked bad — the penalties never
 fire. Caught live: `$ADSTOCKS` scored FIRE 81 with `opening buy ?`. There is a regression test for it.
 
+## Checking the score against what happened
+
+A score nobody checks is an opinion with a number on it. Every launch the terminal judges is written
+to `data/journal.jsonl` **before** any decision is taken about it, so the record is of what the score
+said and not of what was done about it — checking yourself only means something when you cannot pick
+which calls to keep. Hours later `accuracy --resolve` reads each one's phase off the factory and fills
+in whether it graduated.
+
+```sh
+npx tsx src/cli/main.ts accuracy --backfill --limit 900   # score launches that already happened
+npx tsx src/cli/main.ts accuracy --resolve                # then, later, look up the outcomes
+npx tsx src/cli/main.ts accuracy --live-only              # only what this terminal saw as it happened
+```
+
+`--backfill` exists because the journal starts empty and a launch is not judged until it is six hours
+old, which left the feature saying nothing for most of a day. It walks a window of history oldest
+first and rebuilds every input **as of the launch's own block** — the deployer's prior launches, how
+many of those had graduated *by then*, the farm fingerprints seen before it. Scoring an old launch
+against the chain as it looks now would be worthless: the deployer's record already contains the
+launches that came after, and the number falling out of that is a report on hindsight. Backfilled rows
+are marked in the journal and countable apart from live ones.
+
+The report gives each verdict its graduation rate, a **Wilson 95 % lower bound**, and the lift over the
+base rate — because three graduations out of twelve is 25 % only in the sense that a coin landing heads
+twice is a 100 % heads rate.
+
+**And it will tell you when it cannot tell you anything.** Graduation here is rare, so the bar for
+significance is derived from the measured base rate rather than fixed: at 1.2 %, a bucket needs about
+**318 judged launches** before twice that rate could be told apart from luck, and the report says so,
+along with how many launches you would have to watch to get there. Every scanner shows you a score.
+This one shows you whether its score has earned anything yet.
+
 ## What the chain actually looks like
 
-Measured by this tool, 2026-09-08:
+Measured by this tool, 2026-09-09:
 
-- **22 524 launches, 224 graduations** in the last 400 000 blocks (~11 h) — about **one in a hundred** graduates.
+- **25 789 launches, 308 graduations** in the last 400 000 blocks (~11 h): a base rate of **1.19 %**.
+  That number sets the price of every claim anyone makes about picking launches on this chain. To show
+  that a filter doubles it you need a few hundred judged launches inside the filter, not thirty.
 - 183–197 launches per 3 000 blocks (~5 min).
 - Most launches are **not** paired with ETH. NVDA, USDG and other stock tokens are common, with different
   decimals, so every number is rendered in its own pair's units.
 
 ## What running it changed
 
-Three defects that only a live run could show:
+Defects that only a live run, or a stranger reading the code, could show:
 
 **Missing data read as good news.** Every rule is skipped when its input is missing, so a launch nobody
 could read outscored one that was read and looked bad. `$ADSTOCKS` scored FIRE 81 on `opening buy ?`.
@@ -181,6 +223,27 @@ synthetic event with an empty transaction hash, so the launch read failed every 
 token collected the "unreadable" penalty it had not earned. They look up the real `TokenLaunched` log
 now. The same token went from WATCH 52 to **FIRE 92** once its opening buy (2.00 %, no exempt wallets,
 via the router) could actually be read — and that token had in fact graduated.
+
+**Every live exit was impossible, and the tests could not see it.** `ensureAllowance` and
+`ensurePermit2` handed viem the signer's *address* where the account object belongs. viem reads a hex
+string as a json-rpc account and emits `eth_sendTransaction`, which a public endpoint has no key for —
+so a stop loss, a take profit, a trailing stop and the board's close button all died at the approve
+step and the position was never sold. An ETH-paired buy worked, which is why nothing looked wrong.
+Reproduced by pointing a local account at a recording transport and watching it emit exactly one
+method. The whole class of bug is invisible to a test suite that never signs.
+
+**Loopback was doing less work than it looked.** The board bound `127.0.0.1` and that was the entire
+protection. `POST /resume` took no body, so any page open in the same browser could arm the engine
+with a plain HTML form — no CORS preflight, no JavaScript, response unreadable but the side effect
+lands. Any hostname an attacker owns, pointed at 127.0.0.1, became same-origin and could read
+positions and sizes. Now every request has to name a host the board answers to and every write has to
+be same-origin JSON, which a cross-site form cannot produce. Four attack shapes were tried against the
+running process and all four return 403.
+
+**Thirty was the wrong number.** `accuracy` labelled a bucket "thin" below thirty judged launches.
+Then the base graduation rate turned out to be 1.19 %, at which a bucket of thirty with nothing in it
+is the single most likely outcome whether the score works or not. The bar is derived from the measured
+base now, and the honest answer for a young journal is that there is no answer yet.
 
 ## Deliberately not here
 
