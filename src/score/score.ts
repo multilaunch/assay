@@ -80,7 +80,12 @@ export function scoreLaunch(intel: LaunchIntel, ctx: ScoreContext = {}): Score {
   // ---- the declared bundle --------------------------------------------------------------------
   if (intel.tx) {
     const n = intel.tx.exemptions.length;
-    if (n === 0) add(5, "no wallets exempt from the opening tax");
+    // An entrypoint whose calldata we could not decode hands back an empty exemption list, which is not
+    // the same fact as a launch that declared nobody. Read as the latter it paid +5, so a launch through
+    // an unrecognised entrypoint with ten exempt bundle wallets scored the cleanest possible shape here.
+    // It costs points instead, sized between the two bundles we can actually see.
+    if (intel.tx.via === "unknown") add(-10, "unrecognised launch entrypoint: the declared bundle could not be read");
+    else if (n === 0) add(5, "no wallets exempt from the opening tax");
     else if (n <= 3) add(-5, `${n} wallet${n > 1 ? "s" : ""} exempt from the opening tax`);
     else add(-20, `${n} wallets exempt from the opening tax: a declared bundle`);
   }

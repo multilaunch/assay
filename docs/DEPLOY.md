@@ -94,13 +94,16 @@ docker run --rm caddy:2.10-alpine caddy hash-password --plaintext 'a long random
 # 3. edit deploy/caddy.env: BOARD_DOMAIN, ACME_EMAIL, BOARD_USER, BOARD_PASSWORD_HASH,
 #    BOARD_ADMIN_IPS. Leave BOARD_UPSTREAM at board:4663.
 
-# 4. check it parses before you start anything
+# 4. edit deploy/env.prod: BOARD_HOSTS must be the same hostname. This one is not optional —
+#    see the note below.
+
+# 5. check it parses before you start anything
 docker compose -f compose.prod.yaml config -q
 
-# 5. build (this runs the typecheck and the test suite) and start
+# 6. build (this runs the typecheck and the test suite) and start
 docker compose -f compose.prod.yaml up -d --build
 
-# 6. watch the certificate arrive
+# 7. watch the certificate arrive
 docker compose -f compose.prod.yaml logs -f caddy
 ```
 
@@ -114,6 +117,12 @@ What the production compose file does differently from `compose.yaml`:
 - 512 MB / 1 CPU for the board, 256 MB / 0.5 CPU for Caddy; `restart: unless-stopped`; a
   healthcheck on `/state`; `read_only: true` with a 64 MB tmpfs for `/tmp`; `cap_drop: ALL`;
   `no-new-privileges`.
+- **`BOARD_HOSTS` in `deploy/env.prod` must name the public hostname.** The board refuses any
+  request whose `Host` header it does not recognise — that is its DNS-rebinding fence, and out of
+  the box it knows only `127.0.0.1`, `localhost`, `::1` and `0.0.0.0`. Caddy passes the client's
+  `Host` through unchanged, which is correct and which means a request to `board.example.com`
+  arrives at the board under that name and is refused until you list it. `bootstrap.sh` sets this
+  from `BOARD_DOMAIN`; if you are doing it by hand, do not forget it.
 - `env_file` uses `format: raw`. This matters: without it Docker Compose interpolates the file, so
   a bcrypt hash like `$2a$14$YoBi…` is read as a reference to an unset variable `$YoBi…` and gets
   blanked. Caddy is then handed a mangled hash and nobody can log in, with no error anywhere. This
@@ -169,11 +178,11 @@ default for that variable is `192.0.2.1`, a documentation address that is nobody
 have not finished configuring serves the read-only view and refuses every control action. **Its
 limits, plainly:** it is one shared credential with no audit trail, so you cannot tell two
 operators apart or revoke one of them; a leaked password plus a matching source address is total
-control, and the source address is not hard to match if you are on the same office NAT; there is
-no CSRF protection, so a page you visit while logged in could in principle POST to the board from
-your browser — the IP allowlist is what makes that unattractive rather than the application; and
-none of it protects you from anyone with root on the box, who has `PRIVATE_KEY` and does not need
-the board at all. If your address is not static, do not widen the allowlist — leave it at nobody
+control, and the source address is not hard to match if you are on the same office NAT; the CSRF
+story is now the application's (`guard` in `src/board/server.ts` requires a same-origin JSON write
+and a recognised `Host`), not the proxy's, so if that check is ever relaxed the allowlist is all
+that is left; and none of it protects you from anyone with root on the box, who has
+`PRIVATE_KEY` and does not need the board at all. If your address is not static, do not widen the allowlist — leave it at nobody
 and use the tunnel, which does not pass through Caddy:
 
 ```sh
@@ -249,9 +258,13 @@ curl -so /dev/null -w '%{http_code}\n' -u ops:PASSWORD https://board.example.com
 # 4. the engine is actually reading the chain
 curl -s -u ops:PASSWORD https://board.example.com/state | jq '{live, paused, rules}'
 
-# 5. the control surface refuses from the wrong address
-curl -s -X POST -u ops:PASSWORD https://board.example.com/pause
+# 5. the control surface refuses from the wrong address.
+#    Content-Type is required: the board rejects a write that is not JSON, which is how a
+#    cross-site form is stopped before the Origin check even runs.
+curl -s -X POST -u ops:PASSWORD -H 'Content-Type: application/json' -d '{}' \
+  https://board.example.com/pause
 # 403 control actions are restricted to BOARD_ADMIN_IPS ...   (unless you are on the allowlist)
+# {"paused":true}                                             (if you are)
 
 # 6. redirect and HSTS
 curl -sI http://board.example.com/healthz | head -3          # 308 to https://
@@ -441,6 +454,18 @@ was mangled on the way into the container. Check what Caddy actually received:
 `$2a$` and be about 60 characters. If the `$…` sections are missing, `format: raw` has been removed
 from the `env_file` entry in `compose.prod.yaml`, or the hash was pasted into a compose
 `environment:` block, where every `$` must be doubled to `$$`.
+
+**Every request through the proxy is `403 {"error":"unrecognised Host"}`, but the board answers
+fine on `127.0.0.1:4663`.** `BOARD_HOSTS` does not include the public hostname. The board checks
+the `Host` header on every request to stop DNS rebinding, and Caddy — correctly — forwards the
+client's `Host` rather than rewriting it to `board:4663`. Add the name to `BOARD_HOSTS` in
+`/etc/hoodterm/env.prod` (comma-separated for several) and restart the board. Do not "fix" this at
+the proxy with `header_up Host {upstream_hostport}`: that would make the board answer to any
+hostname pointed at it, which is the thing the check exists to prevent.
+
+**A control POST returns `403 {"error":"writes must be application/json"}`.** You sent it without
+a content type — `curl -X POST` alone does that. Add `-H 'Content-Type: application/json' -d '{}'`.
+The page itself always sets it.
 
 **Every control click gives 403.** You are not in `BOARD_ADMIN_IPS`, which is exactly what it is
 for. Check what Caddy sees as your address — `docker compose -f compose.prod.yaml logs caddy |

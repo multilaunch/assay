@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseEther, type Address } from "viem";
-import { decide, rulesFromEnv, type EngineRules } from "../src/engine/rules.js";
+import { claimOnce, serialized, SessionSpend } from "../src/engine/engine.js";
+import { decide, type EngineRules } from "../src/engine/rules.js";
 import type { CurveState } from "../src/pons/curve.js";
 import type { LaunchIntel, LaunchTx, TokenMeta } from "../src/pons/enrich.js";
 import { exitReason, pnlPct } from "../src/trade/positions.js";
@@ -29,7 +30,18 @@ function intel(over: Partial<LaunchIntel> = {}): LaunchIntel {
   };
 }
 const GOOD = { total: 80, verdict: "FIRE" as const, reasons: [], flags: [] };
-const rules = (over: Partial<EngineRules> = {}) => rulesFromEnv({ minScore: 60, maxOpenPositions: 3, sessionBudget: parseEther("0.05"), entryQuote: parseEther("0.01"), ...over });
+const exits = { takeProfitPct: 80, stopLossPct: 35, trailingPct: 25, maxHoldMin: 45 };
+
+// Spelled out rather than built by rulesFromEnv: that reads process.env, .env has already been
+// loaded by an import, and a developer with MAX_EXEMPT_WALLETS=8 in theirs would otherwise change
+// what these tests assert.
+const BASE: EngineRules = {
+  entryQuote: parseEther("0.01"), slippageBps: 300, maxOpeningTaxBps: 300, maxWaitMs: 12_000,
+  minScore: 60, maxDevSharePct: 8, maxCreatorTaxBps: 300, requireSocials: true, maxExemptWallets: 2,
+  ethPairsOnly: true, entryQuoteByPair: new Map(), keyword: null, deployers: new Set(), maxOpenPositions: 3, maxFarmTwins: 1,
+  sessionBudget: parseEther("0.05"), exits,
+};
+const rules = (over: Partial<EngineRules> = {}): EngineRules => ({ ...BASE, ...over });
 const ctx = { openCount: 0, farmTwins: 0, spent: 0n };
 
 test("a clean ETH launch above the score fires", () => {
@@ -84,7 +96,6 @@ test("the session budget stops the last entry that would cross it, not the one t
 
 // ---- exits ---------------------------------------------------------------------------------------
 
-const exits = { takeProfitPct: 80, stopLossPct: 35, trailingPct: 25, maxHoldMin: 45 };
 const pos = (entry: bigint, peak: bigint, openedAt: number) => ({ entryQuote: entry.toString(), peakQuote: peak.toString(), openedAt });
 
 test("take profit, stop loss, trailing and max hold each fire on their own", () => {
@@ -100,9 +111,14 @@ test("take profit, stop loss, trailing and max hold each fire on their own", () 
 test("the trailing stop only arms once the position has been above the entry", () => {
   const now = 1_000_000;
   const e = 10n ** 18n;
-  // peak never exceeded entry: a 30 % drop is the stop loss, never the trailing stop
-  assert.match(exitReason(pos(e, e, now), (e * 70n) / 100n, exits, now) ?? "", /^$|stop loss/);
+  // 30 % down is past the 25 % trailing band, but the peak never got above the entry, so nothing
+  // fires: the trailing stop is not a second and tighter stop loss.
+  assert.equal(exitReason(pos(e, e, now), (e * 70n) / 100n, exits, now), null);
   assert.equal(exitReason(pos(e, e, now), (e * 80n) / 100n, exits, now), null);
+  // the same 30 % drop measured from a peak above the entry is the trailing stop
+  assert.equal(exitReason(pos(e, (e * 3n) / 2n, now), (e * 105n) / 100n, exits, now), "trailing stop 30.0% below the peak");
+  // and 40 % down from an entry that never rose is the stop loss, named as such
+  assert.equal(exitReason(pos(e, e, now), (e * 60n) / 100n, exits, now), "stop loss -40.0%");
 });
 
 test("pnl is measured against the entry, in the pair's own units", () => {
@@ -132,4 +148,61 @@ test("an ERC-20 pair sorts by address", () => {
   const k2 = poolKeyFor(low, { pairToken: high, poolFee: 500, tickSpacing: 10 });
   assert.equal(k2.currency0, low);
   assert.equal(poolId(k1), poolId(k2), "the same pair must produce the same pool id whichever side is the token");
+});
+
+// ---- overlapping passes and the budget --------------------------------------------------------
+
+const tick = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+test("a position stays claimed for the whole sell, so two overlapping passes cannot sell it twice", async () => {
+  const closing = new Set<string>();
+  let sells = 0;
+  const sell = async () => { sells++; await tick(20); return "sold"; };
+  const both = await Promise.all([claimOnce(closing, "p1", sell), claimOnce(closing, "p1", sell)]);
+  assert.equal(sells, 1);
+  assert.deepEqual(both, ["sold", null]);
+  assert.equal(closing.size, 0, "the claim is given back when the sell finishes");
+  assert.equal(await claimOnce(closing, "p1", sell), "sold", "and the position can be closed later");
+});
+
+test("a manage pass that outlives its own tick is skipped, not overlapped", async () => {
+  let inside = 0;
+  let passes = 0;
+  const pass = serialized(async () => {
+    passes++;
+    inside++;
+    assert.equal(inside, 1, "two passes ran at once");
+    await tick(20);
+    inside--;
+  });
+  await Promise.all([pass(), pass(), pass()]);
+  assert.equal(passes, 1);
+  await pass();
+  assert.equal(passes, 2, "the guard clears once the slow pass is done");
+});
+
+test("the session budget is reserved when the launch clears the gates, not when its buy lands", async () => {
+  const spend = new SessionSpend();
+  const r = rules({ sessionBudget: parseEther("0.01"), entryQuote: parseEther("0.01") });
+  let bought = 0;
+  // the shape of onLaunch: gate, reserve, then up to twelve seconds of tax wait and a receipt
+  const launch = async () => {
+    if (!decide(intel(), GOOD, r, { ...ctx, spent: spend.total() }).fire) return;
+    spend.reserve(r.entryQuote);
+    await tick(10);
+    bought++;
+  };
+  await Promise.all([launch(), launch(), launch(), launch()]);
+  assert.equal(bought, 1, "four launches inside one wait window spent four times the budget");
+  assert.equal(spend.total(), parseEther("0.01"));
+});
+
+test("a launch that never buys hands its reservation back, once", () => {
+  const spend = new SessionSpend();
+  const release = spend.reserve(parseEther("0.01"));
+  assert.equal(spend.total(), parseEther("0.01"));
+  release();
+  assert.equal(spend.total(), 0n);
+  release();
+  assert.equal(spend.total(), 0n, "a second release must not hand the budget back twice");
 });

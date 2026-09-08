@@ -52,7 +52,23 @@ const FILE = () => resolve(process.env.HOODTERM_DATA ?? resolve(process.cwd(), "
 function load(): Position[] {
   const f = FILE();
   if (!existsSync(f)) return [];
-  try { return JSON.parse(readFileSync(f, "utf8")) as Position[]; } catch { return []; }
+  const raw = readFileSync(f, "utf8");
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch (e) { throw corrupt(f, (e as Error).message); }
+  if (!Array.isArray(parsed)) throw corrupt(f, "the file is not an array of positions");
+  return parsed as Position[];
+}
+
+/**
+ * An unreadable ledger is not an empty one. Every writer here does load → mutate → save, so
+ * answering a bad parse with [] would write the truncation back and lose every open position:
+ * tokens the engine is holding, never marked and never sold again. Move the file somewhere a human
+ * can look at it and let the caller fail instead.
+ */
+function corrupt(f: string, why: string): Error {
+  const aside = `${f}.corrupt-${Date.now()}`;
+  renameSync(f, aside);
+  return new Error(`${f} could not be read (${why}); it has been moved to ${aside} and not overwritten`);
 }
 
 function save(all: Position[]): void {
@@ -79,6 +95,24 @@ export function updatePosition(id: string, patch: Partial<Position>): Position |
   const i = all.findIndex((p) => p.id === id);
   if (i < 0) return null;
   const next = { ...all[i]!, ...patch };
+  all[i] = next;
+  save(all);
+  return next;
+}
+
+/**
+ * Close a position with one exit appended to whatever is on disk at this moment.
+ *
+ * A sell takes a receipt's worth of seconds and the mark loop keeps writing to the record for the
+ * whole of it, so the caller's copy of `exits` is stale by the time the sell lands; appending to
+ * that copy silently drops any exit recorded meanwhile.
+ */
+export function closeWithExit(id: string, exit: Exit, lastQuote: string): Position | null {
+  const all = load();
+  const i = all.findIndex((p) => p.id === id);
+  if (i < 0) return null;
+  const cur = all[i]!;
+  const next: Position = { ...cur, status: "closed", lastQuote, exits: [...cur.exits, exit] };
   all[i] = next;
   save(all);
   return next;

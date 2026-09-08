@@ -1,5 +1,6 @@
 import { parseEther } from "viem";
-import { devSharePct, socialsOf, type LaunchIntel } from "../pons/enrich.js";
+import { clampSlippageBps } from "../pons/curve.js";
+import { devSharePct, socialsOf, type LaunchIntel, type PairInfo } from "../pons/enrich.js";
 import type { Score } from "../score/score.js";
 import type { ExitRules } from "../trade/positions.js";
 import { envNum } from "../util/env.js";
@@ -19,11 +20,17 @@ export interface EngineRules {
   maxExemptWallets: number;
   /** only launches paired with native ETH; stock-token and stable pairs are common and priced differently */
   ethPairsOnly: boolean;
+  /**
+   * Entry size for one pair asset, keyed by the lowercase pair address, in that asset's own smallest
+   * unit. `entryQuote` is parseEther, so it only means anything against an 18-decimal asset; a pair
+   * with other decimals has to be sized by hand or it is refused.
+   */
+  entryQuoteByPair: Map<string, bigint>;
   keyword: RegExp | null;
   deployers: Set<string>;
   maxOpenPositions: number;
   maxFarmTwins: number;
-  /** total quote entries may consume in one session, whatever the scores say */
+  /** total quote entries may consume in one session, whatever the scores say; one currency, so ETH-only sessions */
   sessionBudget: bigint;
   exits: ExitRules;
 }
@@ -31,7 +38,7 @@ export interface EngineRules {
 export function rulesFromEnv(over: Partial<EngineRules> = {}): EngineRules {
   return {
     entryQuote: parseEther(String(envNum("ENTRY_ETH", 0.01))),
-    slippageBps: envNum("SLIPPAGE_BPS", 300),
+    slippageBps: clampSlippageBps(envNum("SLIPPAGE_BPS", 300)),
     maxOpeningTaxBps: envNum("MAX_OPENING_TAX_BPS", 300),
     maxWaitMs: envNum("MAX_WAIT_MS", 12_000),
     minScore: envNum("MIN_SCORE", 60),
@@ -40,6 +47,7 @@ export function rulesFromEnv(over: Partial<EngineRules> = {}): EngineRules {
     requireSocials: true,
     maxExemptWallets: envNum("MAX_EXEMPT_WALLETS", 2),
     ethPairsOnly: true,
+    entryQuoteByPair: new Map(),
     keyword: null,
     deployers: new Set(),
     maxOpenPositions: envNum("MAX_OPEN_POSITIONS", 3),
@@ -70,9 +78,13 @@ export function decide(intel: LaunchIntel, score: Score, rules: EngineRules, ctx
 
   const why: string[] = [];
   if (ctx.openCount >= rules.maxOpenPositions) why.push(`open positions ${ctx.openCount} ≥ ${rules.maxOpenPositions}`);
-  if (ctx.spent + rules.entryQuote > rules.sessionBudget) why.push(`session budget reached (${ctx.spent} of ${rules.sessionBudget} wei spent)`);
+  if (ctx.spent + entryQuoteFor(rules, intel.pair) > rules.sessionBudget) why.push(`session budget reached (${ctx.spent} of ${rules.sessionBudget} wei spent)`);
   if (ctx.farmTwins > rules.maxFarmTwins) why.push(`launch farm: ${ctx.farmTwins} twins in 30 min > ${rules.maxFarmTwins}`);
   if (rules.ethPairsOnly && !intel.pair.native) why.push(`pair is ${intel.pair.symbol}, not ETH`);
+  // --allow-pairs opens the feed but not the arithmetic: entryQuote and sessionBudget are parseEther,
+  // so 0.01 "ETH" against a 6-decimal stable is ten billion units of it. Size that pair by hand or stay out.
+  if (!rules.ethPairsOnly && intel.pair.decimals !== 18 && !rules.entryQuoteByPair.has(intel.pair.address.toLowerCase()))
+    why.push(`pair ${intel.pair.symbol} has ${intel.pair.decimals} decimals and no entry size of its own`);
   if (score.total < rules.minScore) why.push(`score ${score.total} < ${rules.minScore}`);
 
   // Missing calldata is a refusal, not a pass: the two rules below cannot run without it.
@@ -98,4 +110,13 @@ export function decide(intel: LaunchIntel, score: Score, rules: EngineRules, ctx
   else if (intel.curve.graduated || intel.curve.readyToGraduate) why.push("curve already closed");
 
   return { fire: why.length === 0, why };
+}
+
+/**
+ * What one entry against this pair actually costs, in the pair asset's own units. `entryQuote` is
+ * wei, so it is only the right answer for an 18-decimal asset; `decide` refuses anything else that
+ * has no explicit size here, and the two must stay in step.
+ */
+export function entryQuoteFor(rules: EngineRules, pair: Pick<PairInfo, "address" | "decimals">): bigint {
+  return rules.entryQuoteByPair.get(pair.address.toLowerCase()) ?? rules.entryQuote;
 }

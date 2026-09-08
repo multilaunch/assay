@@ -49,6 +49,9 @@ services:
     environment:
       NODE_ENV: production
       HOODTERM_DATA: /data
+      # BOARD_HOSTS comes from deploy/env.prod and must contain the public hostname. The board
+      # rejects any Host it does not know (its DNS-rebinding fence), and Caddy passes the client's
+      # Host through unchanged, so without it every request through the proxy is a 403.
 
     # `board --live` prints the signer, its balance and every limit and waits for you to type
     # `arm` on stdin. A detached container with no stdin would read EOF and abort, so stdin is

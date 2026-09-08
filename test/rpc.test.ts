@@ -74,6 +74,39 @@ test("a JSON-RPC error that is not a rate limit is thrown, not retried", async (
   } finally { f.restore(); }
 });
 
+test("a revert that happens to say \"exceeded\" is still a revert", async () => {
+  const f = fakeFetch(() => ({ status: 200, body: { jsonrpc: "2.0", id: 1, error: { code: 3, message: "execution reverted: SlippageExceeded", data: "0xdead" } } }));
+  try {
+    const g = new RpcGate([{ url: "https://n", label: "n", caps: ["state"] }], { spacingMs: 0, retries: 1 });
+    await assert.rejects(() => g.request("eth_call", [{}]), /SlippageExceeded/);
+    assert.equal(f.calls.length, 1); // a tax check that reverts must come back now, not after the backoff ladder
+    assert.equal(g.status()[0]!.benched, false); // and it must not cost us the endpoint
+  } finally { f.restore(); }
+});
+
+test("an HTTP error that is not a rate limit still counts against the endpoint", async () => {
+  const f = fakeFetch((url) => (url.includes("dead") ? { status: 500, body: "upstream boom" } : { status: 200, body: { jsonrpc: "2.0", id: 1, result: "0x1" } }));
+  try {
+    const g = new RpcGate([
+      { url: "https://dead", label: "dead", caps: ["state"] },
+      { url: "https://alive", label: "alive", caps: ["state"] },
+    ], { spacingMs: 0, retries: 3 });
+    assert.equal(await g.request<string>("eth_chainId"), "0x1");
+    assert.equal(f.calls.filter((c) => c.url === "https://dead").length, 1); // one strike is enough to stop picking it
+    assert.ok(f.calls.some((c) => c.url === "https://alive"), "the healthy endpoint was never tried");
+  } finally { f.restore(); }
+});
+
+test("a request that cannot be serialised does not keep its slot", async () => {
+  const f = fakeFetch(() => ({ status: 200, body: { jsonrpc: "2.0", id: 1, result: "0x1" } }));
+  try {
+    const g = new RpcGate([{ url: "https://n", label: "n", caps: ["state"] }], { maxInFlight: 1, spacingMs: 0, retries: 0 });
+    await assert.rejects(() => g.request("eth_call", [{ value: 1n }]));
+    const stuck = new Promise<string>((r) => setTimeout(() => r("stuck"), 500));
+    assert.equal(await Promise.race([g.request<string>("eth_chainId"), stuck]), "0x1", "the poisoned request never gave the slot back");
+  } finally { f.restore(); }
+});
+
 test("the in-flight cap holds", async () => {
   let concurrent = 0, peak = 0;
   const real = globalThis.fetch;

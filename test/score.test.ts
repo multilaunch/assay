@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Address } from "viem";
+import { encodeFunctionData, type Address, type Hex } from "viem";
+import { factoryAbi } from "../src/abi/pons.js";
 import type { CurveState } from "../src/pons/curve.js";
-import type { LaunchIntel, LaunchTx, TokenMeta } from "../src/pons/enrich.js";
+import { decodeLaunchCall, type LaunchIntel, type LaunchTx, type TokenMeta } from "../src/pons/enrich.js";
 import { scoreLaunch } from "../src/score/score.js";
 
 const A = (n: number): Address => `0x${n.toString(16).padStart(40, "0")}` as Address;
@@ -103,4 +104,35 @@ test("a missing factory record and a missing curve are each their own penalty", 
   const base = scoreLaunch(intel()).total;
   assert.equal(base - scoreLaunch(intel({ record: null })).total, 15 + 10); // -15 unknown, and +10 for the 1% tax is gone
   assert.equal(base - scoreLaunch(intel({ curve: null })).total, 10);
+});
+
+test("a launchTokenFor launch with ten exempt wallets is not read as the cleanest possible shape", () => {
+  // regression: launchTokenFor was missing from SELECTOR, the decode fell through to via "unknown" with
+  // an empty list, and the bundle collected +5 for "no wallets exempt from the opening tax". Same class
+  // of hole as $ADSTOCKS above: missing data must never read as good news.
+  const b32 = `0x${"0".repeat(64)}` as Hex;
+  const params = {
+    name: "Test", symbol: "TST", logo: "", description: "",
+    socials: { twitter: "", telegram: "", discord: "", website: "", farcaster: "" },
+    creatorFeeRecipient: A(1), creatorTaxBps: 100, buybackEnabled: false, expectedEconomics: b32, salt: b32,
+  } as const;
+  const ten = Array.from({ length: 10 }, (_, i) => A(200 + i));
+  const call = decodeLaunchCall(encodeFunctionData({ abi: factoryAbi, functionName: "launchTokenFor", args: [params, 0n, A(0), A(2), ten] }));
+
+  const s = scoreLaunch(intel({ tx: tx(3, 0, { via: call.via, exemptions: call.exemptions }) }), { deployer: { prior: 0, graduated: 0 } });
+  assert.ok(s.reasons.some((r) => r.includes("10 wallets exempt")), s.reasons.join(" | "));
+  assert.ok(!s.reasons.some((r) => r.includes("no wallets exempt")));
+  assert.notEqual(s.verdict, "FIRE");
+});
+
+test("an entrypoint the decoder does not recognise costs points instead of earning them", () => {
+  const clean = scoreLaunch(intel(), { deployer: { prior: 0, graduated: 0 } });
+  const opaque = scoreLaunch(intel({ tx: tx(3, 0, { via: "unknown" }) }), { deployer: { prior: 0, graduated: 0 } });
+  assert.ok(opaque.total < clean.total, `${opaque.total} should be under ${clean.total}`);
+  assert.ok(opaque.reasons.some((r) => r.includes("unrecognised launch entrypoint")));
+  assert.ok(!opaque.reasons.some((r) => r.includes("no wallets exempt")), "an unread list is not an empty one");
+
+  // and a bundle we can actually see is still worse than one we could not read, or the penalty is too big
+  const seen = scoreLaunch(intel({ tx: tx(3, 4) }), { deployer: { prior: 0, graduated: 0 } });
+  assert.ok(seen.total < opaque.total, "four declared exempt wallets is worse than an entrypoint we cannot name");
 });

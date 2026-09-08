@@ -7,13 +7,13 @@ import { notify, telegramEnabled } from "../alerts/telegram.js";
 import { confirmLive } from "../engine/arm.js";
 import { startEngine, type EngineEvent } from "../engine/engine.js";
 import { rulesFromEnv, type EngineRules } from "../engine/rules.js";
-import { progress } from "../pons/curve.js";
+import { clampSlippageBps, progress } from "../pons/curve.js";
 import { deployerLaunches, feeLedger } from "../pons/fees.js";
-import { curveActivity, enrichLaunch } from "../pons/enrich.js";
-import { findLaunchEvent } from "../pons/detect.js";
+import { curveActivity, enrichLaunch, pairInfo } from "../pons/enrich.js";
+import { findLaunchEvent, searchLaunchEvent } from "../pons/detect.js";
 import { allPositions, openPositions, pnlPct } from "../trade/positions.js";
 import { curveState } from "../trade/state.js";
-import { buyAnywhere, markPosition, resolveVenue, sellAnywhere } from "../trade/venue.js";
+import { buyAnywhere, readMark, resolveVenue, sellAnywhere } from "../trade/venue.js";
 import { getAccount, walletClient } from "../trade/wallet.js";
 import { amount, ago, bar, eth, padL, padR, pct, short } from "../util/fmt.js";
 import { envNum } from "../util/env.js";
@@ -21,6 +21,32 @@ import { c, hhmmss, link, log } from "../util/log.js";
 import { renderCard } from "./render.js";
 
 const sym = (s: string | undefined, fallback: string) => (s ? `$${s}` : short(fallback));
+
+/** How far back `watch` reads curve trades when the launch log cannot be found. */
+const ACTIVITY_FALLBACK_BLOCKS = 100_000n;
+
+/** Commander only runs this on a value the user typed, so the env default is clamped separately. */
+function slippageArg(v: string): number {
+  const raw = Number(v);
+  const bps = clampSlippageBps(raw);
+  if (raw !== bps) log.warn(`slippage ${v} is not a whole number of basis points between 0 and 10000; using ${bps}`);
+  return bps;
+}
+
+/**
+ * `--pair-entry 0xstable=25000000`. The size is in the pair asset's own smallest unit, because its
+ * decimals are not known until the token is read and an amount that quietly means something else is
+ * the exact failure this option exists to prevent.
+ */
+function parsePairEntries(specs: string[]): Map<string, bigint> {
+  const out = new Map<string, bigint>();
+  for (const spec of specs) {
+    const [addr = "", units = ""] = spec.split("=");
+    if (!isAddress(addr, { strict: false }) || !/^\d+$/.test(units.trim())) throw new Error(`--pair-entry wants <address>=<whole units>, got ${spec}`);
+    out.set(addr.toLowerCase(), BigInt(units.trim()));
+  }
+  return out;
+}
 
 /** Turn one engine event into one terminal line. The engine never prints; this decides how it looks. */
 function printEvent(e: EngineEvent, live: boolean): void {
@@ -57,8 +83,9 @@ export function registerTradeCommands(program: Command): void {
     .option("--keyword <re>", "only launches whose name, symbol or description match")
     .option("--deployer <addr...>", "only these deployers")
     .option("--allow-pairs", "also non-ETH pairs (stock tokens, stables)")
+    .option("--pair-entry <addr=units...>", "entry size for one non-ETH pair, in that asset's own smallest unit")
     .option("--for <seconds>", "stop after this many seconds", (v) => Number(v))
-    .action(async (o: { live?: boolean; eth?: number; minScore?: number; maxOpen?: number; budget?: number; keyword?: string; deployer?: string[]; allowPairs?: boolean; for?: number }) => {
+    .action(async (o: { live?: boolean; eth?: number; minScore?: number; maxOpen?: number; budget?: number; keyword?: string; deployer?: string[]; allowPairs?: boolean; pairEntry?: string[]; for?: number }) => {
       const over: Partial<EngineRules> = {};
       if (o.eth !== undefined) over.entryQuote = parseEther(String(o.eth));
       if (o.minScore !== undefined) over.minScore = o.minScore;
@@ -67,6 +94,10 @@ export function registerTradeCommands(program: Command): void {
       if (o.keyword) over.keyword = new RegExp(o.keyword, "i");
       if (o.deployer?.length) over.deployers = new Set(o.deployer.map((d) => d.toLowerCase()));
       if (o.allowPairs) over.ethPairsOnly = false;
+      if (o.pairEntry?.length) {
+        try { over.entryQuoteByPair = parsePairEntries(o.pairEntry); }
+        catch (e) { log.error((e as Error).message); process.exitCode = 2; return; }
+      }
       const rules = rulesFromEnv(over);
 
       const live = o.live === true;
@@ -113,13 +144,13 @@ export function registerTradeCommands(program: Command): void {
     .command("buy <token> <amount>")
     .description("buy a launch wherever it trades: the curve before graduation, the v4 pool after")
     .option("--live", "sign and send")
-    .option("--slippage <bps>", "slippage in basis points", (v) => Number(v), envNum("SLIPPAGE_BPS", 300))
+    .option("--slippage <bps>", "slippage in basis points", slippageArg, clampSlippageBps(envNum("SLIPPAGE_BPS", 300)))
     .action(async (token: string, amount: string, o: { live?: boolean; slippage: number }) => {
       if (!isAddress(token, { strict: false })) { log.error("not an address"); process.exitCode = 2; return; }
       const t = token as Address;
       const v = await resolveVenue(t);
-      const dec = v.record.pairToken.toLowerCase() === ZERO ? 18 : await client.readContract({ address: v.record.pairToken, abi: erc20Abi, functionName: "decimals" }).then(Number).catch(() => 18);
-      const quoteIn = parseUnits(amount, dec);
+      const pair = await pairInfo(v.record.pairToken);
+      const quoteIn = parseUnits(amount, pair.decimals);
       const live = o.live === true;
 
       // A buy on the curve inside the opening window hands most of the spend to the creator.
@@ -129,7 +160,7 @@ export function registerTradeCommands(program: Command): void {
       }
 
       const r = await buyAnywhere(t, quoteIn, o.slippage, { dryRun: !live });
-      console.log(`${live ? c.green("bought") : c.grey("would buy")} on the ${r.venue}: ${amount} ${v.record.pairToken.toLowerCase() === ZERO ? "ETH" : "quote"} → ${(Number(r.amountOut) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 0 })} tokens${r.hash ? c.grey(`  ${r.hash}`) : ""}`);
+      console.log(`${live ? c.green("bought") : c.grey("would buy")} on the ${r.venue}: ${amount} ${pair.symbol} → ${(Number(r.amountOut) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 0 })} tokens${r.hash ? c.grey(`  ${r.hash}`) : ""}`);
       if (!live) console.log(c.grey("dry run: nothing was sent. add --live to sign."));
     });
 
@@ -138,7 +169,7 @@ export function registerTradeCommands(program: Command): void {
     .command("sell <token> [percent]")
     .description("sell a share of your balance wherever the launch trades (default 100)")
     .option("--live", "sign and send")
-    .option("--slippage <bps>", "slippage in basis points", (v) => Number(v), envNum("SLIPPAGE_BPS", 300))
+    .option("--slippage <bps>", "slippage in basis points", slippageArg, clampSlippageBps(envNum("SLIPPAGE_BPS", 300)))
     .action(async (token: string, percent: string | undefined, o: { live?: boolean; slippage: number }) => {
       if (!isAddress(token, { strict: false })) { log.error("not an address"); process.exitCode = 2; return; }
       const t = token as Address;
@@ -151,10 +182,10 @@ export function registerTradeCommands(program: Command): void {
       const tokensIn = share === 100 ? balance : (balance * BigInt(Math.round(share))) / 100n;
 
       const v = await resolveVenue(t);
-      const dec = v.record.pairToken.toLowerCase() === ZERO ? 18 : 6;
+      const pair = await pairInfo(v.record.pairToken);
       const live = o.live === true;
       const r = await sellAnywhere(t, tokensIn, o.slippage, { dryRun: !live });
-      console.log(`${live ? c.green("sold") : c.grey("would sell")} ${share}% (${(Number(tokensIn) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 0 })} tokens) on the ${r.venue} for ${amount(r.amountOut, dec, 6)}${r.hash ? c.grey(`  ${r.hash}`) : ""}`);
+      console.log(`${live ? c.green("sold") : c.grey("would sell")} ${share}% (${(Number(tokensIn) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 0 })} tokens) on the ${r.venue} for ${amount(r.amountOut, pair.decimals, 6)} ${pair.symbol}${r.hash ? c.grey(`  ${r.hash}`) : ""}`);
       if (!live) console.log(c.grey("dry run: nothing was sent. add --live to sign."));
     });
 
@@ -169,28 +200,27 @@ export function registerTradeCommands(program: Command): void {
 
       // Native and ERC-20 balances live in separate escrow ledgers, so which one to claim depends
       // on what the launch was paired with.
-      let pair: Address = ZERO as Address;
+      let pairToken: Address = ZERO as Address;
       if (token) {
         if (!isAddress(token, { strict: false })) { log.error("not an address"); process.exitCode = 2; return; }
         const rec = await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "getLaunchedToken", args: [token as Address] });
         if (!rec.exists) { log.error("the factory has no record of that token"); process.exitCode = 2; return; }
-        pair = rec.pairToken;
+        pairToken = rec.pairToken;
       }
-      const native = pair.toLowerCase() === ZERO;
-      const dec = native ? 18 : await client.readContract({ address: pair, abi: erc20Abi, functionName: "decimals" }).then(Number).catch(() => 18);
-      const pending = native
+      const pair = await pairInfo(pairToken);
+      const pending = pair.native
         ? await client.readContract({ address: PONS.escrow, abi: escrowAbi, functionName: "balanceOf", args: [acct.address] })
-        : await client.readContract({ address: PONS.escrow, abi: escrowAbi, functionName: "balanceOfToken", args: [acct.address, pair] });
+        : await client.readContract({ address: PONS.escrow, abi: escrowAbi, functionName: "balanceOfToken", args: [acct.address, pair.address] });
 
       console.log(`recipient  ${acct.address}`);
-      console.log(`pending    ${amount(pending, dec, 6)} ${native ? "ETH" : short(pair)}`);
+      console.log(`pending    ${amount(pending, pair.decimals, 6)} ${pair.native ? "ETH" : pair.symbol}`);
       if (pending === 0n) { console.log(c.grey("nothing to claim")); return; }
       if (o.live !== true) { console.log(c.grey("dry run: nothing was sent. add --live to claim.")); return; }
 
       const wallet = walletClient();
-      const hash = native
+      const hash = pair.native
         ? await wallet.writeContract({ address: PONS.escrow, abi: escrowAbi, functionName: "claim", account: acct, chain: null })
-        : await wallet.writeContract({ address: PONS.escrow, abi: escrowAbi, functionName: "claimToken", args: [pair], account: acct, chain: null });
+        : await wallet.writeContract({ address: PONS.escrow, abi: escrowAbi, functionName: "claimToken", args: [pair.address], account: acct, chain: null });
       const receipt = await client.waitForTransactionReceipt({ hash, timeout: 60_000 });
       console.log(receipt.status === "success" ? c.green(`claimed  ${hash}`) : c.red(`reverted  ${hash}`));
       if (receipt.status !== "success") process.exitCode = 1;
@@ -207,8 +237,14 @@ export function registerTradeCommands(program: Command): void {
       const t = token as Address;
       const rec = await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "getLaunchedToken", args: [t] });
       if (!rec.exists) { log.error("the factory has no record of that token"); process.exitCode = 2; return; }
-      const pairNative = rec.pairToken.toLowerCase() === ZERO;
+      const pair = await pairInfo(rec.pairToken);
       log.info(c.grey(`watching ${short(t)} · curve ${short(rec.curve)} · ${link("pons", EXPLORER.pons(t))}`));
+
+      // curveActivity re-reads every log since `from` on each tick. From block 0 that is a
+      // whole-chain eth_getLogs every --every seconds against the only endpoint that serves logs.
+      const launch = await findLaunchEvent(t).catch(() => null);
+      const head = await client.getBlockNumber();
+      const from = launch?.blockNumber ?? (head > ACTIVITY_FALLBACK_BLOCKS ? head - ACTIVITY_FALLBACK_BLOCKS : 0n);
 
       const started = Date.now();
       const tick = async () => {
@@ -216,17 +252,24 @@ export function registerTradeCommands(program: Command): void {
         if (!v) { log.warn("could not resolve the venue"); return; }
         if (v.venue === "swept") { log.info(`${c.grey(hhmmss())}  ${c.yellow("swept")}  between the curve and the pool, nothing trades`); return; }
         if (v.venue === "pool") {
-          const m = await markPosition(t, rec.curve, 10n ** 18n);
-          log.info(`${c.grey(hhmmss())}  ${c.cyan("pool ")}  1 token ≈ ${m ? amount(m.quote, pairNative ? 18 : 6, 8) : "?"} ${pairNative ? "ETH" : "quote"}`);
+          const m = await readMark(t, rec.curve, 10n ** 18n);
+          const price = m.status === "ok" ? `${amount(m.quote, pair.decimals, 8)} ${pair.symbol}` : m.status === "swept" ? c.yellow("nothing trades yet") : c.yellow(m.why);
+          log.info(`${c.grey(hhmmss())}  ${c.cyan("pool ")}  1 token ≈ ${price}`);
           return;
         }
         const cv = v.curve ?? (await curveState(rec.curve, DEAD));
         const p = progress(cv);
-        const act = await curveActivity(rec.curve, 0n, 0).catch(() => null);
-        log.info(`${c.grey(hhmmss())}  ${bar(p)} ${(p * 100).toFixed(1)}%  ${amount(cv.realQuoteReserve, pairNative ? 18 : 6, 3)}/${amount(cv.graduationThreshold, pairNative ? 18 : 6, 2)}  tax ${pct(cv.openingTaxBps)}${act ? c.grey(`  buys ${act.buys} sells ${act.sells} buyers ${act.uniqueBuyers}`) : ""}`);
+        const act = await curveActivity(rec.curve, from, 0).catch(() => null);
+        log.info(`${c.grey(hhmmss())}  ${bar(p)} ${(p * 100).toFixed(1)}%  ${amount(cv.realQuoteReserve, pair.decimals, 3)}/${amount(cv.graduationThreshold, pair.decimals, 2)}  tax ${pct(cv.openingTaxBps)}${act ? c.grey(`  buys ${act.buys} sells ${act.sells} buyers ${act.uniqueBuyers}`) : ""}`);
       };
       await tick();
-      const iv = setInterval(() => { void tick(); }, Math.max(1, o.every) * 1000);
+      // a tick slower than --every must not have the next one stacked behind it
+      let ticking = false;
+      const iv = setInterval(() => {
+        if (ticking) return;
+        ticking = true;
+        void tick().catch((e: Error) => log.warn(e.message.split("\n")[0] ?? "")).finally(() => { ticking = false; });
+      }, Math.max(1, o.every) * 1000);
       setTimeout(() => { clearInterval(iv); log.info(c.grey(`stopped after ${Math.round((Date.now() - started) / 1000)}s`)); }, o.for * 1000);
     });
 
@@ -237,11 +280,14 @@ export function registerTradeCommands(program: Command): void {
     .action(async (token: string) => {
       if (!isAddress(token, { strict: false })) { log.error("not an address"); process.exitCode = 2; return; }
       const l = await feeLedger(token as Address);
-      const dec = l.pairToken.toLowerCase() === ZERO ? 18 : 6;
+      const dec = (await pairInfo(l.pairToken)).decimals;
       console.log(`recipient   ${l.recipient}  ${l.isDeployer ? c.grey("(the deployer)") : c.yellow("(NOT the deployer: a builder / KOL deal)")}`);
-      console.log(`credited    ${amount(l.credited, dec, 6)}  across ${l.credits.length} credits in the last ${l.windowBlocks} blocks`);
+      const partial = l.failedChunks > 0 ? c.yellow(`  (${l.failedChunks} of ${l.chunks} log ranges refused, so this is a floor)`) : "";
+      console.log(`credited    ${l.failedChunks > 0 ? ">= " : ""}${amount(l.credited, dec, 6)}  across ${l.credits.length} credits in the last ${l.windowBlocks} blocks${partial}`);
       console.log(`claimed     ${amount(l.claimed, dec, 6)}  across ${l.claims.length} claims`);
-      console.log(`pending     ${amount(l.pending, dec, 6)}  ${c.grey("read live from the escrow")}`);
+      console.log(l.pendingKnown
+        ? `pending     ${amount(l.pending, dec, 6)}  ${c.grey("read live from the escrow")}`
+        : `pending     ${c.yellow("unknown")}  ${c.grey("the escrow balance read was refused")}`);
       for (const cl of l.claims.slice(-8)) console.log(c.grey(`  claim  block ${cl.at}  ${amount(cl.amount, dec, 6)}`));
     });
 
@@ -252,9 +298,15 @@ export function registerTradeCommands(program: Command): void {
     .action(async (addr: string) => {
       if (!isAddress(addr, { strict: false })) { log.error("not an address"); process.exitCode = 2; return; }
       const rows = await deployerLaunches(addr as Address);
-      if (rows.length === 0) { console.log(c.grey("no launches by that address in the window")); return; }
+      if (rows.length === 0) {
+        console.log(rows.failedChunks > 0
+          ? c.yellow(`could not read ${rows.failedChunks} of ${rows.chunks} log ranges for that address; the ranges that answered had no launches`)
+          : c.grey("no launches by that address in the window"));
+        return;
+      }
       const graduated = rows.filter((r) => r.phase === "PoolCreated").length;
-      console.log(`${rows.length} launches, ${graduated} graduated ${c.grey(`(${((graduated / rows.length) * 100).toFixed(1)}%)`)}`);
+      const gap = rows.failedChunks > 0 ? c.yellow(`  (partial: ${rows.failedChunks} of ${rows.chunks} log ranges refused)`) : "";
+      console.log(`${rows.length} launches, ${graduated} graduated ${c.grey(`(${((graduated / rows.length) * 100).toFixed(1)}%)`)}${gap}`);
       for (const r of rows.slice(-25)) console.log(`  block ${padL(String(r.block), 9)}  ${r.token}  ${r.phase === "PoolCreated" ? c.green(r.phase) : c.grey(r.phase)}`);
     });
 
@@ -267,10 +319,11 @@ export function registerTradeCommands(program: Command): void {
       const rows = o.all ? allPositions() : openPositions();
       if (rows.length === 0) { console.log(c.grey("no positions")); return; }
       for (const p of rows) {
-        const m = p.status === "open" ? await markPosition(p.token, p.curve, BigInt(p.tokens)) : null;
+        const r = p.status === "open" ? await readMark(p.token, p.curve, BigInt(p.tokens)) : null;
+        const m = r?.status === "ok" ? r : null;
         const mark = m ? pnlPct(p, m.quote) : p.exits.length ? pnlPct(p, BigInt(p.exits[p.exits.length - 1]!.quoteOut)) : 0;
         const tag = p.status === "open" ? c.cyan("open  ") : c.grey("closed");
-        console.log(`${tag} ${padR(`$${p.symbol}`, 12)} ${p.dryRun ? c.grey("dry") : c.yellow("live")}  in ${amount(BigInt(p.entryQuote), p.pairDecimals)} ${p.pairSymbol}  ${mark >= 0 ? c.green(`+${mark.toFixed(1)}%`) : c.red(`${mark.toFixed(1)}%`)}  ${c.grey(`${ago(Date.now() - p.openedAt * 1000)} ago${m ? ` on ${m.venue}` : ""}`)}`);
+        console.log(`${tag} ${padR(`$${p.symbol}`, 12)} ${p.dryRun ? c.grey("dry") : c.yellow("live")}  in ${amount(BigInt(p.entryQuote), p.pairDecimals)} ${p.pairSymbol}  ${mark >= 0 ? c.green(`+${mark.toFixed(1)}%`) : c.red(`${mark.toFixed(1)}%`)}  ${c.grey(`${ago(Date.now() - p.openedAt * 1000)} ago${m ? ` on ${m.venue}` : r?.status === "unreadable" ? ` · ${r.why}` : ""}`)}`);
         for (const x of p.exits) console.log(c.grey(`        exit ${amount(BigInt(x.quoteOut), p.pairDecimals)} ${p.pairSymbol}: ${x.reason}`));
       }
     });
@@ -302,11 +355,16 @@ export function registerTradeCommands(program: Command): void {
       const rec = await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "getLaunchedToken", args: [t] });
       if (!rec.exists) { log.error("the factory has no record of that token"); process.exitCode = 2; return; }
       // the real launch log, so the opening buy and the declared bundle can actually be read
-      const ev = (await findLaunchEvent(t)) ?? { token: t, curve: rec.curve, deployer: rec.deployer, pairToken: rec.pairToken, launchConfigId: 0n, graduationThreshold: rec.graduationThreshold, blockNumber: 0n, txHash: "0x" as `0x${string}`, logIndex: 0, seenAtMs: Date.now() };
+      const found = await searchLaunchEvent(t);
+      if (!found.ev && found.failedChunks > 0) log.warn(`the launch log could not be looked up (${found.failedChunks} of ${found.chunks} log ranges refused); the opening buy and declared bundle will read as unknown`);
+      const ev = found.ev ?? { token: t, curve: rec.curve, deployer: rec.deployer, pairToken: rec.pairToken, launchConfigId: 0n, graduationThreshold: rec.graduationThreshold, blockNumber: 0n, txHash: "0x" as `0x${string}`, logIndex: 0, seenAtMs: Date.now() };
       const intel = await enrichLaunch(ev, DEAD);
       const { scoreLaunch } = await import("../score/score.js");
       console.log(renderCard(intel, scoreLaunch(intel, {})));
       const l = await feeLedger(t).catch(() => null);
-      if (l) console.log(`   fees → ${l.isDeployer ? "deployer" : c.yellow("third party")} ${short(l.recipient)}  credited ${amount(l.credited, l.pairToken.toLowerCase() === ZERO ? 18 : 6, 5)}  pending ${amount(l.pending, l.pairToken.toLowerCase() === ZERO ? 18 : 6, 5)}`);
+      if (l) {
+        const dec = (await pairInfo(l.pairToken)).decimals;
+        console.log(`   fees → ${l.isDeployer ? "deployer" : c.yellow("third party")} ${short(l.recipient)}  credited ${amount(l.credited, dec, 5)}  pending ${amount(l.pending, dec, 5)}`);
+      }
     });
 }

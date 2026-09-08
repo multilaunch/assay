@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Address } from "viem";
+import { encodeFunctionData, type Address, type Hex } from "viem";
+import { factoryAbi, routerAbi } from "../src/abi/pons.js";
 import { ZERO } from "../src/chain/config.js";
 import type { CurveState } from "../src/pons/curve.js";
-import { isComplete, mergeIntel, type LaunchIntel } from "../src/pons/enrich.js";
+import { decodeLaunchCall, isComplete, mergeIntel, type LaunchIntel } from "../src/pons/enrich.js";
 
 const A = (n: number): Address => `0x${n.toString(16).padStart(40, "0")}` as Address;
 const EV = { token: A(9), curve: A(8), deployer: A(1), pairToken: ZERO as Address, launchConfigId: 0n, graduationThreshold: 0n, blockNumber: 1n, txHash: "0x00" as `0x${string}`, logIndex: 0, seenAtMs: 0 };
@@ -45,4 +46,40 @@ test("a retry that also failed leaves the earlier data intact", () => {
   assert.equal(merged.tx, TX);
   assert.equal(merged.curve?.realQuoteReserve, 5n);
   assert.equal(merged.pair.symbol, "ETH");
+});
+
+const B32 = `0x${"0".repeat(64)}` as Hex;
+const PARAMS = {
+  name: "Test", symbol: "TST", logo: "", description: "",
+  socials: { twitter: "", telegram: "", discord: "", website: "", farcaster: "" },
+  creatorFeeRecipient: A(1), creatorTaxBps: 100, buybackEnabled: false, expectedEconomics: B32, salt: B32,
+} as const;
+const bundle = (n: number): Address[] => Array.from({ length: n }, (_, i) => A(200 + i));
+const lower = (xs: readonly Address[]): string[] => xs.map((x) => x.toLowerCase());
+
+test("launchTokenFor is a recognised entrypoint and its exemption list is read", () => {
+  // regression: launchTokenFor had no selector, so a launch through the forwarder fell off the end of
+  // the chain with an empty exemption list, and the score paid it +5 for declaring no bundle at all
+  const ten = bundle(10);
+  const call = decodeLaunchCall(encodeFunctionData({ abi: factoryAbi, functionName: "launchTokenFor", args: [PARAMS, 0n, ZERO as Address, A(2), ten] }));
+  assert.equal(call.via, "forwarder");
+  assert.deepEqual(lower(call.exemptions), lower(ten));
+});
+
+test("the entrypoints that were already recognised still decode the same way", () => {
+  const four = bundle(4);
+  const viaRouter = decodeLaunchCall(encodeFunctionData({ abi: routerAbi, functionName: "launchAndBuy", args: [PARAMS, 0n, ZERO as Address, 10n ** 17n, 0n, A(3), four] }));
+  assert.equal(viaRouter.via, "router");
+  assert.equal(viaRouter.devBuy, 10n ** 17n);
+  assert.equal(viaRouter.recipient?.toLowerCase(), A(3));
+  assert.deepEqual(lower(viaRouter.exemptions), lower(four));
+
+  const plain = decodeLaunchCall(encodeFunctionData({ abi: factoryAbi, functionName: "launchToken", args: [PARAMS, 0n, ZERO as Address] }));
+  assert.equal(plain.via, "factory", "this entrypoint has no exemption parameter, so an empty list is a fact");
+});
+
+test("an entrypoint nobody recognises reports itself as unread, not as an empty bundle", () => {
+  const call = decodeLaunchCall(`0xdeadbeef${"0".repeat(64)}` as Hex);
+  assert.equal(call.via, "unknown");
+  assert.deepEqual(call.exemptions, [], "empty here means unread, and only `via` can say which");
 });

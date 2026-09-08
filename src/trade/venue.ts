@@ -97,19 +97,37 @@ export async function curveOf(token: Address): Promise<Address> {
 export interface Mark { quote: bigint; venue: Venue }
 
 /**
+ * Three different answers that all used to be `null`. "Swept" is a fact about the launch and worth
+ * telling the user; "unreadable" is a fact about our RPC and must not be dressed up as one.
+ */
+export type MarkResult =
+  | { status: "ok"; quote: bigint; venue: Venue }
+  | { status: "swept" }
+  | { status: "unreadable"; why: string };
+
+/**
  * What the whole position is worth right now, as a real sell quote: it already carries the 1 % fee,
  * the creator tax and the price impact of selling that size. A fresh entry therefore marks negative;
  * that is the round trip, not a loss.
  */
-export async function markPosition(token: Address, curveAddr: Address, tokens: bigint): Promise<Mark | null> {
-  const v = await resolveVenue(token).catch(() => null);
-  if (!v) return null;
-  if (v.venue === "swept") return null;
+export async function readMark(token: Address, curveAddr: Address, tokens: bigint): Promise<MarkResult> {
+  let v: VenueState;
+  try { v = await resolveVenue(token); } catch (e) { return { status: "unreadable", why: `venue unreadable: ${short(e)}` }; }
+  if (v.venue === "swept") return { status: "swept" };
   if (v.venue === "curve") {
-    const cv = v.curve ?? (await curveState(curveAddr).catch(() => null));
-    if (!cv) return null;
-    return { quote: quoteSell(cv, tokens).quoteOut, venue: "curve" };
+    let cv = v.curve;
+    if (!cv) {
+      try { cv = await curveState(curveAddr); } catch (e) { return { status: "unreadable", why: `curve unreadable: ${short(e)}` }; }
+    }
+    return { status: "ok", quote: quoteSell(cv, tokens).quoteOut, venue: "curve" };
   }
+  // quoteV4 swallows its own failures, so null here is "the quoter did not answer" and nothing more:
+  // the pool is known to exist, we simply could not price it this cycle.
   const out = await quoteV4(poolKeyFor(token, v.record), token, tokens);
-  return out === null ? null : { quote: out, venue: "pool" };
+  return out === null ? { status: "unreadable", why: "the v4 quoter did not answer" } : { status: "ok", quote: out, venue: "pool" };
 }
+
+/** The mark on its own, for callers that treat every answer other than a price as "no price". */
+
+
+const short = (e: unknown): string => (e as Error).message.split("\n")[0]?.slice(0, 90) ?? "no reason given";

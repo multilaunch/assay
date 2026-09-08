@@ -44,9 +44,12 @@ const capFor = (method: string): Cap => (LOG_METHODS.has(method) ? "logs" : "sta
 
 /** Error shapes that mean "slow down", not "you are wrong". */
 function isRateLimit(status: number, body: string): boolean {
-  if (status === 429 || status === 403 || status === 503) return true;
   const b = body.toLowerCase();
-  return b.includes("rate limit") || b.includes("too many") || b.includes("-32005") || b.includes("-32016") || b.includes("exceeded");
+  // a revert is the chain answering, and half of them are named something like SlippageExceeded or MaxTxAmountExceeded
+  if (b.includes("revert")) return false;
+  if (status === 429 || status === 403 || status === 503) return true;
+  // -32005 is the standard "limit exceeded", -32016 the one the official RPC uses; both beat guessing from prose
+  return b.includes("-32005") || b.includes("-32016") || b.includes("rate limit") || b.includes("too many");
 }
 
 export class RpcError extends Error {
@@ -110,14 +113,18 @@ export class RpcGate {
       if (list.length === 0) throw new RpcError(`no endpoint advertises "${cap}" for ${method}`);
       // the healthiest un-benched endpoint; when every one is benched, the first to come back (slot() waits for it)
       const ep = list.find((e) => e.benchedUntil <= now) ?? list[0]!;
-      await this.slot(ep, cap);
+      // serialised before the slot is taken: nothing between slot() and the try may throw, or the slot is gone for good
       const body = JSON.stringify({ jsonrpc: "2.0", id: this.id++, method, params });
+      await this.slot(ep, cap);
       try {
         ep.calls++;
         const res = await fetch(ep.url, { method: "POST", headers: this.headers, body, signal: AbortSignal.timeout(this.timeoutMs) });
         const text = await res.text();
         if (!res.ok || isRateLimit(res.status, text.slice(0, 400))) {
           if (isRateLimit(res.status, text)) this.bench(ep, attempt);
+          // a 500 is not a throttle, but an endpoint that just failed is still the wrong one to ask again: mark it or
+          // candidates() hands back the same corpse for every remaining attempt while a healthy node sits idle
+          else { ep.errors++; ep.benchedUntil = Math.max(ep.benchedUntil, Date.now() + 1000); }
           lastErr = new RpcError(`${ep.label} HTTP ${res.status}: ${text.slice(0, 120)}`);
           continue;
         }

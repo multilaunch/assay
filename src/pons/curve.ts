@@ -57,7 +57,11 @@ export interface CurveState {
 /** The opening tax as the curve will actually apply it: never more than leaves the buyer 1 %. */
 export function effectiveOpeningBps(s: Pick<CurveState, "openingTaxBps" | "feeBps" | "creatorTaxBps">): bigint {
   if (s.openingTaxBps <= 0n) return 0n;
+  // Fee and creator tax past 99 % would put the cap below zero, and a negative opening leg is
+  // *added* back to the swap input rather than taken off it: the quote would come out larger than
+  // an untaxed buy. The factory caps creator tax at 10 %, so this is a floor, not a live case.
   const cap = BPS - s.feeBps - s.creatorTaxBps - 100n;
+  if (cap <= 0n) return 0n;
   return s.openingTaxBps > cap ? cap : s.openingTaxBps;
 }
 
@@ -107,10 +111,21 @@ export function quoteSell(s: Pick<CurveState, "quoteReserve" | "tokenReserve" | 
 }
 
 /**
+ * Slippage reaches us as a raw Number from a flag or the environment, and three values break the
+ * bound rather than loosen it: a fraction like 2.5 throws inside BigInt(), anything over 10 000 makes
+ * minOut negative so nothing can revert, and a negative makes minOut exceed the quote so everything
+ * reverts. Round it and hold it inside 0..BPS at every door.
+ */
+export function clampSlippageBps(bps: number): number {
+  if (!Number.isFinite(bps)) return 0;
+  return Math.min(Number(BPS), Math.max(0, Math.round(bps)));
+}
+
+/**
  * `buy()` bounds the *rate*, not the quantity: it reverts only when spent*minOut > received*tokensOut.
  * So minTokensOut is the quoted amount less slippage, and a clamped partial fill at that rate settles.
  */
-export const minOutWithSlippage = (quoted: bigint, slippageBps: number): bigint => (quoted * (BPS - BigInt(slippageBps))) / BPS;
+export const minOutWithSlippage = (quoted: bigint, slippageBps: number): bigint => (quoted * (BPS - BigInt(clampSlippageBps(slippageBps)))) / BPS;
 
 // ---- read-only helpers -----------------------------------------------------------------------
 

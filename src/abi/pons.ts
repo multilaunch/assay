@@ -125,4 +125,9 @@ export const SELECTOR = {
   launchTokenExempt: toFunctionSelector(
     "launchToken((string,string,string,string,(string,string,string,string,string),address,uint16,bool,bytes32,bytes32),uint256,address,address[])",
   ),
+  // The forwarder launches on someone else's behalf through this one. It carries the same exemption
+  // list as the others, so leaving it out made every bundle it declared read as an empty list.
+  launchTokenFor: toFunctionSelector(
+    "launchTokenFor((string,string,string,string,(string,string,string,string,string),address,uint16,bool,bytes32,bytes32),uint256,address,address,address[])",
+  ),
 } as const;

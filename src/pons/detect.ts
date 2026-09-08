@@ -139,22 +139,42 @@ export function watchLaunches(onLaunch: (ev: LaunchEvent) => void, opts: { pollM
   };
 }
 
+export interface LaunchSearch {
+  ev: LaunchEvent | null;
+  /** log ranges walked back through */
+  chunks: number;
+  /** how many of them the endpoint refused. `ev === null` with this above zero is "we could not see". */
+  failedChunks: number;
+}
+
 /**
  * The real TokenLaunched log for one token, so a command that starts from an address still gets the
  * launch transaction. Without it `scan` and `inspect` would synthesise an empty tx hash, the launch
  * read would fail every time, and the score would take the "unreadable" penalty it does not deserve.
  * `token` is indexed, so the filter is cheap; we still walk back in chunks the public endpoint accepts.
+ *
+ * A refused range used to be swallowed into an empty one, which walked straight into the outcome this
+ * function exists to prevent: no log, a synthetic "0x" hash, and a −20 for data that was there all along.
+ * The count comes back so the caller can say the launch could not be looked up rather than pretending.
  */
-export async function findLaunchEvent(token: Address, windowBlocks = 2_000_000n, chunk = 100_000n): Promise<LaunchEvent | null> {
+export async function searchLaunchEvent(token: Address, windowBlocks = 2_000_000n, chunk = 100_000n): Promise<LaunchSearch> {
   const head = await client.getBlockNumber();
   const floor = head > windowBlocks ? head - windowBlocks : 0n;
+  let chunks = 0;
+  let failedChunks = 0;
   for (let to = head; to > floor; to -= chunk + 1n) {
     const from = to - chunk > floor ? to - chunk : floor;
-    const logs = await client.getLogs({ address: PONS.factory, event: EVENT, args: { token }, fromBlock: from, toBlock: to }).catch(() => []);
+    chunks++;
+    const logs = await client.getLogs({ address: PONS.factory, event: EVENT, args: { token }, fromBlock: from, toBlock: to }).catch(() => { failedChunks++; return []; });
     const hit = logs[0];
-    if (hit) return toLaunch(hit as LaunchedLog);
+    if (hit) return { ev: toLaunch(hit as LaunchedLog), chunks, failedChunks };
   }
-  return null;
+  return { ev: null, chunks, failedChunks };
+}
+
+/** The log on its own, for callers that have no use for the refusal count. */
+export async function findLaunchEvent(token: Address, windowBlocks = 2_000_000n, chunk = 100_000n): Promise<LaunchEvent | null> {
+  return (await searchLaunchEvent(token, windowBlocks, chunk)).ev;
 }
 
 /** The most recent launches, newest last. Used by `scan` when no address is given and by the deployer index. */

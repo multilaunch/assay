@@ -5,7 +5,7 @@ import { client, fast, gate, ws, wsLabel } from "../chain/clients.js";
 import { CHAIN_ID, DEAD, MULTICALL3, PONS } from "../chain/config.js";
 import { effectiveOpeningBps, quoteBuy } from "../pons/curve.js";
 import { DeployerIndex } from "../pons/deployers.js";
-import { findLaunchEvent, recentLaunches, watchLaunches, type LaunchEvent } from "../pons/detect.js";
+import { recentLaunches, searchLaunchEvent, watchLaunches, type LaunchEvent } from "../pons/detect.js";
 import { curveActivity, devSharePct, enrichLaunch } from "../pons/enrich.js";
 import { record } from "../track/journal.js";
 import { FarmDetector } from "../pons/farm.js";
@@ -119,7 +119,10 @@ program
     const farms = new FarmDetector();
     index.start(
       (s) => log.info(c.grey(`${hhmmss()}  deployer index ready: ${s.launches} launches, ${s.graduations} graduations, ${s.deployers} deployers in the last ${index.windowBlocks} blocks`)),
-      (e, sec) => log.warn(`deployer index: ${e.message.split("\n")[0]?.slice(0, 80) ?? ""}; scoring without history, retry in ${sec} s`),
+      (e, sec, final) => {
+        const msg = e.message.split("\n")[0]?.slice(0, 80) ?? "";
+        log.warn(`deployer index: ${msg}${final ? "; not retrying, scoring runs without history until restart" : `; scoring without history, retry in ${sec} s`}`);
+      },
     );
     const stSec = Number(await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "snipeTaxSeconds" }).catch(() => 3n));
 
@@ -189,7 +192,9 @@ program
       const rec = await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "getLaunchedToken", args: [token as Address] });
       if (!rec.exists) { log.error("the factory has no record of that token"); process.exitCode = 2; return; }
       // prefer the real launch log: without its tx hash the opening buy and the bundle cannot be read
-      ev = (await findLaunchEvent(token as Address)) ?? { token: rec.token, curve: rec.curve, deployer: rec.deployer, pairToken: rec.pairToken, launchConfigId: 0n, graduationThreshold: rec.graduationThreshold, blockNumber: 0n, txHash: "0x" as `0x${string}`, logIndex: 0, seenAtMs: Date.now() };
+      const found = await searchLaunchEvent(token as Address);
+      if (!found.ev && found.failedChunks > 0) log.warn(`the launch log could not be looked up (${found.failedChunks} of ${found.chunks} log ranges refused); the opening buy and declared bundle will read as unknown`);
+      ev = found.ev ?? { token: rec.token, curve: rec.curve, deployer: rec.deployer, pairToken: rec.pairToken, launchConfigId: 0n, graduationThreshold: rec.graduationThreshold, blockNumber: 0n, txHash: "0x" as `0x${string}`, logIndex: 0, seenAtMs: Date.now() };
     } else {
       const list = await recentLaunches(3_000n);
       ev = list[list.length - 1];

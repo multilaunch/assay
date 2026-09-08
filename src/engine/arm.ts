@@ -15,11 +15,23 @@ import type { EngineRules } from "./rules.js";
  *   3. the position cap  — how many entries can be open at once
  *   4. the session budget — the total that entries may consume, after which nothing fires
  *
- * A wallet funded with only the budget cannot lose more than the budget.
+ * A wallet funded with only the budget cannot lose more than the budget. All four are denominated
+ * in ETH, which is why a session that may buy other pair assets cannot be armed at all.
  */
 export async function confirmLive(rules: EngineRules): Promise<boolean> {
   const acct = getAccount();
   if (!acct) throw new Error("live mode needs PRIVATE_KEY in .env");
+
+  // Everything printed below measures ETH: the entry size, the budget, and the balance they are
+  // checked against. A non-ETH pair spends an ERC-20 this wallet may not even hold, so an ETH
+  // balance here would be reassurance about the wrong asset.
+  if (!rules.ethPairsOnly) {
+    console.log("");
+    console.log(c.red("  --allow-pairs cannot be armed: the entry size and the session budget are ETH, and a non-ETH pair is bought with its own asset. Refusing."));
+    console.log(c.grey("  drop --allow-pairs to run live, or keep it and stay in dry run."));
+    return false;
+  }
+
   const balance = await client.getBalance({ address: acct.address });
 
   console.log("");

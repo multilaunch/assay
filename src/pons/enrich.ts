@@ -40,8 +40,8 @@ export interface LaunchTx {
   /** who the opening buy was minted to */
   recipient: Address;
   timestamp: number;
-  /** which entrypoint created it */
-  via: "router" | "factory" | "factory+exempt" | "unknown";
+  /** which entrypoint created it; "unknown" means the calldata was not decodable, so `exemptions` is unread */
+  via: "router" | "factory" | "factory+exempt" | "forwarder" | "unknown";
 }
 
 export interface LaunchIntel {
@@ -211,25 +211,7 @@ export async function readLaunchTx(ev: LaunchEvent): Promise<LaunchTx> {
     client.getTransactionReceipt({ hash: ev.txHash }),
     client.getBlock({ blockNumber: ev.blockNumber }),
   ]);
-  let devBuy = 0n;
-  let exemptions: Address[] = [];
-  let recipient: Address = tx.from;
-  let via: LaunchTx["via"] = "unknown";
-  const input = tx.input as Hex;
-  try {
-    if (input.startsWith(SELECTOR.launchAndBuy)) {
-      const d = decodeFunctionData({ abi: routerAbi, data: input });
-      if (d.functionName === "launchAndBuy") {
-        const [, , , quoteIn, , rcpt, ex] = d.args;
-        devBuy = quoteIn; recipient = rcpt; exemptions = [...ex]; via = "router";
-      }
-    } else if (input.startsWith(SELECTOR.launchTokenExempt)) {
-      const d = decodeFunctionData({ abi: factoryAbi, data: input });
-      if (d.functionName === "launchToken" && d.args.length === 4) { exemptions = [...(d.args[3] as readonly Address[])]; via = "factory+exempt"; }
-    } else if (input.startsWith(SELECTOR.launchTokenPlain)) {
-      via = "factory";
-    }
-  } catch { /* unknown encoding: fall through to receipt-derived numbers */ }
+  const call = decodeLaunchCall(tx.input as Hex);
 
   // The curve's own CurveBuy logs inside the launch tx are the ground truth for the opening buy,
   // whichever entrypoint created the token.
@@ -237,8 +219,57 @@ export async function readLaunchTx(ev: LaunchEvent): Promise<LaunchTx> {
   let spent = 0n;
   const buys = parseEventLogs({ abi: curveAbi, logs: receipt.logs, eventName: "CurveBuy" });
   for (const b of buys) if (b.address.toLowerCase() === ev.curve.toLowerCase()) { devTokens += b.args.tokensOut; spent += b.args.quoteIn; }
-  if (devBuy === 0n) devBuy = spent;
-  return { from: tx.from, devBuy, devTokens, exemptions, recipient, timestamp: Number(block.timestamp), via };
+  return {
+    from: tx.from,
+    devBuy: call.devBuy === 0n ? spent : call.devBuy,
+    devTokens,
+    exemptions: call.exemptions,
+    recipient: call.recipient ?? tx.from,
+    timestamp: Number(block.timestamp),
+    via: call.via,
+  };
+}
+
+export interface LaunchCall {
+  /** quote the calldata declared for the opening buy; 0 when the entrypoint carries no buy */
+  devBuy: bigint;
+  /** who the opening buy was declared for, null when the entrypoint does not name one */
+  recipient: Address | null;
+  exemptions: Address[];
+  via: LaunchTx["via"];
+}
+
+/**
+ * What the launch calldata declared, with no RPC involved.
+ *
+ * The whole point of the "unknown" return is that it must survive to the score. `launchTokenFor` was
+ * missing from SELECTOR, so a launch through the forwarder fell off the end of this chain, came back
+ * with an empty exemption list, and was then rewarded for having no declared bundle — a launch with ten
+ * exempt wallets read as the cleanest possible shape. An entrypoint we cannot decode has to say so.
+ */
+export function decodeLaunchCall(input: Hex): LaunchCall {
+  const none: LaunchCall = { devBuy: 0n, recipient: null, exemptions: [], via: "unknown" };
+  try {
+    if (input.startsWith(SELECTOR.launchAndBuy)) {
+      const d = decodeFunctionData({ abi: routerAbi, data: input });
+      if (d.functionName === "launchAndBuy") {
+        const [, , , quoteIn, , rcpt, ex] = d.args;
+        return { devBuy: quoteIn, recipient: rcpt, exemptions: [...ex], via: "router" };
+      }
+    } else if (input.startsWith(SELECTOR.launchTokenFor)) {
+      const d = decodeFunctionData({ abi: factoryAbi, data: input });
+      // args[3] is the wallet the launch is credited to; the tx sender is the forwarder, so `from`
+      // stays the sender and the score reads the exemptions in args[4].
+      if (d.functionName === "launchTokenFor") return { ...none, exemptions: [...(d.args[4] as readonly Address[])], via: "forwarder" };
+    } else if (input.startsWith(SELECTOR.launchTokenExempt)) {
+      const d = decodeFunctionData({ abi: factoryAbi, data: input });
+      if (d.functionName === "launchToken" && d.args.length === 4) return { ...none, exemptions: [...(d.args[3] as readonly Address[])], via: "factory+exempt" };
+    } else if (input.startsWith(SELECTOR.launchTokenPlain)) {
+      // this entrypoint has no exemption parameter, so an empty list here is a fact, not a gap
+      return { ...none, via: "factory" };
+    }
+  } catch { /* an encoding we know the selector for but cannot decode is still unread */ }
+  return none;
 }
 
 export interface CurveActivity {

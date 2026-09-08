@@ -206,6 +206,16 @@ else
   info "wrote ${ETC_DIR}/env.prod from the example (PRIVATE_KEY empty: dry run)"
 fi
 
+# The board refuses any Host it does not recognise, and Caddy passes the client's Host through
+# unchanged, so the public name has to be listed or every proxied request is a 403. Kept current
+# on every run, because it is the one line in env.prod that depends on BOARD_DOMAIN.
+if grep -q '^BOARD_HOSTS=' "${ETC_DIR}/env.prod"; then
+  sed -i "s|^BOARD_HOSTS=.*|BOARD_HOSTS=${BOARD_DOMAIN}|" "${ETC_DIR}/env.prod"
+else
+  printf 'BOARD_HOSTS=%s\n' "$BOARD_DOMAIN" >> "${ETC_DIR}/env.prod"
+fi
+info "BOARD_HOSTS=${BOARD_DOMAIN}"
+
 # The password hash needs a caddy binary, which does not exist yet on a first run. So this step
 # only keeps the non-secret fields current; the password itself is done after the runtime install.
 if [ -f "${ETC_DIR}/caddy.env" ] && ! grep -q 'REPLACE_ME' "${ETC_DIR}/caddy.env"; then

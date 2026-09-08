@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { amountIn, amountOut, effectiveOpeningBps, minOutWithSlippage, progress, quoteBuy, quoteSell, supplyPct, type CurveState } from "../src/pons/curve.js";
+import { amountIn, amountOut, clampSlippageBps, effectiveOpeningBps, minOutWithSlippage, progress, quoteBuy, quoteSell, supplyPct, type CurveState } from "../src/pons/curve.js";
 
 /** The fresh ETH-paired curve shape read on chain: 1.68 ETH phantom, 4.2 ETH threshold, 28.57 % reserved. */
 function fresh(over: Partial<CurveState> = {}): CurveState {
@@ -41,7 +41,9 @@ test("a buy takes fee and creator tax off the input before the swap", () => {
   assert.equal(q.opening, 0n);
   assert.equal(q.spent, 10n ** 18n);
   assert.equal(q.refund, 0n);
-  assert.equal(q.tokensOut, amountOut(10n ** 18n - q.fee - q.tax, s.quoteReserve, s.tokenReserve));
+  // 0.97 ETH reaches the swap, and with no fee leg amountOut is in·reserveOut/(reserveIn+in):
+  // 0.97e18 · 1e27 / 2.65e18, floored
+  assert.equal(q.tokensOut, 366_037_735_849_056_603_773_584_905n);
   assert.equal(q.clamped, false);
 });
 
@@ -50,10 +52,11 @@ test("the opening tax is one more input leg, capped so the buyer keeps 1 %", () 
   assert.equal(effectiveOpeningBps(s), 10_000n - 100n - 100n - 100n);
   const q = quoteBuy(s, 10n ** 18n);
   assert.equal(q.inputBps, 100n + 100n + 9_700n);
-  assert.ok(q.tokensOut > 0n);
-  // at 99 % the buyer gets roughly a hundredth of the untaxed fill
+  assert.equal(q.tokensOut, 5_917_159_763_313_609_467_455_621n);
+  // a 62nd of the untaxed fill, not a hundredth: the untaxed buy puts 0.98 ETH into a 1.68 ETH
+  // reserve and pays for its own price impact, so the two fills do not scale with the spend
   const clean = quoteBuy(fresh({ creatorTaxBps: 100n }), 10n ** 18n).tokensOut;
-  assert.ok(q.tokensOut * 60n < clean && q.tokensOut * 200n > clean, `${q.tokensOut} vs ${clean}`);
+  assert.equal((clean * 1_000n) / q.tokensOut, 62_263n);
 });
 
 test("a huge buy clamps to the sellable allocation and refunds the rest", () => {
@@ -80,6 +83,26 @@ test("a round trip on a fresh curve costs exactly the four fee legs; price impac
 
 test("minTokensOut bounds the rate, not the quantity", () => {
   assert.equal(minOutWithSlippage(1_000_000n, 300), 970_000n);
+});
+
+test("slippage is rounded and bounded before it reaches BigInt", () => {
+  // a fraction used to throw a RangeError inside the buy, and the entry was lost to an error line
+  assert.equal(clampSlippageBps(2.5), 3);
+  assert.equal(minOutWithSlippage(1_000_000n, 2.5), 999_700n);
+  // above BPS the bound went negative, which is no bound at all
+  assert.equal(minOutWithSlippage(1_000_000n, 20_000), 0n);
+  // below zero it demanded more than the quote, a guaranteed revert
+  assert.equal(minOutWithSlippage(1_000_000n, -100), 1_000_000n);
+  assert.equal(clampSlippageBps(Number.NaN), 0);
+});
+
+test("fee legs past 99 % floor the opening tax instead of turning it into a rebate", () => {
+  const s = fresh({ openingTaxBps: 9_900n, feeBps: 5_000n, creatorTaxBps: 4_950n });
+  assert.equal(effectiveOpeningBps(s), 0n);
+  const q = quoteBuy(s, 10n ** 18n);
+  assert.equal(q.opening, 0n);
+  // 0.005 ETH reaches the swap; a negative leg would have added itself back and swapped 0.01
+  assert.equal(q.tokensOut, 2_967_359_050_445_103_857_566_765n);
 });
 
 test("progress uses real quote against the threshold and clamps to 1", () => {
