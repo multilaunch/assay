@@ -7,7 +7,9 @@ import type { EngineRules } from "../engine/rules.js";
 import { devSharePct, socialsOf } from "../pons/enrich.js";
 import { progress } from "../pons/curve.js";
 import { allPositions, openPositions, pnlPct } from "../trade/positions.js";
-import { EXPLORER } from "../chain/config.js";
+import { EXPLORER, PONS } from "../chain/config.js";
+import { client } from "../chain/clients.js";
+import { factoryAbi } from "../abi/pons.js";
 
 /**
  * The engine behind a page on loopback.
@@ -17,12 +19,17 @@ import { EXPLORER } from "../chain/config.js";
  * starts, so nothing on the page can turn a dry run into a live session.
  */
 
+/**
+ * The page. `BOARD_HTML` points at a different file, which is how an alternative skin gets tried
+ * against real launches without overwriting the one that ships.
+ */
 const HTML = () => {
   const here = dirname(fileURLToPath(import.meta.url));
-  for (const p of [join(here, "index.html"), join(here, "..", "..", "src", "board", "index.html")]) {
+  const candidates = [process.env.BOARD_HTML, join(here, "index.html"), join(here, "..", "..", "src", "board", "index.html")].filter((p): p is string => !!p);
+  for (const p of candidates) {
     try { return readFileSync(p, "utf8"); } catch { /* try the next one */ }
   }
-  throw new Error("board/index.html not found");
+  throw new Error("board html not found");
 };
 
 /** Only these rules can be changed from the page, and only inside these bounds. */
@@ -57,6 +64,9 @@ function wire(e: EngineEvent): Record<string, unknown> {
     pair: intel.pair.symbol, pairNative: intel.pair.native,
     progress: intel.curve ? progress(intel.curve) : null,
     openingTaxBps: intel.curve ? Number(intel.curve.openingTaxBps) : null,
+    // unix seconds the curve opened. With the factory's snipeTaxSeconds the page can draw the
+    // opening tax decaying in real time instead of freezing it at whatever it was when we read.
+    launchedAt: intel.curve?.launchedAt ?? null,
     deployerPrior: e.deployer?.prior ?? null, deployerGraduated: e.deployer?.graduated ?? null,
     links: { pons: EXPLORER.pons(intel.ev.token), explorer: EXPLORER.token(intel.ev.token) },
     errors: intel.errors,
@@ -90,6 +100,15 @@ export interface BoardOptions {
 export function startBoard(opts: BoardOptions): { engine: Engine; close: () => void; url: string; host: string } {
   const clients = new Set<ServerResponse>();
   const recent: Record<string, unknown>[] = [];
+
+  // The opening-tax window is a protocol parameter the owner can change, so it is read rather than
+  // assumed. Until the read lands the page falls back to what the factory shipped with.
+  let taxSeconds = 3;
+  let taxStartBps = 9900;
+  void Promise.all([
+    client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "snipeTaxSeconds" }),
+    client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "snipeTaxStartBps" }),
+  ]).then(([sec, bps]) => { taxSeconds = Number(sec); taxStartBps = Number(bps); }).catch(() => undefined);
 
   const push = (data: Record<string, unknown>) => {
     if (data.kind === "launch" || data.kind === "fire" || data.kind === "exit") {
@@ -131,6 +150,7 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     if (req.method === "GET" && path === "/state") {
       json(res, 200, {
         live: opts.live, paused: engine.isPaused(), spent: engine.spent().toString(),
+        taxSeconds, taxStartBps,
         rules: Object.fromEntries(Object.keys(EDITABLE).map((k) => [k, engine.rules[k as EditableKey]])),
         bounds: EDITABLE, recent, positions: positionsPayload(),
       });
