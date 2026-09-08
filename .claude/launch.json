@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "board",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx", "src/cli/main.ts", "board"],
+      "port": 4663
+    }
+  ]
+}

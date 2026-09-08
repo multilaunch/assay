@@ -80,6 +80,29 @@ export function registerTradeCommands(program: Command): void {
       if (o.for && o.for > 0) setTimeout(bye, o.for * 1000);
     });
 
+  // ---- board --------------------------------------------------------------------------------------
+  program
+    .command("board")
+    .description("the same engine behind a page on 127.0.0.1; opens as a feed and fires nothing until you press start")
+    .option("--live", "sign and send real transactions once armed on the page")
+    .option("--port <n>", "port", (v) => Number(v), Number(process.env.BOARD_PORT ?? 4663))
+    .option("--eth <amount>", "quote per entry", (v) => Number(v))
+    .option("--budget <eth>", "total the entries may consume this session", (v) => Number(v))
+    .action(async (o: { live?: boolean; port: number; eth?: number; budget?: number }) => {
+      const over: Partial<EngineRules> = {};
+      if (o.eth !== undefined) over.entryQuote = parseEther(String(o.eth));
+      if (o.budget !== undefined) over.sessionBudget = parseEther(String(o.budget));
+      const rules = rulesFromEnv(over);
+      const live = o.live === true;
+      if (live && !(await confirmLive(rules))) return;
+
+      const { startBoard } = await import("../board/server.js");
+      const b = startBoard({ port: o.port, live, rules });
+      log.info(`${c.bold("hoodterm")} ${c.grey("board")}  ${b.url}  ${live ? c.badge(" LIVE ") : c.grey("dry run")}  ${c.grey("feed only until you press start")}`);
+      log.info(c.grey("loopback only; the page has no route that buys on demand, and --live is a launch flag"));
+      process.on("SIGINT", () => { b.close(); log.info(c.grey("\nboard stopped")); process.exit(0); });
+    });
+
   // ---- watch --------------------------------------------------------------------------------------
   program
     .command("watch <token>")

@@ -14,9 +14,11 @@
     "start": "tsx src/cli/main.ts",
     "doctor": "tsx src/cli/main.ts doctor",
     "hunt": "tsx src/cli/main.ts hunt",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node -e \"require('fs').mkdirSync('dist/board',{recursive:true});require('fs').copyFileSync('src/board/index.html','dist/board/index.html')\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "board": "tsx src/cli/main.ts board",
+    "snipe": "tsx src/cli/main.ts snipe"
   },
   "dependencies": {
     "commander": "^15.0.0",
@@ -28,5 +30,14 @@
     "@types/ws": "^8.18.1",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3"
-  }
+  },
+  "files": [
+    "bin",
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE",
+    "docs",
+    ".env.example"
+  ]
 }

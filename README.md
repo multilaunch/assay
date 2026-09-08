@@ -58,6 +58,14 @@ only reads. `.env` works as shipped on the public endpoints.
 | `doctor [--probe]` | RPC, chain id, live pons parameters, address cross-check, and the quote proof | no |
 | `hunt` | live feed of launches with a score and reasons; `--json` for pipelines | no |
 | `scan [token]` | everything on chain about one token, or the newest launch | no |
+| `inspect <token>` | the full card plus the fee ledger for one token | no |
+| `snipe` | enter launches that pass the rules, manage exits | `--live` only |
+| `board` | the same engine behind a page on 127.0.0.1 | `--live` only |
+| `watch <token>` | follow one launch: curve fill, flow, tax, then the pool | no |
+| `fees <token>` | who is paid on this token and every claim | no |
+| `dev <address>` | every launch by one deployer, with its phase | no |
+| `positions` | open and closed positions, marked live | no |
+| `wallet` | the signer: address, balance, unclaimed creator fees | yes |
 
 ```sh
 npm run doctor -- --probe
@@ -66,6 +74,31 @@ npm run hunt -- --fire-only --min-score 70
 npm run hunt -- --json --for 300 > launches.jsonl
 npx tsx src/cli/main.ts scan 0x…
 ```
+
+## snipe and board
+
+`snipe` runs the loop in the terminal; `board` runs the same engine behind a page on `127.0.0.1:4663`.
+Both are dry run unless started with `--live`, and `--live` is a launch flag, not a button on the page.
+
+```sh
+npm run snipe                              # dry run, defaults from .env
+npm run snipe -- --min-score 70 --eth 0.02
+npm run snipe -- --keyword "grok|claude"   # only launches whose text matches
+npm run board                              # feed only until you press start
+```
+
+**Four walls around a live session.** A confirmation that prints the signer, its balance and every
+limit and waits for you to type `arm`; the entry size; the position cap; and a session budget after
+which nothing fires whatever the score. A wallet funded with only the budget cannot lose more than it.
+
+The board binds loopback only and has no route that buys on demand. Its four verbs are pause, resume,
+close a position, and edit one of five bounded rules — which take effect on the next launch, so you can
+watch `minScore` reshape the feed while it runs.
+
+**Venue routing.** Before graduation the curve is the venue. After it, the Uniswap v4 pool behind the
+pons hook, keyed by the pair token and tick spacing *the factory recorded for that launch*. Between the
+two there is a gap of seconds to minutes where nothing trades at all, and every function refuses during
+it instead of quoting a fill nobody can honour.
 
 ## The score
 
@@ -101,11 +134,29 @@ Measured by this tool, 2026-09-08:
 - Most launches are **not** paired with ETH. NVDA, USDG and other stock tokens are common, with different
   decimals, so every number is rendered in its own pair's units.
 
+## What running it changed
+
+Two defects that only a live feed could show:
+
+**Missing data read as good news.** Every rule is skipped when its input is missing, so a launch nobody
+could read outscored one that was read and looked bad. `$ADSTOCKS` scored FIRE 81 on `opening buy ?`.
+Unreadable data is now its own penalty, and a refusal in the engine.
+
+**The websocket outran the RPC.** A launch arrives the moment its log appears, which is routinely before
+the endpoint we then query has the block: receipts answer "not found" and contract calls return `0x`.
+Measured over 45 s of live launches: **57 % of launch transactions and 29 % of curves failed on the
+first read**, and 11 of 13 healed on one retry 800 ms later. That was not noise, it was a hole in the
+data the rules run on. `enrichLaunch` retries and merges now — keeping the first value for immutable
+fields and the newest for the curve, which moves. Re-measured after the fix: **34 launches, zero
+failures**. Retrying is free in the hot path because the engine has to sit out the ~3 s opening tax anyway.
+
 ## Deliberately not here
 
 Bundling, multi-wallet, copy trading, a hosted service, MEV tricks. There is no ordering to exploit on
-this chain and no server to trust. Reading is free; the parts that can move money are dry run until
-`--live`, which is not built yet.
+this chain and no server to trust.
+
+Not built yet: live selling into the graduated v4 pool. The engine marks such a position and refuses to
+close it live rather than guessing at router calldata it has not proven.
 
 ## Built against
 
@@ -120,13 +171,16 @@ Independent of pons, Uniswap and Robinhood; uses none of their marks.
 ## Tests
 
 ```sh
-npm test        # 23 checks, no network
+npm test        # 38 checks, no network
 npm run typecheck
 ```
 
 The curve tests reproduce the fee legs, the 99 % cap, clamped fills and the round-trip cost from the
 Solidity. The RPC tests drive the gate with a scripted `fetch`: capability routing, a 429 benching an
-endpoint, a real revert not being retried, and the in-flight cap holding.
+endpoint, a real revert not being retried, and the in-flight cap holding. The engine tests check that
+every gate refuses by name, that the session budget stops the entry that would cross it and not the one
+that lands on it, that each exit rule fires on its own, and that v4 pool ids are stable whichever side
+of the pair the token sits on.
 
 ## License
 
