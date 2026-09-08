@@ -155,8 +155,8 @@ failures**. Retrying is free in the hot path because the engine has to sit out t
 Bundling, multi-wallet, copy trading, a hosted service, MEV tricks. There is no ordering to exploit on
 this chain and no server to trust.
 
-Not built yet: live selling into the graduated v4 pool. The engine marks such a position and refuses to
-close it live rather than guessing at router calldata it has not proven.
+Not proven with real funds: the live pool sell has never been executed, only encoded, decoded and
+simulated. See below.
 
 ## Built against
 
@@ -168,10 +168,30 @@ close it live rather than guessing at router calldata it has not proven.
 
 Independent of pons, Uniswap and Robinhood; uses none of their marks.
 
+## Proving the v4 sell without spending anything
+
+Selling a graduated launch means one `V4_SWAP` through UniversalRouter: swap, settle what we owe, take
+what we are owed. Getting that byte layout wrong is the classic way to burn gas on a revert, and there
+is no way to test it properly without a funded position.
+
+So it is verified three ways instead:
+
+1. **Round trip.** Every field we encode is decoded back and checked — pool key, hook, `zeroForOne`,
+   amounts, and the two `(currency, amount)` legs.
+2. **Against the chain's own bytes.** A real UniversalRouter transaction from Robinhood Chain
+   (`0xe2ab1c7c…`) is kept in `test/fixtures/`. It decodes cleanly with *our* struct definition and
+   carries the same `commands 0x10` and `actions 0x060c0f` we emit. Someone else's calldata is the
+   only honest proof that our layout is the real one.
+3. **Simulated before sending.** `sellIntoPool` runs `simulateContract` against the live router and
+   only signs if it passes.
+
+The read side needs no such hedging: `poolExists`, `getLiquidity` and `quoteV4` were run against three
+real graduated pons pools and all three answered.
+
 ## Tests
 
 ```sh
-npm test        # 38 checks, no network
+npm test        # 43 checks, no network
 npm run typecheck
 ```
 

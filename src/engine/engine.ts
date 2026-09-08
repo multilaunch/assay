@@ -8,7 +8,8 @@ import { scoreLaunch, type Score } from "../score/score.js";
 import { buyOnCurve, sellOnCurve } from "../trade/curveTrade.js";
 import { exitReason, openPosition, openPositions, pnlPct, updatePosition, type Position } from "../trade/positions.js";
 import { curveState, waitForOpeningTax } from "../trade/state.js";
-import { markPosition } from "../trade/venue.js";
+import { markPosition, resolveVenue } from "../trade/venue.js";
+import { sellIntoPool } from "../trade/poolTrade.js";
 import { getAccount } from "../trade/wallet.js";
 import { decide, type EngineRules } from "./rules.js";
 
@@ -123,11 +124,12 @@ export function startEngine(opts: EngineOptions): Engine {
       const r = await sellOnCurve(pos.curve, cv, tokens, rules.slippageBps, { dryRun: !live, token: pos.token });
       out = r.actual ?? r.quoted; hash = r.hash;
     } else {
-      // after graduation the pool is the venue; live selling there is not wired yet, so mark and refuse
-      const m = await markPosition(pos.token, pos.curve, tokens);
-      if (!m) throw new Error("nothing trades right now (the launch is between the curve and the pool)");
-      out = m.quote; venue = m.venue;
-      if (live) throw new Error("live selling on the graduated pool is not implemented yet; close it by hand");
+      // graduated: the venue is the Uniswap v4 pool behind the pons hook, keyed by what the factory
+      // recorded for this launch. resolveVenue refuses during the swept gap rather than guessing.
+      const v = await resolveVenue(pos.token);
+      if (v.venue !== "pool") throw new Error("nothing trades right now (the launch is between the curve and the pool)");
+      const r = await sellIntoPool(pos.token, v.record, tokens, rules.slippageBps, { dryRun: !live });
+      out = r.quoted; hash = r.hash; venue = "pool";
     }
     const realized = pnlPct(pos, out);
     updatePosition(pos.id, { status: "closed", lastQuote: out.toString(), exits: [...pos.exits, { at: Math.floor(Date.now() / 1000), tokens: tokens.toString(), quoteOut: out.toString(), reason, tx: hash as `0x${string}` | undefined, dryRun: !live }] });
