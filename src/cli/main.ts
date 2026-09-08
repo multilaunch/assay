@@ -5,7 +5,7 @@ import { client, fast, gate, ws, wsLabel } from "../chain/clients.js";
 import { CHAIN_ID, DEAD, MULTICALL3, PONS } from "../chain/config.js";
 import { effectiveOpeningBps, quoteBuy } from "../pons/curve.js";
 import { DeployerIndex } from "../pons/deployers.js";
-import { recentLaunches, watchLaunches, type LaunchEvent } from "../pons/detect.js";
+import { findLaunchEvent, recentLaunches, watchLaunches, type LaunchEvent } from "../pons/detect.js";
 import { curveActivity, enrichLaunch } from "../pons/enrich.js";
 import { FarmDetector } from "../pons/farm.js";
 import { scoreLaunch } from "../score/score.js";
@@ -173,10 +173,11 @@ program
   .action(async (token: string | undefined, o: { json?: boolean }) => {
     let ev: LaunchEvent | undefined;
     if (token) {
-      if (!isAddress(token)) { log.error("not an address"); process.exitCode = 2; return; }
+      if (!isAddress(token, { strict: false })) { log.error("not an address"); process.exitCode = 2; return; }
       const rec = await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "getLaunchedToken", args: [token as Address] });
       if (!rec.exists) { log.error("the factory has no record of that token"); process.exitCode = 2; return; }
-      ev = { token: rec.token, curve: rec.curve, deployer: rec.deployer, pairToken: rec.pairToken, launchConfigId: 0n, graduationThreshold: rec.graduationThreshold, blockNumber: 0n, txHash: "0x" as `0x${string}`, logIndex: 0, seenAtMs: Date.now() };
+      // prefer the real launch log: without its tx hash the opening buy and the bundle cannot be read
+      ev = (await findLaunchEvent(token as Address)) ?? { token: rec.token, curve: rec.curve, deployer: rec.deployer, pairToken: rec.pairToken, launchConfigId: 0n, graduationThreshold: rec.graduationThreshold, blockNumber: 0n, txHash: "0x" as `0x${string}`, logIndex: 0, seenAtMs: Date.now() };
     } else {
       const list = await recentLaunches(3_000n);
       ev = list[list.length - 1];

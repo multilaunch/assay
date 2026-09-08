@@ -10,6 +10,7 @@ import { rulesFromEnv, type EngineRules } from "../engine/rules.js";
 import { progress } from "../pons/curve.js";
 import { deployerLaunches, feeLedger } from "../pons/fees.js";
 import { curveActivity, enrichLaunch } from "../pons/enrich.js";
+import { findLaunchEvent } from "../pons/detect.js";
 import { allPositions, openPositions, pnlPct } from "../trade/positions.js";
 import { curveState } from "../trade/state.js";
 import { markPosition, resolveVenue } from "../trade/venue.js";
@@ -110,7 +111,7 @@ export function registerTradeCommands(program: Command): void {
     .option("--every <seconds>", "how often to print", (v) => Number(v), 5)
     .option("--for <seconds>", "stop after this many seconds", (v) => Number(v), 600)
     .action(async (token: string, o: { every: number; for: number }) => {
-      if (!isAddress(token)) { log.error("not an address"); process.exitCode = 2; return; }
+      if (!isAddress(token, { strict: false })) { log.error("not an address"); process.exitCode = 2; return; }
       const t = token as Address;
       const rec = await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "getLaunchedToken", args: [t] });
       if (!rec.exists) { log.error("the factory has no record of that token"); process.exitCode = 2; return; }
@@ -142,7 +143,7 @@ export function registerTradeCommands(program: Command): void {
     .command("fees <token>")
     .description("who is paid on this token, how much accrued, and every claim")
     .action(async (token: string) => {
-      if (!isAddress(token)) { log.error("not an address"); process.exitCode = 2; return; }
+      if (!isAddress(token, { strict: false })) { log.error("not an address"); process.exitCode = 2; return; }
       const l = await feeLedger(token as Address);
       const dec = l.pairToken.toLowerCase() === ZERO ? 18 : 6;
       console.log(`recipient   ${l.recipient}  ${l.isDeployer ? c.grey("(the deployer)") : c.yellow("(NOT the deployer: a builder / KOL deal)")}`);
@@ -157,7 +158,7 @@ export function registerTradeCommands(program: Command): void {
     .command("dev <address>")
     .description("every launch by one deployer, with the phase each one reached")
     .action(async (addr: string) => {
-      if (!isAddress(addr)) { log.error("not an address"); process.exitCode = 2; return; }
+      if (!isAddress(addr, { strict: false })) { log.error("not an address"); process.exitCode = 2; return; }
       const rows = await deployerLaunches(addr as Address);
       if (rows.length === 0) { console.log(c.grey("no launches by that address in the window")); return; }
       const graduated = rows.filter((r) => r.phase === "PoolCreated").length;
@@ -204,11 +205,12 @@ export function registerTradeCommands(program: Command): void {
     .command("inspect <token>")
     .description("the full card for one token, plus its first-minute flow")
     .action(async (token: string) => {
-      if (!isAddress(token)) { log.error("not an address"); process.exitCode = 2; return; }
+      if (!isAddress(token, { strict: false })) { log.error("not an address"); process.exitCode = 2; return; }
       const t = token as Address;
       const rec = await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "getLaunchedToken", args: [t] });
       if (!rec.exists) { log.error("the factory has no record of that token"); process.exitCode = 2; return; }
-      const ev = { token: t, curve: rec.curve, deployer: rec.deployer, pairToken: rec.pairToken, launchConfigId: 0n, graduationThreshold: rec.graduationThreshold, blockNumber: 0n, txHash: "0x" as `0x${string}`, logIndex: 0, seenAtMs: Date.now() };
+      // the real launch log, so the opening buy and the declared bundle can actually be read
+      const ev = (await findLaunchEvent(t)) ?? { token: t, curve: rec.curve, deployer: rec.deployer, pairToken: rec.pairToken, launchConfigId: 0n, graduationThreshold: rec.graduationThreshold, blockNumber: 0n, txHash: "0x" as `0x${string}`, logIndex: 0, seenAtMs: Date.now() };
       const intel = await enrichLaunch(ev, DEAD);
       const { scoreLaunch } = await import("../score/score.js");
       console.log(renderCard(intel, scoreLaunch(intel, {})));

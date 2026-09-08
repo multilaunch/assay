@@ -139,6 +139,24 @@ export function watchLaunches(onLaunch: (ev: LaunchEvent) => void, opts: { pollM
   };
 }
 
+/**
+ * The real TokenLaunched log for one token, so a command that starts from an address still gets the
+ * launch transaction. Without it `scan` and `inspect` would synthesise an empty tx hash, the launch
+ * read would fail every time, and the score would take the "unreadable" penalty it does not deserve.
+ * `token` is indexed, so the filter is cheap; we still walk back in chunks the public endpoint accepts.
+ */
+export async function findLaunchEvent(token: Address, windowBlocks = 2_000_000n, chunk = 100_000n): Promise<LaunchEvent | null> {
+  const head = await client.getBlockNumber();
+  const floor = head > windowBlocks ? head - windowBlocks : 0n;
+  for (let to = head; to > floor; to -= chunk + 1n) {
+    const from = to - chunk > floor ? to - chunk : floor;
+    const logs = await client.getLogs({ address: PONS.factory, event: EVENT, args: { token }, fromBlock: from, toBlock: to }).catch(() => []);
+    const hit = logs[0];
+    if (hit) return toLaunch(hit as LaunchedLog);
+  }
+  return null;
+}
+
 /** The most recent launches, newest last. Used by `scan` when no address is given and by the deployer index. */
 export async function recentLaunches(blocks = 3_000n): Promise<LaunchEvent[]> {
   const head = await client.getBlockNumber();

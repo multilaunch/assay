@@ -136,7 +136,7 @@ Measured by this tool, 2026-09-08:
 
 ## What running it changed
 
-Two defects that only a live feed could show:
+Three defects that only a live run could show:
 
 **Missing data read as good news.** Every rule is skipped when its input is missing, so a launch nobody
 could read outscored one that was read and looked bad. `$ADSTOCKS` scored FIRE 81 on `opening buy ?`.
@@ -149,6 +149,12 @@ first read**, and 11 of 13 healed on one retry 800 ms later. That was not noise,
 data the rules run on. `enrichLaunch` retries and merges now — keeping the first value for immutable
 fields and the newest for the curve, which moves. Re-measured after the fix: **34 launches, zero
 failures**. Retrying is free in the hot path because the engine has to sit out the ~3 s opening tax anyway.
+
+**Commands that start from an address invented their own launch.** `scan` and `inspect` built a
+synthetic event with an empty transaction hash, so the launch read failed every single time and the
+token collected the "unreadable" penalty it had not earned. They look up the real `TokenLaunched` log
+now. The same token went from WATCH 52 to **FIRE 92** once its opening buy (2.00 %, no exempt wallets,
+via the router) could actually be read — and that token had in fact graduated.
 
 ## Deliberately not here
 
