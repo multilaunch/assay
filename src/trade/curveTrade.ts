@@ -1,9 +1,10 @@
 import { encodeFunctionData, type Address, type Hex } from "viem";
-import { curveAbi, erc20Abi } from "../abi/pons.js";
+import { curveAbi, erc20Abi, TOPIC } from "../abi/pons.js";
 import { client, fast } from "../chain/clients.js";
 import { DEAD } from "../chain/config.js";
 import { minOutWithSlippage, quoteBuy, quoteSell, type CurveState } from "../pons/curve.js";
 import { getAccount, walletClient } from "./wallet.js";
+import type { PrivateKeyAccount } from "viem/accounts";
 
 export interface TradeResult {
   /** what the quote said before sending */
@@ -34,7 +35,7 @@ export async function buyOnCurve(curve: Address, state: CurveState, quoteIn: big
   if (!acct) throw new Error("live buy needs PRIVATE_KEY");
   const wallet = walletClient();
 
-  if (!opts.native) await ensureAllowance(opts.pairToken, curve, quoteIn, acct.address);
+  if (!opts.native) await ensureAllowance(opts.pairToken, curve, quoteIn, acct);
 
   const hash = await wallet.writeContract({
     address: curve, abi: curveAbi, functionName: "buy",
@@ -45,7 +46,8 @@ export async function buyOnCurve(curve: Address, state: CurveState, quoteIn: big
   const receipt = await client.waitForTransactionReceipt({ hash, timeout: 60_000 });
   if (receipt.status !== "success") throw new Error(`buy reverted: ${hash}`);
   // what actually landed, from the token balance delta the receipt records
-  const actual = tokensFromReceiptLogs(receipt.logs, curve) ?? q.tokensOut;
+  // CurveBuy(buyer, recipient, quoteIn, tokensOut, fee, tax) -> tokensOut is data word 1
+  const actual = amountFromReceipt(receipt.logs, curve, TOPIC.curveBuy, 1) ?? q.tokensOut;
   return { quoted: q.tokensOut, actual, hash, dryRun: false, venue: "curve" };
 }
 
@@ -59,32 +61,50 @@ export async function sellOnCurve(curve: Address, state: CurveState, tokensIn: b
   const acct = getAccount();
   if (!acct) throw new Error("live sell needs PRIVATE_KEY");
   const wallet = walletClient();
-  await ensureAllowance(opts.token, curve, tokensIn, acct.address);
+  await ensureAllowance(opts.token, curve, tokensIn, acct);
 
   const hash = await wallet.writeContract({ address: curve, abi: curveAbi, functionName: "sell", args: [tokensIn, minOut, acct.address], account: acct, chain: null });
   const receipt = await client.waitForTransactionReceipt({ hash, timeout: 60_000 });
   if (receipt.status !== "success") throw new Error(`sell reverted: ${hash}`);
-  return { quoted: q.quoteOut, actual: q.quoteOut, hash, dryRun: false, venue: "curve" };
+  // CurveSell(seller, recipient, tokensIn, quoteOut, fee, tax) -> quoteOut is data word 1.
+  // Recording the quote here instead would bias every realized P&L up by the slippage allowance.
+  const actual = amountFromReceipt(receipt.logs, curve, TOPIC.curveSell, 1) ?? q.quoteOut;
+  return { quoted: q.quoteOut, actual, hash, dryRun: false, venue: "curve" };
 }
 
-/** Approve only what this trade needs, and only when the current allowance is short. */
-async function ensureAllowance(token: Address, spender: Address, need: bigint, owner: Address): Promise<void> {
-  const have = await client.readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [owner] }).catch(() => 0n);
+const approveAbi = [{ type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] }] as const;
+
+/**
+ * Approve only what this trade needs, and only when the standing allowance is short.
+ *
+ * `account` has to be the account object. Handed an address string, viem classifies it as a
+ * json-rpc account and emits eth_sendTransaction, which a public endpoint has no key for: every
+ * exit then dies at the approve and the position is never sold.
+ */
+async function ensureAllowance(token: Address, spender: Address, need: bigint, owner: PrivateKeyAccount): Promise<void> {
+  const [have, allowed] = await Promise.all([
+    client.readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [owner.address] }).catch(() => 0n),
+    client.readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [owner.address, spender] }).catch(() => 0n),
+  ]);
   if (have < need) throw new Error(`balance ${have} is short of ${need}`);
-  const wallet = walletClient();
-  const hash = await wallet.writeContract({ address: token, abi: [{ type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] }], functionName: "approve", args: [spender, need], account: owner, chain: null });
+  if (allowed >= need) return;
+  const hash = await walletClient().writeContract({ address: token, abi: approveAbi, functionName: "approve", args: [spender, need], account: owner, chain: null });
   await client.waitForTransactionReceipt({ hash, timeout: 60_000 });
 }
 
-/** Tokens minted to us by this curve in the receipt, from its CurveBuy log. */
-function tokensFromReceiptLogs(logs: readonly { address: string; topics: readonly Hex[]; data: Hex }[], curve: Address): bigint | null {
+/**
+ * What the curve actually gave us, from the receipt.
+ *
+ * Matching on the topic matters: CurveSell has the same four-word data shape, and picking it up
+ * from a buy receipt would record a quantity the wallet does not hold.
+ */
+function amountFromReceipt(logs: readonly { address: string; topics: readonly Hex[]; data: Hex }[], curve: Address, topic: Hex, word: number): bigint | null {
   for (const l of logs) {
     if (l.address.toLowerCase() !== curve.toLowerCase()) continue;
-    // CurveBuy(address indexed buyer, address indexed recipient, uint256 quoteIn, uint256 tokensOut, uint256 fee, uint256 tax)
-    if (l.data.length >= 2 + 64 * 4) {
-      const words = l.data.slice(2).match(/.{64}/g);
-      if (words && words[1]) return BigInt(`0x${words[1]}`);
-    }
+    if (l.topics[0] !== topic) continue;
+    const words = l.data.slice(2).match(/.{64}/g);
+    const w = words?.[word];
+    if (w) return BigInt(`0x${w}`);
   }
   return null;
 }

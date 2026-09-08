@@ -6,6 +6,7 @@ import { UNI, ZERO } from "../chain/config.js";
 import { minOutWithSlippage } from "../pons/curve.js";
 import { poolKeyFor, quoteV4, type PoolKey } from "./v4.js";
 import { getAccount, walletClient } from "./wallet.js";
+import type { PrivateKeyAccount } from "viem/accounts";
 import type { LaunchRecord } from "../pons/enrich.js";
 
 /**
@@ -81,7 +82,7 @@ export async function swapInPool(token: Address, record: Rec, currencyIn: Addres
   const wallet = walletClient();
 
   // native ETH rides along as msg.value; an ERC-20 has to be lent to the router through Permit2
-  if (!isNative(currencyIn)) await ensurePermit2(currencyIn, acct.address, amountIn);
+  if (!isNative(currencyIn)) await ensurePermit2(currencyIn, acct, amountIn);
 
   const { commands, inputs, value } = encodeV4Swap(key, currencyIn, amountIn, minOut);
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
@@ -108,18 +109,18 @@ const erc20Approve = [{ type: "function", name: "approve", stateMutability: "non
 const allowanceAbi = [{ type: "function", name: "allowance", stateMutability: "view", inputs: [{ name: "owner", type: "address" }, { name: "spender", type: "address" }], outputs: [{ type: "uint256" }] }] as const;
 
 /** UniversalRouter pulls ERC-20s through Permit2, so the token is approved to Permit2 and Permit2 to the router. */
-async function ensurePermit2(currency: Address, owner: Address, need: bigint): Promise<void> {
+async function ensurePermit2(currency: Address, owner: PrivateKeyAccount, need: bigint): Promise<void> {
   const wallet = walletClient();
-  const bal = await client.readContract({ address: currency, abi: erc20Abi, functionName: "balanceOf", args: [owner] });
+  const bal = await client.readContract({ address: currency, abi: erc20Abi, functionName: "balanceOf", args: [owner.address] });
   if (bal < need) throw new Error(`balance ${bal} is short of ${need}`);
 
-  const toPermit2 = await client.readContract({ address: currency, abi: allowanceAbi, functionName: "allowance", args: [owner, UNI.permit2] }).catch(() => 0n);
+  const toPermit2 = await client.readContract({ address: currency, abi: allowanceAbi, functionName: "allowance", args: [owner.address, UNI.permit2] }).catch(() => 0n);
   if (toPermit2 < need) {
     const h = await wallet.writeContract({ address: currency, abi: erc20Approve, functionName: "approve", args: [UNI.permit2, need], account: owner, chain: null });
     await client.waitForTransactionReceipt({ hash: h, timeout: 60_000 });
   }
 
-  const [amount, expiration] = await client.readContract({ address: UNI.permit2, abi: permit2Abi, functionName: "allowance", args: [owner, currency, UNI.universalRouter] }).catch(() => [0n, 0, 0] as const);
+  const [amount, expiration] = await client.readContract({ address: UNI.permit2, abi: permit2Abi, functionName: "allowance", args: [owner.address, currency, UNI.universalRouter] }).catch(() => [0n, 0, 0] as const);
   const nowSec = Math.floor(Date.now() / 1000);
   if (BigInt(amount) < need || Number(expiration) < nowSec + 60) {
     const h = await wallet.writeContract({ address: UNI.permit2, abi: permit2Abi, functionName: "approve", args: [currency, UNI.universalRouter, need, nowSec + 3600], account: owner, chain: null });

@@ -57,7 +57,7 @@ export interface LaunchIntel {
 const NATIVE: PairInfo = { address: ZERO, symbol: "ETH", decimals: 18, native: true };
 const pairCache = new Map<string, PairInfo>();
 
-async function pairInfo(addr: Address): Promise<PairInfo> {
+export async function pairInfo(addr: Address): Promise<PairInfo> {
   if (addr.toLowerCase() === ZERO) return NATIVE;
   const hit = pairCache.get(addr.toLowerCase());
   if (hit) return hit;

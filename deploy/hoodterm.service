@@ -1,0 +1,98 @@
+# hoodterm board as a systemd service, for a box without Docker.
+#
+#   install -o root -g root -m 0644 deploy/hoodterm.service /etc/systemd/system/hoodterm.service
+#   systemctl daemon-reload
+#   systemctl enable --now hoodterm
+#   journalctl -u hoodterm -f
+#
+# Assumes the layout deploy/bootstrap.sh creates:
+#   /opt/hoodterm/app        the checkout, already built (npm ci --omit=dev && npm run build)
+#   /etc/hoodterm/env.prod   0600 root:hoodterm, holds PRIVATE_KEY
+#   /var/lib/hoodterm        0750 hoodterm:hoodterm, holds positions.json
+#
+# Dry run on purpose. `--live` is not on the ExecStart line and should not be added: the arm
+# prompt in src/engine/arm.ts reads `arm` from stdin, and stdin under systemd is /dev/null, so a
+# live unit would read EOF, abort, and exit 0 looking like a clean shutdown. Live sessions belong
+# in the Docker path (docker attach) or in a tmux session you started by hand.
+
+[Unit]
+Description=hoodterm board — Robinhood Chain launch terminal
+Documentation=file:/opt/hoodterm/app/docs/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=hoodterm
+Group=hoodterm
+WorkingDirectory=/opt/hoodterm/app
+
+EnvironmentFile=/etc/hoodterm/env.prod
+Environment=NODE_ENV=production
+Environment=HOODTERM_DATA=/var/lib/hoodterm
+
+# Loopback only. Caddy runs on this host and reaches it over 127.0.0.1; nothing else can.
+ExecStart=/usr/bin/node /opt/hoodterm/app/dist/cli/main.js board --port 4663 --host 127.0.0.1
+
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+KillSignal=SIGINT
+
+# ---- logs ----------------------------------------------------------------------------------------
+# journald, so journalctl's own rotation applies (SystemMaxUse in journald.conf) and there is no
+# logfile to fill the disk.
+StandardOutput=journal
+StandardError=journal
+StandardInput=null
+SyslogIdentifier=hoodterm
+
+# ---- hardening -------------------------------------------------------------------------------------
+# The process can hold a private key. Give it a filesystem it cannot write to, no capabilities,
+# and no way to gain any.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateMounts=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+# MemoryDenyWriteExecute is deliberately NOT set. V8 writes and then executes its own JIT pages;
+# turning it on makes node refuse to start. This is the one hardening knob that does not apply.
+
+# The only writable path. StateDirectory creates and chowns it on first start; ReadWritePaths is
+# the explicit statement of the same thing, and survives someone deleting StateDirectory.
+StateDirectory=hoodterm
+StateDirectoryMode=0750
+ReadWritePaths=/var/lib/hoodterm
+
+# ---- resources -------------------------------------------------------------------------------------
+MemoryMax=512M
+MemoryHigh=384M
+CPUQuota=100%
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+# the real ones, written by bootstrap.sh. Never commit these: env.prod holds PRIVATE_KEY.
+env.prod
+caddy.env
+*.env
+!*.env.example

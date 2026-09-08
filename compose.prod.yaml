@@ -1,0 +1,154 @@
+# hoodterm in production, behind Caddy, on a VPS.
+#
+#   cp deploy/env.prod.example  deploy/env.prod   && chmod 600 deploy/env.prod
+#   cp deploy/caddy.env.example deploy/caddy.env  && chmod 600 deploy/caddy.env
+#   docker compose -f compose.prod.yaml up -d --build
+#
+# Differences from compose.yaml, which is the local-laptop file:
+#
+#   * the board is never published on 0.0.0.0. It is published on the host's loopback only
+#     (for the SSH-tunnel path) and reached by Caddy over the compose network by service name.
+#   * Caddy terminates TLS, holds the only credential the board has, and is the only thing
+#     listening on a public interface.
+#   * every container has a log cap, a memory cap and a restart policy. Without the log cap
+#     a chatty feed fills the disk in a few weeks and takes the box down with it.
+#   * PRIVATE_KEY reaches the board container and nothing else. The proxy gets its own env file.
+#
+# See docs/DEPLOY.md.
+
+name: hoodterm
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  # ---- the engine behind the page ----------------------------------------------------------------
+  board:
+    build:
+      context: .
+      # the image runs the typecheck and the whole test suite at build time
+      target: runtime
+    image: hoodterm:prod
+    command: ["board", "--port", "4663", "--host", "0.0.0.0"]
+
+    # 0.0.0.0 above is the *container's* interface. What restricts it is that this port is
+    # published on the host's loopback and nowhere else, and that Caddy is the only other
+    # thing on this network. See the note in src/board/server.ts.
+    ports:
+      - "127.0.0.1:${BOARD_LOCAL_PORT:-4663}:4663"
+
+    env_file:
+      # format: raw = no compose interpolation. A value containing `$` (an RPC URL with a query
+      # string, a password) would otherwise be read as a variable reference and silently blanked.
+      - path: ./deploy/env.prod
+        required: true
+        format: raw
+    environment:
+      NODE_ENV: production
+      HOODTERM_DATA: /data
+
+    # `board --live` prints the signer, its balance and every limit and waits for you to type
+    # `arm` on stdin. A detached container with no stdin would read EOF and abort, so stdin is
+    # held open here: start the stack, then `docker attach hoodterm-board` and type `arm`.
+    # Detach again with ctrl-p ctrl-q — ctrl-c would stop the container.
+    stdin_open: true
+    tty: true
+
+    volumes:
+      - positions:/data
+
+    restart: unless-stopped
+    stop_grace_period: 10s
+    init: true
+
+    # nothing in this image needs to write outside /data or /tmp
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4663/state').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+    logging: *logging
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 128M
+
+    container_name: hoodterm-board
+    networks:
+      - hoodterm
+
+  # ---- TLS, certificates, and the only thing on a public port ------------------------------------
+  caddy:
+    image: caddy:2.10-alpine
+    depends_on:
+      - board
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # the certificates and the ACME account key live here. Back this up.
+      - caddy_config:/config
+    env_file:
+      # format: raw turns OFF compose's variable interpolation for this file. Without it compose
+      # reads the bcrypt hash `$2a$14$YoBi...` and substitutes `$YoBi...` as an (unset) variable,
+      # so Caddy is handed a mangled hash and nobody can ever log in. Verified, not guessed.
+      - path: ./deploy/caddy.env
+        required: true
+        format: raw
+    restart: unless-stopped
+    stop_grace_period: 10s
+
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      # binding 80/443 inside the container; the image does not run as root but does bind low ports
+      - NET_BIND_SERVICE
+
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+      interval: 60s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+
+    logging: *logging
+
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+    container_name: hoodterm-caddy
+    networks:
+      - hoodterm
+
+volumes:
+  positions:
+  caddy_data:
+  caddy_config:
+
+networks:
+  hoodterm:
+    driver: bridge

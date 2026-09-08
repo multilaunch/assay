@@ -101,6 +101,7 @@ export const erc20Abi = parseAbi([
   "function symbol() view returns (string)",
   "function decimals() view returns (uint8)",
   "function balanceOf(address) view returns (uint256)",
+  "function allowance(address owner, address spender) view returns (uint256)",
 ]);
 
 /** Event topics we filter on. */

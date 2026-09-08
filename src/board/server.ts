@@ -17,6 +17,11 @@ import { factoryAbi } from "../abi/pons.js";
  * It binds 127.0.0.1 only, and it has no route that buys on demand: the four verbs are pause, resume,
  * close a position, and edit one of five bounded numeric rules. `--live` is decided when the process
  * starts, so nothing on the page can turn a dry run into a live session.
+ *
+ * Binding loopback is not on its own a fence. Any page you have open can post a form to
+ * http://127.0.0.1:4663/resume, and any page can point a hostname it owns at 127.0.0.1 and then read
+ * /state as same-origin. So every request has to name a host we recognise, and every write has to
+ * come from this board. See `guard`.
  */
 
 /**
@@ -31,6 +36,39 @@ const HTML = () => {
   }
   throw new Error("board html not found");
 };
+
+/** Host names this board answers to. Behind a proxy, add the public one via BOARD_HOSTS. */
+const knownHosts = (): Set<string> => {
+  const extra = (process.env.BOARD_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
+  return new Set(["127.0.0.1", "localhost", "::1", "0.0.0.0", ...extra]);
+};
+
+/** The hostname out of a Host or Origin header, port and brackets removed. `null` when unparseable. */
+function hostnameOf(header: string | undefined): string | null {
+  if (!header) return null;
+  try { return new URL(header.includes("://") ? header : `http://${header}`).hostname.replace(/^\[|\]$/g, "").toLowerCase(); }
+  catch { return null; }
+}
+
+/**
+ * Reject anything that is not this board talking to itself.
+ *
+ * The Host check is what stops DNS rebinding: an attacker's page reaches us at their hostname, and
+ * that name is not one we answer to. On writes the Origin, when a browser sends one, has to be the
+ * same host, and the body has to be JSON — a cross-site form can post but it cannot set that
+ * content type, so a form never gets past this even before the Origin check runs.
+ *
+ * Returns the reason it failed, or null when the request may proceed.
+ */
+function guard(req: IncomingMessage, hosts: Set<string>): string | null {
+  const host = hostnameOf(req.headers.host);
+  if (!host || !hosts.has(host)) return "unrecognised Host";
+  if (req.method !== "POST") return null;
+  const origin = req.headers.origin;
+  if (origin && origin !== "null" && hostnameOf(origin) !== host) return "cross-origin write";
+  if (!(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) return "writes must be application/json";
+  return null;
+}
 
 /** Only these rules can be changed from the page, and only inside these bounds. */
 const EDITABLE = {
@@ -137,9 +175,13 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
       req.on("end", () => { try { resolve(JSON.parse(s || "{}") as Record<string, unknown>); } catch { resolve({}); } });
     });
 
+  const hosts = knownHosts();
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const path = url.pathname;
+
+    const refused = guard(req, hosts);
+    if (refused) { json(res, 403, { error: refused }); return; }
 
     if (req.method === "GET" && (path === "/" || path === "/index.html")) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });

@@ -239,6 +239,38 @@ every gate refuses by name, that the session budget stops the entry that would c
 that lands on it, that each exit rule fires on its own, and that v4 pool ids are stable whichever side
 of the pair the token sits on.
 
+## Deploying it on a VPS
+
+`compose.yaml` is the laptop file. For a public box there is a second one:
+
+```sh
+BOARD_DOMAIN=board.example.com ACME_EMAIL=you@example.com sudo ./deploy/bootstrap.sh
+```
+
+That takes a fresh Ubuntu 24.04 box to a running deployment — Docker, `ufw` down to 22/80/443,
+unattended security upgrades, a `hoodterm` user, `0600` on the secrets, a generated board password,
+and the stack up behind Caddy with a real certificate. It is idempotent; run it again after a
+change. `MODE=systemd` gets the same thing without Docker, using `deploy/hoodterm.service`.
+
+What changes when the board is not on loopback any more:
+
+- **The loopback bind was the whole protection, and on a public box it is gone.** The page can
+  pause the engine, resume it and close a position. So `deploy/Caddyfile` puts the entire origin
+  behind basic auth over TLS, and additionally pins the four verbs that move money — all of them
+  `POST`, while every read is a `GET` — to a source-IP allowlist that defaults to nobody. Full
+  control without either is still one `ssh -N -L 4663:127.0.0.1:4663` away.
+- **`PRIVATE_KEY` is now on a machine you rent.** Root on the box, a volume snapshot, or the
+  provider's console all read it, and no file mode changes that. Use a wallet funded with
+  `SESSION_BUDGET_ETH` and nothing else: it is the only one of the limits an attacker cannot edit.
+- **The live feed goes through a proxy**, which is the usual way an SSE stream quietly dies. The
+  Caddyfile turns off response buffering and every write and idle timeout on `/events`, and
+  [docs/DEPLOY.md](./docs/DEPLOY.md) has a `curl -N` whose output proves it end to end.
+
+Files: `compose.prod.yaml`, `deploy/Caddyfile`, `deploy/hoodterm.service`, `deploy/bootstrap.sh`,
+`deploy/env.prod.example`, `deploy/backup.sh`, `deploy/update.sh`. The guide, including how to
+verify, read logs, update, back up `positions.json` and roll back, is
+**[docs/DEPLOY.md](./docs/DEPLOY.md)**.
+
 ## License
 
 MIT. Read [docs/GROUND_TRUTH.md](./docs/GROUND_TRUTH.md) before you trust a number.

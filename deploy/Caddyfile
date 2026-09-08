@@ -1,0 +1,122 @@
+# hoodterm board, behind Caddy, on a public VPS.
+#
+# Values come from deploy/caddy.env (see deploy/caddy.env.example):
+#   BOARD_DOMAIN          board.example.com
+#   ACME_EMAIL            you@example.com          expiry notices from Let's Encrypt
+#   BOARD_USER            the basic-auth username
+#   BOARD_PASSWORD_HASH   output of `caddy hash-password` (bcrypt). NOT the password.
+#   BOARD_ADMIN_IPS       source addresses allowed to POST. Space-separated, CIDR ok.
+#   BOARD_UPSTREAM        board:4663 under compose; 127.0.0.1:4663 for the systemd install
+#
+# Check it after any edit, then restart. `caddy reload` needs the admin API, which is off below,
+# so restart is the way — it costs about a second and does not drop the certificates.
+#   docker compose -f compose.prod.yaml exec caddy caddy validate --config /etc/caddy/Caddyfile
+#   docker compose -f compose.prod.yaml restart caddy
+{
+	email {$ACME_EMAIL}
+
+	# Nothing on this box reconfigures Caddy over HTTP. The admin endpoint is loopback-only by
+	# default, but loopback inside a container is still one container escape away from useful.
+	admin off
+
+	servers {
+		timeouts {
+			read_body 10s
+			read_header 10s
+
+			# 0 = no write timeout, and this is the line the live feed depends on.
+			# /events is a response that never ends. Any positive write timeout here is a timer
+			# counting down to the moment the stream is cut, and the page then reconnects in a
+			# loop that looks like a flaky chain rather than a proxy setting.
+			write 0
+
+			# same reasoning: an idle timeout closes a connection that is deliberately quiet
+			# between launches. The board sends a pulse every 10 s, so a generous idle timeout
+			# would also work, but 0 does not depend on that staying true.
+			idle 0
+		}
+	}
+}
+
+{$BOARD_DOMAIN} {
+	log {
+		output stdout
+		format json
+	}
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Cross-Origin-Opener-Policy same-origin
+	}
+
+	# ---- gate 1: everything except the health probe needs the password ---------------------------
+	# Basic auth is weak on its own and strong enough over TLS with a random 32-character secret:
+	# there is no account to enumerate, no session to steal, and Caddy stores only a bcrypt hash.
+	# It is a single shared credential with no audit trail, which is exactly its limit — see the
+	# access-control paragraph in docs/DEPLOY.md.
+	@needs_auth not path /healthz
+	basic_auth @needs_auth {
+		{$BOARD_USER} {$BOARD_PASSWORD_HASH}
+	}
+
+	# ---- the public probe ------------------------------------------------------------------------
+	# Answered by Caddy, not the board: it proves the proxy and the certificate are alive and
+	# reveals nothing about the engine, the wallet or the positions.
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	# ---- gate 2: the four verbs that move money --------------------------------------------------
+	# pause, resume, close a position and edit a rule are all POST. Everything the page reads is
+	# GET. So the control surface is exactly "POST", and it is additionally pinned to a source
+	# address. Fail closed: BOARD_ADMIN_IPS defaults to a documentation address that is nobody,
+	# so an unconfigured box serves the read-only view and refuses every control action.
+	@blocked_control {
+		method POST PUT PATCH DELETE
+		not remote_ip {$BOARD_ADMIN_IPS:192.0.2.1}
+	}
+	handle @blocked_control {
+		respond "control actions are restricted to BOARD_ADMIN_IPS; use the SSH tunnel instead" 403
+	}
+
+	# ---- the live feed ---------------------------------------------------------------------------
+	# Server-sent events. Two proxy settings kill an SSE stream and they are both here:
+	#
+	#   flush_interval -1   write each chunk straight through instead of buffering it. Caddy already
+	#                       does this when it sees `Content-Type: text/event-stream`, but the board
+	#                       could change that header and this route should not depend on it.
+	#   compression off     a gzip encoder holds bytes back until it has a block worth compressing,
+	#                       which turns a live feed into a feed that arrives in clumps or not at all.
+	#                       The `encode` directive is deliberately absent from this route too.
+	#
+	# X-Accel-Buffering: no is for whatever sits in front of Caddy — a CDN, a company proxy. If you
+	# put Cloudflare's orange cloud in front of this, check that it is not buffering the stream.
+	@events path /events
+	handle @events {
+		reverse_proxy {$BOARD_UPSTREAM:board:4663} {
+			flush_interval -1
+			header_down +X-Accel-Buffering no
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 30s
+				compression off
+				keepalive 5m
+			}
+		}
+	}
+
+	# ---- everything else -------------------------------------------------------------------------
+	handle {
+		encode zstd gzip
+		reverse_proxy {$BOARD_UPSTREAM:board:4663} {
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 30s
+			}
+		}
+	}
+}

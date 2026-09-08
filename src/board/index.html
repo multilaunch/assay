@@ -246,6 +246,25 @@ a:hover{border-bottom-color:var(--hot)}
 .blank{color:var(--ink-3); font-size:12px; padding:var(--s5) 0; text-align:center}
 .sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
 
+/* ---- the walkthrough ------------------------------------------------------
+   Points at the real controls instead of describing them in a wall of text. */
+#veil{position:fixed; inset:0; z-index:60; background:oklch(8% 0.005 240 / 72%); display:none}
+#veil.on{display:block}
+#ring{position:fixed; z-index:61; border:1px solid var(--hot); box-shadow:0 0 0 9999px oklch(8% 0.005 240 / 72%);
+  pointer-events:none; display:none; transition:top 140ms ease, left 140ms ease, width 140ms ease, height 140ms ease}
+#ring.on{display:block}
+#coach{position:fixed; z-index:62; max-width:330px; background:var(--surface-2);
+  border:1px solid var(--line-hard); padding:var(--s4); display:none}
+#coach.on{display:block}
+#coach h3{margin:0 0 var(--s2); font-size:13px; font-weight:600}
+#coach p{margin:0 0 var(--s3); font-size:12.5px; line-height:1.6; color:var(--ink-2); max-width:60ch}
+#coach .foot{display:flex; align-items:center; gap:var(--s2)}
+#coach .step{font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-right:auto}
+.langs{display:flex; border:1px solid var(--line-hard)}
+.langs button{border:0; padding:3px 8px; font-size:11px; color:var(--ink-3); font-family:var(--mono)}
+.langs button[aria-pressed="true"]{background:var(--hot); color:var(--hot-ink); font-weight:600}
+@media(max-width:720px){#coach{left:var(--s3) !important; right:var(--s3); max-width:none; width:auto}}
+
 @media(max-width:1080px){
   .shell{grid-template-columns:minmax(0,1fr); overflow:auto}
   main{min-height:62vh}
@@ -276,18 +295,36 @@ a:hover{border-bottom-color:var(--hot)}
   <span class="tag" id="state">paused</span>
   <span class="spring"></span>
   <span class="beat" id="beat" title="engine heartbeat"></span>
+  <div class="langs" role="group" aria-label="Language">
+    <button data-lang="en" aria-pressed="true">EN</button>
+    <button data-lang="ru" aria-pressed="false">RU</button>
+  </div>
+  <button id="help" data-i18n="help" title="Walk me through it">guide</button>
   <button id="toggle" class="solid">start</button>
 </header>
 
 <div class="ribbon">
-  <span class="lbl ribbon-cap">launches / sec · 90s</span>
+  <span class="lbl ribbon-cap" data-i18n="ribbon">launches / sec · 90s</span>
   <canvas id="spark" aria-label="Launches per second over the last 90 seconds"></canvas>
   <div class="readout">
-    <div class="cell"><span class="lbl">seen</span><span class="v" id="k-seen">0</span></div>
-    <div class="cell"><span class="lbl">per min</span><span class="v" id="k-rate">0</span></div>
-    <div class="cell"><span class="lbl">passing</span><span class="v" id="k-pass">0</span></div>
-    <div class="cell"><span class="lbl">open</span><span class="v" id="k-open">0</span></div>
-    <div class="cell"><span class="lbl">spent</span><span class="v" id="k-spent">0.0000</span></div>
+    <div class="cell"><span class="lbl" data-i18n="k_seen">seen</span><span class="v" id="k-seen">0</span></div>
+    <div class="cell"><span class="lbl" data-i18n="k_rate">per min</span><span class="v" id="k-rate">0</span></div>
+    <div class="cell"><span class="lbl" data-i18n="k_pass">passing</span><span class="v" id="k-pass">0</span></div>
+    <div class="cell"><span class="lbl" data-i18n="k_open">open</span><span class="v" id="k-open">0</span></div>
+    <div class="cell"><span class="lbl" data-i18n="k_spent">spent</span><span class="v" id="k-spent">0.0000</span></div>
+  </div>
+</div>
+
+<div id="veil"></div>
+<div id="ring"></div>
+<div id="coach" role="dialog" aria-modal="false" aria-labelledby="coach-h">
+  <h3 id="coach-h"></h3>
+  <p id="coach-p"></p>
+  <div class="foot">
+    <span class="step" id="coach-n"></span>
+    <button id="coach-skip"></button>
+    <button id="coach-back"></button>
+    <button id="coach-next" class="solid"></button>
   </div>
 </div>
 
@@ -295,12 +332,12 @@ a:hover{border-bottom-color:var(--hot)}
   <main>
     <div class="bar">
       <div class="seg" role="group" aria-label="Filter by verdict">
-        <button data-f="all" aria-pressed="true">all</button>
-        <button data-f="FIRE" aria-pressed="false">fire</button>
-        <button data-f="WATCH" aria-pressed="false">watch</button>
-        <button data-f="passing" aria-pressed="false">passes rules</button>
+        <button data-f="all" aria-pressed="true" data-i18n="f_all">all</button>
+        <button data-f="FIRE" aria-pressed="false" data-i18n="f_fire">fire</button>
+        <button data-f="WATCH" aria-pressed="false" data-i18n="f_watch">watch</button>
+        <button data-f="passing" aria-pressed="false" data-i18n="f_pass">passes rules</button>
       </div>
-      <input type="search" id="q" placeholder="symbol, name or address" aria-label="Filter launches">
+      <input type="search" id="q" data-i18n-ph="search" placeholder="symbol, name or address" aria-label="Filter launches">
       <span class="spring"></span>
       <span class="tag" id="link">connecting</span>
     </div>
@@ -310,15 +347,15 @@ a:hover{border-bottom-color:var(--hot)}
         <caption class="sr">Live pons v2 launches, newest first</caption>
         <thead><tr>
           <th scope="col" aria-label="Verdict"></th>
-          <th scope="col" class="r">score</th>
-          <th scope="col">launch</th>
-          <th scope="col" class="r">opening buy</th>
-          <th scope="col" class="r">tax</th>
-          <th scope="col" class="r">exempt</th>
-          <th scope="col">pair</th>
-          <th scope="col" class="r">curve</th>
-          <th scope="col" class="r">deployer</th>
-          <th scope="col" class="r">age</th>
+          <th scope="col" class="r" data-i18n="c_score">score</th>
+          <th scope="col" data-i18n="c_launch">launch</th>
+          <th scope="col" class="r" data-i18n="c_buy">opening buy</th>
+          <th scope="col" class="r" data-i18n="c_tax">tax</th>
+          <th scope="col" class="r" data-i18n="c_exempt">exempt</th>
+          <th scope="col" data-i18n="c_pair">pair</th>
+          <th scope="col" class="r" data-i18n="c_curve">curve</th>
+          <th scope="col" class="r" data-i18n="c_dev">deployer</th>
+          <th scope="col" class="r" data-i18n="c_age">age</th>
         </tr></thead>
         <tbody id="feed"></tbody>
       </table>
@@ -328,15 +365,15 @@ a:hover{border-bottom-color:var(--hot)}
 
   <aside class="rail">
     <section class="sec">
-      <h2>positions <span class="c" id="pc">0</span></h2>
+      <h2><span data-i18n="s_pos">positions</span> <span class="c" id="pc">0</span></h2>
       <div id="positions"><div class="blank">none</div></div>
     </section>
     <section class="sec">
-      <h2>rules</h2>
+      <h2 data-i18n="s_rules">rules</h2>
       <div id="rules"></div>
     </section>
     <section class="sec">
-      <h2>log</h2>
+      <h2 data-i18n="s_log">log</h2>
       <div id="log" role="log" aria-live="polite"></div>
     </section>
   </aside>
@@ -620,7 +657,7 @@ function setPaused(p) {
 }
 
 $("#toggle").addEventListener("click", async () => {
-  const r = await fetch(PAUSED ? "/resume" : "/pause", { method: "POST" }).then((x) => x.json());
+  const r = await fetch(PAUSED ? "/resume" : "/pause", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).then((x) => x.json());
   setPaused(r.paused);
 });
 document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
