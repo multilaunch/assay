@@ -41,8 +41,31 @@ On 2026-09-08 the two agreed **to the wei, 0 bps apart**.
 
 ## Install
 
+### Docker
+
 ```sh
-git clone <this repo> && cd hoodterm
+docker compose run --rm doctor          # is the chain there, does our math match it
+docker compose up board                 # the web UI on http://127.0.0.1:4663
+docker compose run --rm hunt            # live feed in the terminal
+docker compose run --rm snipe           # the engine, dry run
+docker compose run --rm cli fees 0x…    # any other command
+```
+
+The image runs `typecheck` and the whole test suite **at build time**, so a broken tree never produces
+one. It runs as `node`, not root — the process that can hold a private key should not be uid 0 — and
+positions persist in a named volume.
+
+Two things about the board in a container that are easy to get wrong, so they are written down:
+
+- Inside a container `127.0.0.1` is the *container's* loopback, and Docker's port forwarding cannot
+  reach it. The service binds `0.0.0.0` and the restriction moves to the host side of the publish,
+  `127.0.0.1:4663:4663`. Same protection, different layer.
+- Nothing in `compose.yaml` is live. Going live is a `--live` you add yourself, and it needs
+  `PRIVATE_KEY` in `.env` (mounted through `env_file`, never baked into the image).
+
+### Without Docker
+
+```sh
 npm install
 cp .env.example .env
 npm run doctor

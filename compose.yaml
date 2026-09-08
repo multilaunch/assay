@@ -1,0 +1,69 @@
+# hoodterm in Docker.
+#
+#   docker compose run --rm doctor            one-shot: is the chain there, does our math match it
+#   docker compose run --rm hunt              live feed in the terminal
+#   docker compose up board                   the web UI on http://127.0.0.1:4663
+#   docker compose run --rm snipe             the engine, dry run
+#   docker compose run --rm cli fees 0x…      any other command
+#
+# Nothing here is live. Every service is read-only or dry run; going live is an explicit
+# `--live` you add yourself, and it needs PRIVATE_KEY in .env.
+
+name: hoodterm
+
+x-base: &base
+  build:
+    context: .
+    # the image runs the test suite and the typecheck at build time, so a broken tree never ships
+    target: runtime
+  image: hoodterm:local
+  env_file:
+    - path: .env
+      required: false
+  # the ledger survives `docker compose down`
+  volumes:
+    - positions:/data
+  # the public RPCs rate-limit per IP; one container is plenty
+  restart: "no"
+  stop_grace_period: 5s
+
+services:
+  # ---- the web UI --------------------------------------------------------------------------------
+  # Bound to 127.0.0.1 on the host on purpose. The page has no route that buys on demand, but it can
+  # pause, resume and close positions, so it does not belong on 0.0.0.0.
+  board:
+    <<: *base
+    command: ["board", "--port", "4663", "--host", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:4663:4663"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4663/state').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+
+  # ---- one-shot commands -------------------------------------------------------------------------
+  doctor:
+    <<: *base
+    command: ["doctor", "--probe"]
+
+  hunt:
+    <<: *base
+    command: ["hunt"]
+    tty: true
+
+  snipe:
+    <<: *base
+    command: ["snipe"]
+    tty: true
+
+  # anything else: docker compose run --rm cli <command> [args]
+  cli:
+    <<: *base
+    command: ["--help"]
+    tty: true
+
+volumes:
+  positions:

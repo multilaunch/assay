@@ -73,9 +73,21 @@ function positionsPayload(): Record<string, unknown>[] {
   }));
 }
 
-export interface BoardOptions { port: number; live: boolean; rules: EngineRules }
+export interface BoardOptions {
+  port: number;
+  live: boolean;
+  rules: EngineRules;
+  /**
+   * Interface to bind. Defaults to loopback, which is what you want on a laptop.
+   *
+   * In a container loopback means the *container's* loopback, so Docker's port forwarding cannot
+   * reach it and the page looks dead from the host. There the bind has to be 0.0.0.0 and the
+   * restriction moves to the host side of the publish (`127.0.0.1:4663:4663` in compose.yaml).
+   */
+  host?: string;
+}
 
-export function startBoard(opts: BoardOptions): { engine: Engine; close: () => void; url: string } {
+export function startBoard(opts: BoardOptions): { engine: Engine; close: () => void; url: string; host: string } {
   const clients = new Set<ServerResponse>();
   const recent: Record<string, unknown>[] = [];
 
@@ -166,10 +178,12 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
   // a heartbeat so the page can tell a quiet chain from a dead engine
   const beat = setInterval(() => push({ kind: "pulse", at: Date.now(), paused: engine.isPaused(), spent: engine.spent().toString(), open: openPositions().length }), 10_000);
 
-  server.listen(opts.port, "127.0.0.1");
+  const host = opts.host ?? "127.0.0.1";
+  server.listen(opts.port, host);
   return {
     engine,
-    url: `http://127.0.0.1:${opts.port}`,
+    host,
+    url: `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${opts.port}`,
     close: () => { clearInterval(beat); for (const r of clients) r.end(); server.close(); engine.stop(); },
   };
 }

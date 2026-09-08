@@ -87,9 +87,10 @@ export function registerTradeCommands(program: Command): void {
     .description("the same engine behind a page on 127.0.0.1; opens as a feed and fires nothing until you press start")
     .option("--live", "sign and send real transactions once armed on the page")
     .option("--port <n>", "port", (v) => Number(v), Number(process.env.BOARD_PORT ?? 4663))
+    .option("--host <addr>", "interface to bind; 0.0.0.0 inside a container, where the host publish is what restricts it", process.env.BOARD_HOST ?? "127.0.0.1")
     .option("--eth <amount>", "quote per entry", (v) => Number(v))
     .option("--budget <eth>", "total the entries may consume this session", (v) => Number(v))
-    .action(async (o: { live?: boolean; port: number; eth?: number; budget?: number }) => {
+    .action(async (o: { live?: boolean; port: number; host: string; eth?: number; budget?: number }) => {
       const over: Partial<EngineRules> = {};
       if (o.eth !== undefined) over.entryQuote = parseEther(String(o.eth));
       if (o.budget !== undefined) over.sessionBudget = parseEther(String(o.budget));
@@ -98,9 +99,11 @@ export function registerTradeCommands(program: Command): void {
       if (live && !(await confirmLive(rules))) return;
 
       const { startBoard } = await import("../board/server.js");
-      const b = startBoard({ port: o.port, live, rules });
+      const b = startBoard({ port: o.port, live, rules, host: o.host });
       log.info(`${c.bold("hoodterm")} ${c.grey("board")}  ${b.url}  ${live ? c.badge(" LIVE ") : c.grey("dry run")}  ${c.grey("feed only until you press start")}`);
-      log.info(c.grey("loopback only; the page has no route that buys on demand, and --live is a launch flag"));
+      log.info(c.grey(b.host === "0.0.0.0"
+        ? "bound to 0.0.0.0 (a container); publish it on 127.0.0.1 so only this machine can reach it"
+        : "loopback only; the page has no route that buys on demand, and --live is a launch flag"));
       process.on("SIGINT", () => { b.close(); log.info(c.grey("\nboard stopped")); process.exit(0); });
     });
 
