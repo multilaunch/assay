@@ -12,6 +12,7 @@ import { scoreLaunch } from "../score/score.js";
 import { eth, pct, short } from "../util/fmt.js";
 import { c, hhmmss, log, setQuiet } from "../util/log.js";
 import { renderCard, renderLine, toJson } from "./render.js";
+import { registerTradeCommands } from "./trade.js";
 
 const program = new Command();
 program.name("hoodterm").description("Launch terminal for Robinhood Chain (pons v2). Local, open, non-custodial, dry run by default.").version("0.1.0");
@@ -130,7 +131,7 @@ program
       const t0 = Date.now();
       try {
         index.note(ev);
-        const intel = await enrichLaunch(ev, DEAD);
+        const intel = await enrichLaunch(ev, DEAD, { retries: 3, retryDelayMs: 400 });
         const { twins } = farms.observe(intel);
         const deployer = index.lookup(ev.deployer, ev.token);
         const score = scoreLaunch(intel, { deployer, farmTwins: twins });
@@ -187,5 +188,9 @@ program
     if (o.json) console.log(JSON.stringify(toJson(intel, score), null, 2));
     else console.log(renderCard(intel, score, { ethUsd: px }));
   });
+
+// Everything that can move money lives in its own file, and every one of those commands is dry run
+// unless it is given --live.
+registerTradeCommands(program);
 
 program.parseAsync(process.argv).catch((e: Error) => { log.error(e.message.split("\n")[0]); process.exitCode = 1; });

@@ -73,12 +73,59 @@ async function pairInfo(addr: Address): Promise<PairInfo> {
   return info;
 }
 
+export interface EnrichOptions {
+  /** extra passes when something critical came back empty */
+  retries?: number;
+  retryDelayMs?: number;
+}
+
+/**
+ * Read one launch, retrying the parts that were not there yet.
+ *
+ * The websocket hands us a launch the moment its log appears, which is routinely *before* the RPC
+ * endpoint we then query has the block: `getTransactionReceipt` answers "not found" and contract
+ * calls return an empty `0x`. Measured on 2026-09-08 over 45 s of live launches: 57 % of launch
+ * transactions and 29 % of curves failed on the first pass, and 11 of 13 healed on a single retry
+ * 800 ms later. Left alone that is not noise, it is a hole in the data the rules run on.
+ *
+ * Retrying costs nothing in the hot path: the engine has to sit out the ~3 s opening tax anyway.
+ */
+export async function enrichLaunch(ev: LaunchEvent, recipient: Address = DEAD, opts: EnrichOptions = {}): Promise<LaunchIntel> {
+  const retries = opts.retries ?? 0;
+  const delay = opts.retryDelayMs ?? 350;
+  let best = await enrichOnce(ev, recipient);
+  for (let i = 0; i < retries && !isComplete(best); i++) {
+    await new Promise((r) => setTimeout(r, delay));
+    best = mergeIntel(best, await enrichOnce(ev, recipient));
+  }
+  return best;
+}
+
+/** Everything the rules need is present. */
+export const isComplete = (i: LaunchIntel): boolean => !!i.tx && !!i.curve && !!i.meta;
+
+/**
+ * Fold a later read into an earlier one. Anything immutable keeps the first value that arrived;
+ * the curve is the exception, because it moves, so the newest successful read wins.
+ */
+export function mergeIntel(first: LaunchIntel, next: LaunchIntel): LaunchIntel {
+  return {
+    ev: first.ev,
+    pair: first.pair.symbol === "?" ? next.pair : first.pair,
+    meta: first.meta ?? next.meta,
+    record: first.record ?? next.record,
+    curve: next.curve ?? first.curve,
+    tx: first.tx ?? next.tx,
+    errors: next.errors,
+  };
+}
+
 /**
  * Everything about one launch in one `aggregate3`: token metadata, the factory record, the curve state
  * (including the opening tax as *this* recipient would pay it). Failures are per-call; the card renders
  * whatever came back and lists what did not.
  */
-export async function enrichLaunch(ev: LaunchEvent, recipient: Address = DEAD): Promise<LaunchIntel> {
+async function enrichOnce(ev: LaunchEvent, recipient: Address = DEAD): Promise<LaunchIntel> {
   const errors: string[] = [];
   const t = { address: ev.token, abi: tokenAbi } as const;
   const c = { address: ev.curve, abi: curveAbi } as const;

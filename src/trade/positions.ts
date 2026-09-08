@@ -1,0 +1,107 @@
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import type { Address, Hex } from "viem";
+
+/**
+ * Positions live in one JSON file under data/. No database, no daemon. Writes are atomic
+ * (temp file + rename) so a crash mid-write cannot leave a half-written ledger.
+ * The file holds token addresses and amounts. It never holds keys.
+ */
+
+export interface Exit {
+  at: number;
+  tokens: string;
+  quoteOut: string;
+  reason: string;
+  tx?: Hex | undefined;
+  dryRun: boolean;
+}
+
+export interface Position {
+  id: string;
+  token: Address;
+  curve: Address;
+  symbol: string;
+  name: string;
+  /** the pair the curve trades against; marks and PnL are in these units */
+  pairSymbol: string;
+  pairDecimals: number;
+  openedAt: number;
+  entryTx?: Hex | undefined;
+  dryRun: boolean;
+  /** quote spent on entry, wei of the pair asset */
+  entryQuote: string;
+  tokens: string;
+  /** last mark and the peak it reached, for the trailing stop */
+  lastQuote: string;
+  peakQuote: string;
+  lastAt: number;
+  status: "open" | "closed";
+  exits: Exit[];
+}
+
+export interface ExitRules {
+  takeProfitPct: number;
+  stopLossPct: number;
+  trailingPct: number;
+  maxHoldMin: number;
+}
+
+const FILE = () => resolve(process.env.HOODTERM_DATA ?? resolve(process.cwd(), "data"), "positions.json");
+
+function load(): Position[] {
+  const f = FILE();
+  if (!existsSync(f)) return [];
+  try { return JSON.parse(readFileSync(f, "utf8")) as Position[]; } catch { return []; }
+}
+
+function save(all: Position[]): void {
+  const f = FILE();
+  mkdirSync(dirname(f), { recursive: true });
+  const tmp = `${f}.tmp`;
+  writeFileSync(tmp, JSON.stringify(all, null, 2));
+  renameSync(tmp, f);
+}
+
+export const allPositions = (): Position[] => load();
+export const openPositions = (): Position[] => load().filter((p) => p.status === "open");
+
+export function openPosition(p: Omit<Position, "id" | "status" | "exits" | "lastQuote" | "peakQuote" | "lastAt">): Position {
+  const all = load();
+  const pos: Position = { ...p, id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, status: "open", exits: [], lastQuote: p.entryQuote, peakQuote: p.entryQuote, lastAt: Math.floor(Date.now() / 1000) };
+  all.push(pos);
+  save(all);
+  return pos;
+}
+
+export function updatePosition(id: string, patch: Partial<Position>): Position | null {
+  const all = load();
+  const i = all.findIndex((p) => p.id === id);
+  if (i < 0) return null;
+  const next = { ...all[i]!, ...patch };
+  all[i] = next;
+  save(all);
+  return next;
+}
+
+/** Pure: which exit rule, if any, fires at this mark. Kept free of IO so it is trivially testable. */
+export function exitReason(pos: Pick<Position, "entryQuote" | "peakQuote" | "openedAt">, markQuote: bigint, rules: ExitRules, now = Math.floor(Date.now() / 1000)): string | null {
+  const entry = BigInt(pos.entryQuote);
+  if (entry === 0n) return null;
+  const pnlPct = Number(((markQuote - entry) * 10_000n) / entry) / 100;
+  if (pnlPct >= rules.takeProfitPct) return `take profit +${pnlPct.toFixed(1)}%`;
+  if (pnlPct <= -rules.stopLossPct) return `stop loss ${pnlPct.toFixed(1)}%`;
+  const peak = BigInt(pos.peakQuote);
+  if (peak > entry) {
+    const fromPeak = Number(((peak - markQuote) * 10_000n) / peak) / 100;
+    if (fromPeak >= rules.trailingPct) return `trailing stop ${fromPeak.toFixed(1)}% below the peak`;
+  }
+  const heldMin = (now - pos.openedAt) / 60;
+  if (heldMin >= rules.maxHoldMin) return `max hold ${Math.round(heldMin)} min`;
+  return null;
+}
+
+export const pnlPct = (pos: Pick<Position, "entryQuote">, mark: bigint): number => {
+  const entry = BigInt(pos.entryQuote);
+  return entry === 0n ? 0 : Number(((mark - entry) * 10_000n) / entry) / 100;
+};
