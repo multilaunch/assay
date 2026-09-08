@@ -31,6 +31,12 @@ export interface Entry {
   deployerGraduated: number | null;
   pair: string;
   pairNative: boolean;
+  /**
+   * How the row got here. A live row was scored the moment the launch landed; a backfilled one was
+   * reconstructed afterwards from the chain. They are not the same evidence, so they are countable
+   * apart. Absent means live, which is what every row written before backfill existed was.
+   */
+  source?: "live" | "backfill";
   /** filled in by resolve() */
   outcome?: Outcome;
   /** unix ms when the outcome was written */
