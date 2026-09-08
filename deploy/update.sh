@@ -116,7 +116,7 @@ fi
 # ---- build and swap ------------------------------------------------------------------------------
 step "build and restart"
 if [ "$MODE" = docker ]; then
-  # the typecheck and the 45 tests run inside this build. If they fail, nothing has been swapped.
+  # the typecheck and the whole test suite run inside this build. If they fail, nothing has been swapped.
   dc build board || die "build failed — the running container was not touched"
   dc up -d board
   dc up -d caddy

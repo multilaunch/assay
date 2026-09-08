@@ -291,7 +291,7 @@ real graduated pons pools and all three answered.
 ## Tests
 
 ```sh
-npm test        # 45 checks, no network
+npm test        # 81 checks, no network
 npm run typecheck
 ```
 
@@ -301,6 +301,12 @@ endpoint, a real revert not being retried, and the in-flight cap holding. The en
 every gate refuses by name, that the session budget stops the entry that would cross it and not the one
 that lands on it, that each exit rule fires on its own, and that v4 pool ids are stable whichever side
 of the pair the token sits on.
+
+Several of these exist because a test that could not fail was found where a test should have been: an
+assertion that re-implemented the function it was checking, a range so wide any answer fit inside it,
+a regex that passed on `null`, and a helper that read the developer's own `.env` so the suite's result
+depended on whose machine it ran on. Every regression test added since was checked by reverting the
+fix, watching it fail for the stated reason, and putting the fix back.
 
 ## Deploying it on a VPS
 

@@ -9,7 +9,7 @@ Two paths, both supported:
 | | Docker | systemd |
 |---|---|---|
 | what runs | `compose.prod.yaml`: the board and Caddy as containers | `node` and `caddy` as host services |
-| build safety | the image runs `typecheck` + the 45 tests before it exists | `bootstrap.sh` runs them before it installs |
+| build safety | the image runs `typecheck` + the whole test suite before it exists | `bootstrap.sh` runs them before it installs |
 | live sessions | yes — `docker attach` to type `arm` | no, see [Going live](#going-live) |
 | rollback | retag the previous image, one command | rebuild the previous commit |
 
@@ -357,7 +357,7 @@ sudo /opt/hoodterm/app/deploy/update.sh --rollback
 
 What it does, in order: takes a backup; tags the running image `hoodterm:prev` and records the
 current commit in `/var/lib/hoodterm/.last-good`; fetches; builds — which runs the typecheck and
-the 45 tests, so a broken tree fails here while the old container is still serving; swaps; waits
+the whole test suite, so a broken tree fails here while the old container is still serving; swaps; waits
 for the healthcheck; and if the new one does not come up healthy within two minutes, rolls itself
 back.
 
