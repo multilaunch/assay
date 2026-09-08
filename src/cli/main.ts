@@ -6,13 +6,15 @@ import { CHAIN_ID, DEAD, MULTICALL3, PONS } from "../chain/config.js";
 import { effectiveOpeningBps, quoteBuy } from "../pons/curve.js";
 import { DeployerIndex } from "../pons/deployers.js";
 import { findLaunchEvent, recentLaunches, watchLaunches, type LaunchEvent } from "../pons/detect.js";
-import { curveActivity, enrichLaunch } from "../pons/enrich.js";
+import { curveActivity, devSharePct, enrichLaunch } from "../pons/enrich.js";
+import { record } from "../track/journal.js";
 import { FarmDetector } from "../pons/farm.js";
 import { scoreLaunch } from "../score/score.js";
 import { eth, pct, short } from "../util/fmt.js";
 import { c, hhmmss, log, setQuiet } from "../util/log.js";
 import { renderCard, renderLine, toJson } from "./render.js";
 import { registerTradeCommands } from "./trade.js";
+import { registerAccuracyCommands } from "./accuracy.js";
 
 const program = new Command();
 program.name("hoodterm").description("Launch terminal for Robinhood Chain (pons v2). Local, open, non-custodial, dry run by default.").version("0.1.0");
@@ -135,6 +137,16 @@ program
         const { twins } = farms.observe(intel);
         const deployer = index.lookup(ev.deployer, ev.token);
         const score = scoreLaunch(intel, { deployer, farmTwins: twins });
+        record({
+          t: t0, token: ev.token, curve: ev.curve, deployer: ev.deployer,
+          symbol: intel.meta?.symbol ?? null, score: score.total, verdict: score.verdict,
+          devPct: intel.tx ? devSharePct(intel.tx) : null,
+          taxBps: intel.record ? Number(intel.record.creatorTaxBps) : null,
+          exempt: intel.tx?.exemptions.length ?? null,
+          farmTwins: twins,
+          deployerPrior: deployer?.prior ?? null, deployerGraduated: deployer?.graduated ?? null,
+          pair: intel.pair.symbol, pairNative: intel.pair.native,
+        });
         const show = score.total >= o.minScore && (!o.fireOnly || score.verdict === "FIRE");
         if (show) {
           if (o.json) log.json(toJson(intel, score, { deployer, farmTwins: twins, readMs: Date.now() - t0 }));
@@ -193,5 +205,6 @@ program
 // Everything that can move money lives in its own file, and every one of those commands is dry run
 // unless it is given --live.
 registerTradeCommands(program);
+registerAccuracyCommands(program);
 
 program.parseAsync(process.argv).catch((e: Error) => { log.error(e.message.split("\n")[0]); process.exitCode = 1; });

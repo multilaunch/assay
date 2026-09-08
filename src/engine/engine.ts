@@ -2,7 +2,8 @@ import type { Address } from "viem";
 import { DEAD } from "../chain/config.js";
 import { DeployerIndex } from "../pons/deployers.js";
 import { watchLaunches, type LaunchEvent } from "../pons/detect.js";
-import { enrichLaunch, type LaunchIntel } from "../pons/enrich.js";
+import { devSharePct, enrichLaunch, type LaunchIntel } from "../pons/enrich.js";
+import { record } from "../track/journal.js";
 import { FarmDetector } from "../pons/farm.js";
 import { scoreLaunch, type Score } from "../score/score.js";
 import { buyOnCurve, sellOnCurve } from "../trade/curveTrade.js";
@@ -85,6 +86,18 @@ export function startEngine(opts: EngineOptions): Engine {
       if (d.fire && paused) d.why.push(live ? "not armed" : "dry run not started");
 
       const symbol = intel.meta?.symbol ? `$${intel.meta.symbol}` : ev.token.slice(0, 10);
+      // Written before any decision, so the record is of what the score said and not of what we did
+      // about it. Checking yourself only means something if you cannot pick which calls to keep.
+      record({
+        t: t0, token: ev.token, curve: ev.curve, deployer: ev.deployer,
+        symbol: intel.meta?.symbol ?? null, score: score.total, verdict: score.verdict,
+        devPct: intel.tx ? devSharePct(intel.tx) : null,
+        taxBps: intel.record ? Number(intel.record.creatorTaxBps) : null,
+        exempt: intel.tx?.exemptions.length ?? null,
+        farmTwins: twins,
+        deployerPrior: deployer?.prior ?? null, deployerGraduated: deployer?.graduated ?? null,
+        pair: intel.pair.symbol, pairNative: intel.pair.native,
+      });
       emit({ kind: "launch", at: t0, intel, score, fire: d.why.length === 0, why: d.why, farmTwins: twins, deployer, readMs: Date.now() - t0 });
       if (d.why.length > 0) return;
 
