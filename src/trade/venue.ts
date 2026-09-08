@@ -1,11 +1,14 @@
 import type { Address } from "viem";
 import { factoryAbi } from "../abi/pons.js";
 import { client } from "../chain/clients.js";
-import { PONS } from "../chain/config.js";
+import { DEAD, PONS } from "../chain/config.js";
 import { quoteSell, type CurveState } from "../pons/curve.js";
 import type { LaunchRecord } from "../pons/enrich.js";
 import { curveState } from "./state.js";
 import { poolExists, poolKeyFor, quoteV4 } from "./v4.js";
+import { buyOnCurve, sellOnCurve } from "./curveTrade.js";
+import { buyFromPool, isNative, sellIntoPool } from "./poolTrade.js";
+import { quotingAddress } from "./wallet.js";
 
 /**
  * A pons launch trades in two places over its life, and for a stretch between them it trades nowhere.
@@ -49,6 +52,46 @@ export async function resolveVenue(token: Address): Promise<VenueState> {
     return { venue: (await poolExists(key)) ? "pool" : "swept", record, curve: cv };
   }
   return { venue: "curve", record, curve: cv };
+}
+
+export interface TradeOutcome { amountOut: bigint; venue: Exclude<Venue, "swept">; hash?: `0x${string}` | undefined; dryRun: boolean }
+
+/**
+ * Buy `token` with `quoteIn` of whatever it is paired with, wherever it currently trades.
+ * Refuses during the swept gap instead of quoting a fill nobody can honour.
+ */
+export async function buyAnywhere(token: Address, quoteIn: bigint, slippageBps: number, opts: { dryRun: boolean }): Promise<TradeOutcome> {
+  const v = await resolveVenue(token);
+  if (v.venue === "swept") throw new Error("nothing trades right now: the launch is between the curve and the pool");
+  if (v.venue === "curve") {
+    const curve = await curveOf(token);
+    const cv = v.curve ?? (await curveState(curve, quotingAddress(DEAD)));
+    const r = await buyOnCurve(curve, cv, quoteIn, slippageBps, { dryRun: opts.dryRun, pairToken: v.record.pairToken, native: isNative(v.record.pairToken) });
+    return { amountOut: r.actual ?? r.quoted, venue: "curve", hash: r.hash, dryRun: opts.dryRun };
+  }
+  const r = await buyFromPool(token, v.record, quoteIn, slippageBps, { dryRun: opts.dryRun });
+  return { amountOut: r.quoted, venue: "pool", hash: r.hash, dryRun: opts.dryRun };
+}
+
+/** Sell `tokensIn` of `token` wherever it currently trades. */
+export async function sellAnywhere(token: Address, tokensIn: bigint, slippageBps: number, opts: { dryRun: boolean }): Promise<TradeOutcome> {
+  const v = await resolveVenue(token);
+  if (v.venue === "swept") throw new Error("nothing trades right now: the launch is between the curve and the pool");
+  if (v.venue === "curve") {
+    const curve = await curveOf(token);
+    const cv = v.curve ?? (await curveState(curve, quotingAddress(DEAD)));
+    const r = await sellOnCurve(curve, cv, tokensIn, slippageBps, { dryRun: opts.dryRun, token });
+    return { amountOut: r.actual ?? r.quoted, venue: "curve", hash: r.hash, dryRun: opts.dryRun };
+  }
+  const r = await sellIntoPool(token, v.record, tokensIn, slippageBps, { dryRun: opts.dryRun });
+  return { amountOut: r.quoted, venue: "pool", hash: r.hash, dryRun: opts.dryRun };
+}
+
+/** The curve address the factory recorded for this token. */
+export async function curveOf(token: Address): Promise<Address> {
+  const rec = await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "getLaunchedToken", args: [token] });
+  if (!rec.exists) throw new Error("the factory has no record of that token");
+  return rec.curve;
 }
 
 export interface Mark { quote: bigint; venue: Venue }

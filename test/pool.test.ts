@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { decodeAbiParameters, decodeFunctionData, parseAbiParameters, slice, type Address, type Hex } from "viem";
 import { ACTION, CMD_V4_SWAP, universalRouterAbi } from "../src/abi/uniswap.js";
 import { PONS, ZERO } from "../src/chain/config.js";
-import { encodeV4Sell } from "../src/trade/poolTrade.js";
+import { encodeV4Sell, encodeV4Swap } from "../src/trade/poolTrade.js";
 import { poolKeyFor } from "../src/trade/v4.js";
 
 const TOKEN = "0x9AdA7c2A1A860dcE1a8809731732D915D97D2053" as Address;
@@ -88,4 +88,32 @@ test("our layout is the one the chain actually uses", () => {
   const [c2] = decodeAbiParameters(SETTLE_TAKE, params[2]!);
   assert.match(c1 as string, /^0x[0-9a-fA-F]{40}$/);
   assert.match(c2 as string, /^0x[0-9a-fA-F]{40}$/);
+});
+
+test("a buy flips the direction: ETH rides as msg.value, settle pays ETH, take collects the token", () => {
+  // The one thing the sell path cannot prove. Native ETH is not pulled through Permit2, it is sent
+  // with the call, so `value` must carry the amount or the router settles nothing.
+  const { commands, inputs, value } = encodeV4Swap(KEY, ZERO as Address, 10n ** 16n, 42n);
+  assert.equal(commands, "0x10");
+  assert.equal(value, 10n ** 16n, "the spend rides along as msg.value");
+
+  const [actions, params] = decodeAbiParameters(OUTER, inputs[0]!);
+  assert.equal(actions, "0x060c0f", "the same three actions in the same order as a sell");
+  const [p] = decodeAbiParameters(EXACT_IN_SINGLE, params[0]!);
+  assert.equal(p.zeroForOne, true, "ETH is currency0, so buying the token is zero-for-one");
+  assert.equal(p.amountIn, 10n ** 16n);
+
+  const [settleCur, settleAmt] = decodeAbiParameters(SETTLE_TAKE, params[1]!);
+  const [takeCur, takeAmt] = decodeAbiParameters(SETTLE_TAKE, params[2]!);
+  assert.equal(settleCur, ZERO, "we owe ETH");
+  assert.equal(settleAmt, 10n ** 16n);
+  assert.equal((takeCur as string).toLowerCase(), TOKEN.toLowerCase(), "we are owed the launch token");
+  assert.equal(takeAmt, 42n);
+});
+
+test("an ERC-20 input carries no value and is pulled through Permit2 instead", () => {
+  const pair = "0xffffffffffffffffffffffffffffffffffffffff" as Address;
+  const key = poolKeyFor(TOKEN, { pairToken: pair, poolFee: 0, tickSpacing: 200 });
+  const { value } = encodeV4Swap(key, pair, 500n, 1n);
+  assert.equal(value, 0n);
 });

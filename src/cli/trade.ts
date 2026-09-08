@@ -1,6 +1,6 @@
 import type { Command } from "commander";
-import { isAddress, parseEther, type Address } from "viem";
-import { escrowAbi, factoryAbi } from "../abi/pons.js";
+import { isAddress, parseEther, parseUnits, type Address } from "viem";
+import { erc20Abi, escrowAbi, factoryAbi } from "../abi/pons.js";
 import { client } from "../chain/clients.js";
 import { DEAD, EXPLORER, PONS, ZERO } from "../chain/config.js";
 import { notify, telegramEnabled } from "../alerts/telegram.js";
@@ -13,9 +13,10 @@ import { curveActivity, enrichLaunch } from "../pons/enrich.js";
 import { findLaunchEvent } from "../pons/detect.js";
 import { allPositions, openPositions, pnlPct } from "../trade/positions.js";
 import { curveState } from "../trade/state.js";
-import { markPosition, resolveVenue } from "../trade/venue.js";
-import { getAccount } from "../trade/wallet.js";
+import { buyAnywhere, markPosition, resolveVenue, sellAnywhere } from "../trade/venue.js";
+import { getAccount, walletClient } from "../trade/wallet.js";
 import { amount, ago, bar, eth, padL, padR, pct, short } from "../util/fmt.js";
+import { envNum } from "../util/env.js";
 import { c, hhmmss, link, log } from "../util/log.js";
 import { renderCard } from "./render.js";
 
@@ -105,6 +106,94 @@ export function registerTradeCommands(program: Command): void {
         ? "bound to 0.0.0.0 (a container); publish it on 127.0.0.1 so only this machine can reach it"
         : "loopback only; the page has no route that buys on demand, and --live is a launch flag"));
       process.on("SIGINT", () => { b.close(); log.info(c.grey("\nboard stopped")); process.exit(0); });
+    });
+
+  // ---- buy ----------------------------------------------------------------------------------------
+  program
+    .command("buy <token> <amount>")
+    .description("buy a launch wherever it trades: the curve before graduation, the v4 pool after")
+    .option("--live", "sign and send")
+    .option("--slippage <bps>", "slippage in basis points", (v) => Number(v), envNum("SLIPPAGE_BPS", 300))
+    .action(async (token: string, amount: string, o: { live?: boolean; slippage: number }) => {
+      if (!isAddress(token, { strict: false })) { log.error("not an address"); process.exitCode = 2; return; }
+      const t = token as Address;
+      const v = await resolveVenue(t);
+      const dec = v.record.pairToken.toLowerCase() === ZERO ? 18 : await client.readContract({ address: v.record.pairToken, abi: erc20Abi, functionName: "decimals" }).then(Number).catch(() => 18);
+      const quoteIn = parseUnits(amount, dec);
+      const live = o.live === true;
+
+      // A buy on the curve inside the opening window hands most of the spend to the creator.
+      // Say so with the real number rather than letting it happen quietly.
+      if (v.venue === "curve" && v.curve && v.curve.openingTaxBps > 0n) {
+        log.warn(`the opening tax is ${pct(v.curve.openingTaxBps)} right now — that share of this buy goes to the creator. Wait a few seconds.`);
+      }
+
+      const r = await buyAnywhere(t, quoteIn, o.slippage, { dryRun: !live });
+      console.log(`${live ? c.green("bought") : c.grey("would buy")} on the ${r.venue}: ${amount} ${v.record.pairToken.toLowerCase() === ZERO ? "ETH" : "quote"} → ${(Number(r.amountOut) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 0 })} tokens${r.hash ? c.grey(`  ${r.hash}`) : ""}`);
+      if (!live) console.log(c.grey("dry run: nothing was sent. add --live to sign."));
+    });
+
+  // ---- sell ---------------------------------------------------------------------------------------
+  program
+    .command("sell <token> [percent]")
+    .description("sell a share of your balance wherever the launch trades (default 100)")
+    .option("--live", "sign and send")
+    .option("--slippage <bps>", "slippage in basis points", (v) => Number(v), envNum("SLIPPAGE_BPS", 300))
+    .action(async (token: string, percent: string | undefined, o: { live?: boolean; slippage: number }) => {
+      if (!isAddress(token, { strict: false })) { log.error("not an address"); process.exitCode = 2; return; }
+      const t = token as Address;
+      const acct = getAccount();
+      if (!acct) { log.error("selling needs PRIVATE_KEY in .env, even for a dry run: there is no balance to sell without a wallet"); process.exitCode = 2; return; }
+
+      const share = Math.min(100, Math.max(1, Number(percent ?? 100)));
+      const balance = await client.readContract({ address: t, abi: erc20Abi, functionName: "balanceOf", args: [acct.address] });
+      if (balance === 0n) { log.error("that wallet holds none of this token"); process.exitCode = 2; return; }
+      const tokensIn = share === 100 ? balance : (balance * BigInt(Math.round(share))) / 100n;
+
+      const v = await resolveVenue(t);
+      const dec = v.record.pairToken.toLowerCase() === ZERO ? 18 : 6;
+      const live = o.live === true;
+      const r = await sellAnywhere(t, tokensIn, o.slippage, { dryRun: !live });
+      console.log(`${live ? c.green("sold") : c.grey("would sell")} ${share}% (${(Number(tokensIn) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 0 })} tokens) on the ${r.venue} for ${amount(r.amountOut, dec, 6)}${r.hash ? c.grey(`  ${r.hash}`) : ""}`);
+      if (!live) console.log(c.grey("dry run: nothing was sent. add --live to sign."));
+    });
+
+  // ---- claim --------------------------------------------------------------------------------------
+  program
+    .command("claim [token]")
+    .description("take your creator fees out of the pons escrow; give a token to claim its pair asset")
+    .option("--live", "sign and send")
+    .action(async (token: string | undefined, o: { live?: boolean }) => {
+      const acct = getAccount();
+      if (!acct) { log.error("claiming needs PRIVATE_KEY in .env"); process.exitCode = 2; return; }
+
+      // Native and ERC-20 balances live in separate escrow ledgers, so which one to claim depends
+      // on what the launch was paired with.
+      let pair: Address = ZERO as Address;
+      if (token) {
+        if (!isAddress(token, { strict: false })) { log.error("not an address"); process.exitCode = 2; return; }
+        const rec = await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "getLaunchedToken", args: [token as Address] });
+        if (!rec.exists) { log.error("the factory has no record of that token"); process.exitCode = 2; return; }
+        pair = rec.pairToken;
+      }
+      const native = pair.toLowerCase() === ZERO;
+      const dec = native ? 18 : await client.readContract({ address: pair, abi: erc20Abi, functionName: "decimals" }).then(Number).catch(() => 18);
+      const pending = native
+        ? await client.readContract({ address: PONS.escrow, abi: escrowAbi, functionName: "balanceOf", args: [acct.address] })
+        : await client.readContract({ address: PONS.escrow, abi: escrowAbi, functionName: "balanceOfToken", args: [acct.address, pair] });
+
+      console.log(`recipient  ${acct.address}`);
+      console.log(`pending    ${amount(pending, dec, 6)} ${native ? "ETH" : short(pair)}`);
+      if (pending === 0n) { console.log(c.grey("nothing to claim")); return; }
+      if (o.live !== true) { console.log(c.grey("dry run: nothing was sent. add --live to claim.")); return; }
+
+      const wallet = walletClient();
+      const hash = native
+        ? await wallet.writeContract({ address: PONS.escrow, abi: escrowAbi, functionName: "claim", account: acct, chain: null })
+        : await wallet.writeContract({ address: PONS.escrow, abi: escrowAbi, functionName: "claimToken", args: [pair], account: acct, chain: null });
+      const receipt = await client.waitForTransactionReceipt({ hash, timeout: 60_000 });
+      console.log(receipt.status === "success" ? c.green(`claimed  ${hash}`) : c.red(`reverted  ${hash}`));
+      if (receipt.status !== "success") process.exitCode = 1;
     });
 
   // ---- watch --------------------------------------------------------------------------------------

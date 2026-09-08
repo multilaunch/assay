@@ -89,6 +89,9 @@ only reads. `.env` works as shipped on the public endpoints.
 | `dev <address>` | every launch by one deployer, with its phase | no |
 | `positions` | open and closed positions, marked live | no |
 | `wallet` | the signer: address, balance, unclaimed creator fees | yes |
+| `buy <token> <amt>` | buy wherever it trades: curve before graduation, v4 pool after | `--live` only |
+| `sell <token> [pct]` | sell a share of your balance, routed the same way | `--live` only |
+| `claim [token]` | take your creator fees out of the pons escrow | `--live` only |
 
 ```sh
 npm run doctor -- --probe
@@ -118,7 +121,7 @@ The board binds loopback only and has no route that buys on demand. Its four ver
 close a position, and edit one of five bounded rules — which take effect on the next launch, so you can
 watch `minScore` reshape the feed while it runs.
 
-**Venue routing.** Before graduation the curve is the venue. After it, the Uniswap v4 pool behind the
+**Venue routing.** `buy`, `sell` and the engine all go through the same router. Before graduation the curve is the venue. After it, the Uniswap v4 pool behind the
 pons hook, keyed by the pair token and tick spacing *the factory recorded for that launch*. Between the
 two there is a gap of seconds to minutes where nothing trades at all, and every function refuses during
 it instead of quoting a fill nobody can honour.
@@ -184,8 +187,9 @@ via the router) could actually be read — and that token had in fact graduated.
 Bundling, multi-wallet, copy trading, a hosted service, MEV tricks. There is no ordering to exploit on
 this chain and no server to trust.
 
-Not proven with real funds: the live pool sell has never been executed, only encoded, decoded and
-simulated. See below.
+Not proven with real funds: no live trade has ever been executed. Both directions are encoded,
+decoded, checked against the chain's own bytes and simulated against the live router — but never
+signed. See below.
 
 ## Built against
 
@@ -211,8 +215,12 @@ So it is verified three ways instead:
    (`0xe2ab1c7c…`) is kept in `test/fixtures/`. It decodes cleanly with *our* struct definition and
    carries the same `commands 0x10` and `actions 0x060c0f` we emit. Someone else's calldata is the
    only honest proof that our layout is the real one.
-3. **Simulated before sending.** `sellIntoPool` runs `simulateContract` against the live router and
-   only signs if it passes.
+3. **Simulated before sending.** Every live pool trade runs `simulateContract` against the real
+   router first and only signs if it passes.
+
+The buy direction gets its own test for the thing a sell can never exercise: native ETH is not pulled
+through Permit2, it rides along as `msg.value`, so the encoder has to set `value` or the router
+settles nothing.
 
 The read side needs no such hedging: `poolExists`, `getLiquidity` and `quoteV4` were run against three
 real graduated pons pools and all three answered.
@@ -220,7 +228,7 @@ real graduated pons pools and all three answered.
 ## Tests
 
 ```sh
-npm test        # 43 checks, no network
+npm test        # 45 checks, no network
 npm run typecheck
 ```
 
