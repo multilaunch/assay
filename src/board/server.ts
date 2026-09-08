@@ -80,6 +80,18 @@ const EDITABLE = {
 } as const;
 type EditableKey = keyof typeof EDITABLE;
 
+/**
+ * A social link is whatever the launcher typed into the token's metadata, so it is not a URL until
+ * we have checked. `javascript:` there would run in the board's own origin the moment someone clicks
+ * the little x next to a launch, and the board can arm a live engine — so anything that is not plain
+ * http(s) never reaches the page.
+ */
+function link(raw: string | undefined): string {
+  if (!raw) return "";
+  try { const u = new URL(raw); return u.protocol === "https:" || u.protocol === "http:" ? u.href : ""; }
+  catch { return ""; }
+}
+
 /** Engine events carry bigints and a whole LaunchIntel; the page wants small flat JSON. */
 function wire(e: EngineEvent): Record<string, unknown> {
   if (e.kind !== "launch") {
@@ -92,7 +104,7 @@ function wire(e: EngineEvent): Record<string, unknown> {
     token: intel.ev.token, curve: intel.ev.curve, deployer: intel.ev.deployer,
     symbol: intel.meta?.symbol ?? null, name: intel.meta?.name ?? "(unreadable)",
     description: (intel.meta?.description ?? "").replace(/\s+/g, " ").trim().slice(0, 280),
-    socials: { x: soc.x ? intel.meta?.socials.twitter : "", web: soc.web ? intel.meta?.socials.website : "", tg: soc.tg ? intel.meta?.socials.telegram : "" },
+    socials: { x: soc.x ? link(intel.meta?.socials.twitter) : "", web: soc.web ? link(intel.meta?.socials.website) : "", tg: soc.tg ? link(intel.meta?.socials.telegram) : "" },
     score: score.total, verdict: score.verdict, reasons: score.reasons, flags: score.flags,
     devPct: intel.tx ? devSharePct(intel.tx) : null,
     exempt: intel.tx?.exemptions ?? null,

@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The feed carries strings a stranger wrote on chain. Nothing here loads code from anywhere but this page. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
 <title>hoodterm</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -259,7 +261,7 @@ a:hover{border-bottom-color:var(--hot)}
 #coach h3{margin:0 0 var(--s2); font-size:13px; font-weight:600}
 #coach p{margin:0 0 var(--s3); font-size:12.5px; line-height:1.6; color:var(--ink-2); max-width:60ch}
 #coach .foot{display:flex; align-items:center; gap:var(--s2)}
-#coach .step{font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-right:auto}
+#coach .step{font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-right:auto; white-space:nowrap}
 .langs{display:flex; border:1px solid var(--line-hard)}
 .langs button{border:0; padding:3px 8px; font-size:11px; color:var(--ink-3); font-family:var(--mono)}
 .langs button[aria-pressed="true"]{background:var(--hot); color:var(--hot-ink); font-weight:600}
@@ -383,9 +385,170 @@ a:hover{border-bottom-color:var(--hot)}
 "use strict";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
-const clock = (t) => new Date(t).toTimeString().slice(0, 8);
+const clock = (ms) => new Date(ms).toTimeString().slice(0, 8);
+
+/* ---- language ------------------------------------------------------------
+   Two languages, one dictionary, no build step. Every string the page can show
+   lives here — including the ones inside the log and the tooltips, because a
+   half-translated interface is worse than an untranslated one. */
+const I18N = {
+  en: {
+    help:"guide", ribbon:"launches / sec · 90s",
+    k_seen:"seen", k_rate:"per min", k_pass:"passing", k_open:"open", k_spent:"spent",
+    f_all:"all", f_fire:"fire", f_watch:"watch", f_pass:"passes rules",
+    search:"symbol, name or address",
+    c_score:"score", c_launch:"launch", c_buy:"opening buy", c_tax:"tax", c_exempt:"exempt",
+    c_pair:"pair", c_curve:"curve", c_dev:"deployer", c_age:"age",
+    s_pos:"positions", s_rules:"rules", s_log:"log",
+
+    st_paused:"paused", st_armed:"armed", st_running:"running",
+    m_live:"live", m_dry:"dry run",
+    b_start:"start", b_stop:"stop", b_arm:"arm live",
+    net_connecting:"connecting", net_connected:"connected", net_reconnecting:"reconnecting",
+    blank_wait:"waiting for the first launch", blank_filter:"no launch matches this filter",
+    none:"none", close_now:"close now",
+
+    d_token:"token", d_deployer:"deployer", d_fees:"fees to", d_socials:"socials", d_exempt:"exempt",
+    d_hist:"{p} prior, {g} graduated", d_third:"third party", d_refused:"refused: {x}",
+    d_read:"read in {ms} ms", d_failed:"{n} reads failed", d_unknown:"?",
+    l_pons:"pons", l_explorer:"explorer",
+    row_fresh:"fresh", row_passes:"passes", row_farm:"farm ×{n}", tax_left:"{s}s tax",
+    pos_in:"in {x} {pair}", ps_open:"open", ps_closed:"closed", ps_dry:"dry",
+    u_s:"s", u_m:"m", u_h:"h",
+
+    why_buy_ok:"1-6% of supply: skin in the game without a bag that can flatten the curve",
+    why_buy_warn:"6-10%: heavy",
+    why_buy_crit:"over 10%: one wallet can flatten the curve",
+    why_buy_nil:"under 1%: nothing meaningful at stake",
+    why_tax_ok:"2% or less: the creator earns on volume",
+    why_tax_warn:"2-5%",
+    why_tax_crit:"over 5%: traders pay it twice per round trip",
+    why_ex_ok:"no wallets exempt from the opening tax",
+    why_ex_warn:"1-3 exempt wallets",
+    why_ex_crit:"4 or more exempt wallets: a declared bundle",
+    why_buy_unk:"could not be read from the chain — scored as badly as the worst case, not as fine",
+    why_tax_unk:"could not be read from the chain — scored as badly as the worst case, not as fine",
+    why_ex_unk:"could not be read from the chain — scored as badly as the worst case, not as fine",
+
+    r_minScore:"min score", r_maxOpenPositions:"max open positions", r_maxCreatorTaxBps:"max creator tax, bps",
+    r_maxDevSharePct:"max opening buy, %", r_maxExemptWallets:"max exempt wallets",
+
+    log_connected:"connected", log_req_failed:"request failed",
+    log_closed:"closed {p}% on {v}", log_close_refused:"close refused: {e}",
+    log_rule:"{k} → {v}", log_rule_refused:"rule refused: {e}",
+    log_fire:"entered {s} at tax {t}% after {ms} ms",
+    log_exit:"exit {s} {p}% — {r}",
+    log_hold:"held {s}: tax still {t}%",
+    log_swept:"{s} is between the curve and the pool",
+    log_index:"deployer index: {l} launches, {g} graduated",
+
+    c_skip:"skip", c_back:"back", c_next:"next", c_done:"got it", c_step:"{i} of {n}",
+    t1h:"This is the tape",
+    t1p:"Every pons v2 launch on Robinhood Chain lands here about two seconds after it hits a block — read from the chain itself, not from anyone's API. Nothing is bought until you press start.",
+    t2h:"Dry run or live",
+    t2p:"Dry run prices every entry and exit for real but signs nothing. Live spends the wallet in your .env. You choose this when you start the process, and no button on this page can change it.",
+    t3h:"The tempo",
+    t3p:"Launches per second over the last minute and a half. A flat line is a quiet chain. A spike is usually one person firing a farm — the same token, six times, under six names.",
+    t4h:"The score",
+    t4p:"0 to 100, from what the chain says about the launch: the creator's own buy, the tax, the exempt wallets, the deployer's history. Open a row to see every reason that went into the number.",
+    t5h:"How much the creator took",
+    t5p:"The share of supply the deployer bought for themselves in the launch transaction. A little is a good sign — they are in it too. A lot means one wallet can flatten the curve whenever it likes.",
+    t6h:"What every trade costs",
+    t6p:"The creator's tax, paid on the way in and again on the way out. Two percent is the house norm. Above five, you are paying for the exit before you have made anything.",
+    t7h:"The bundle",
+    t7p:"For the first three seconds a launch is taxed 99%, which is what stops a race for the first block. Wallets on this list are exempt from that. They are declared in the launch itself, so you can count them — and four or more is a bundle set up to sell into you.",
+    t8h:"What the engine will and will not buy",
+    t8p:"Every rule has to pass before an entry fires. Edit one and it applies to the next launch, not to the ones already on screen. Tighten anything you do not like; the engine has no opinion of its own.",
+    t9h:"Start it",
+    t9p:"Start reads and scores and, in a dry run, takes paper entries. In live mode this button says arm — press it and the next launch that passes every rule is bought with real ETH. Positions appear on the right, and you can close any of them by hand.",
+  },
+  ru: {
+    help:"гайд", ribbon:"запусков / сек · 90с",
+    k_seen:"всего", k_rate:"в минуту", k_pass:"проходят", k_open:"в позиции", k_spent:"потрачено",
+    f_all:"все", f_fire:"огонь", f_watch:"наблюдать", f_pass:"проходят фильтр",
+    search:"тикер, название или адрес",
+    c_score:"скор", c_launch:"запуск", c_buy:"закуп дева", c_tax:"налог", c_exempt:"без налога",
+    c_pair:"пара", c_curve:"кривая", c_dev:"деплоер", c_age:"возраст",
+    s_pos:"позиции", s_rules:"правила", s_log:"лог",
+
+    st_paused:"пауза", st_armed:"заряжен", st_running:"идёт",
+    m_live:"боевой", m_dry:"вхолостую",
+    b_start:"старт", b_stop:"стоп", b_arm:"зарядить",
+    net_connecting:"подключаюсь", net_connected:"на связи", net_reconnecting:"переподключаюсь",
+    blank_wait:"ждём первый запуск", blank_filter:"под фильтр ничего не попало",
+    none:"пусто", close_now:"закрыть",
+
+    d_token:"токен", d_deployer:"деплоер", d_fees:"комиссии", d_socials:"соцсети", d_exempt:"без налога",
+    d_hist:"{p} до этого, {g} доехали", d_third:"третья сторона", d_refused:"не берём: {x}",
+    d_read:"прочитано за {ms} мс", d_failed:"{n} чтений сорвалось", d_unknown:"?",
+    l_pons:"pons", l_explorer:"обозреватель",
+    row_fresh:"новый", row_passes:"проходит", row_farm:"ферма ×{n}", tax_left:"{s}с налога",
+    pos_in:"вход {x} {pair}", ps_open:"открыта", ps_closed:"закрыта", ps_dry:"вхолостую",
+    u_s:"с", u_m:"м", u_h:"ч",
+
+    why_buy_ok:"1-6% саплая: деплоер в деле, но не может уронить кривую",
+    why_buy_warn:"6-10%: тяжеловато",
+    why_buy_crit:"больше 10%: один кошелёк кладёт кривую когда захочет",
+    why_buy_nil:"меньше 1%: деплоеру нечего терять",
+    why_tax_ok:"2% и меньше: создатель зарабатывает на обороте",
+    why_tax_warn:"2-5%",
+    why_tax_crit:"больше 5%: за круг трейдер платит его дважды",
+    why_ex_ok:"никто не освобождён от стартового налога",
+    why_ex_warn:"1-3 освобождённых кошелька",
+    why_ex_crit:"4 и больше освобождённых: заявленный бандл",
+    why_buy_unk:"с чейна не прочиталось — считаем по худшему сценарию, а не «наверное нормально»",
+    why_tax_unk:"с чейна не прочиталось — считаем по худшему сценарию, а не «наверное нормально»",
+    why_ex_unk:"с чейна не прочиталось — считаем по худшему сценарию, а не «наверное нормально»",
+
+    r_minScore:"минимальный скор", r_maxOpenPositions:"максимум позиций", r_maxCreatorTaxBps:"максимум налога, б.п.",
+    r_maxDevSharePct:"максимум закупа дева, %", r_maxExemptWallets:"максимум без налога",
+
+    log_connected:"на связи", log_req_failed:"запрос не прошёл",
+    log_closed:"закрыл {p}% на {v}", log_close_refused:"закрыть не дали: {e}",
+    log_rule:"{k} → {v}", log_rule_refused:"правило не приняли: {e}",
+    log_fire:"вошёл в {s} при налоге {t}% через {ms} мс",
+    log_exit:"выход {s} {p}% — {r}",
+    log_hold:"придержал {s}: налог всё ещё {t}%",
+    log_swept:"{s} между кривой и пулом",
+    log_index:"индекс деплоеров: {l} запусков, {g} доехали",
+
+    c_skip:"пропустить", c_back:"назад", c_next:"дальше", c_done:"понятно", c_step:"{i} из {n}",
+    t1h:"Это лента",
+    t1p:"Каждый запуск pons v2 на Robinhood Chain появляется здесь секунды через две после того, как попал в блок — читаем прямо с чейна, а не из чужого API. Пока вы не нажали старт, ничего не покупается.",
+    t2h:"Вхолостую или боевой",
+    t2p:"Вхолостую считает каждый вход и выход по-настоящему, но ничего не подписывает. Боевой тратит кошелёк из .env. Режим выбирается при запуске процесса, и ни одна кнопка на странице его не поменяет.",
+    t3h:"Темп",
+    t3p:"Запусков в секунду за последние полторы минуты. Ровная линия — чейн спит. Всплеск — обычно один человек запускает ферму: тот же токен шесть раз под шестью именами.",
+    t4h:"Скор",
+    t4p:"От 0 до 100, целиком из того, что чейн говорит о запуске: сколько взял себе создатель, какой налог, сколько кошельков освобождено, что за деплоер. Раскройте строку — там все причины, из которых сложилось число.",
+    t5h:"Сколько взял себе создатель",
+    t5p:"Доля саплая, которую деплоер купил себе в той же транзакции. Немного — хороший знак, он в деле вместе с вами. Много — один кошелёк может положить кривую в любой момент.",
+    t6h:"Во что обходится сделка",
+    t6p:"Налог создателя платится и на входе, и на выходе. Два процента — норма. Выше пяти вы оплачиваете выход раньше, чем что-то заработали.",
+    t7h:"Бандл",
+    t7p:"Первые три секунды запуск обложен налогом в 99% — именно это убивает гонку за первый блок. Кошельки из этого списка от него освобождены. Они объявлены прямо в запуске, так что их можно пересчитать, и четыре с лишним — это бандл, собранный чтобы продать вам.",
+    t8h:"Что движок купит, а что нет",
+    t8p:"Вход происходит, только когда выполнены все правила сразу. Поправьте любое — оно подействует на следующий запуск, а не на те, что уже на экране. Затягивайте что угодно: своего мнения у движка нет.",
+    t9h:"Запуск",
+    t9p:"Старт начинает читать и оценивать, а вхолостую — ещё и брать бумажные входы. В боевом режиме кнопка называется «зарядить»: нажали — и следующий запуск, прошедший все правила, покупается на реальный ETH. Позиции появятся справа, любую можно закрыть руками.",
+  },
+};
+
+let LANG = "en";
+try { const saved = localStorage.getItem("hoodterm.lang"); if (I18N[saved]) LANG = saved; }
+catch { /* private mode: English and no memory of the choice */ }
+
+/* Missing keys fall through to English rather than showing the key itself, so a gap in a
+   translation degrades to a readable page instead of to debug output. */
+const t = (key, vars) => {
+  let s = I18N[LANG][key] ?? I18N.en[key] ?? key;
+  if (vars) for (const k of Object.keys(vars)) s = s.replaceAll("{" + k + "}", vars[k]);
+  return s;
+};
+
 
 let LIVE = false, PAUSED = true, BOUNDS = {}, FILTER = "all", QUERY = "";
+let RULES = {}, POSITIONS = [], LINK = "net_connecting";
 let TAX_SECONDS = 3;
 let seen = 0, passing = 0;
 const rows = [];                       // newest first, for the age and decay ticks
@@ -402,22 +565,13 @@ const bEx  = (n) => n == null ? "unk" : n === 0 ? "ok" : n <= 3 ? "warn" : "crit
 
 /* The number is the information and the colour only emphasises it, so nothing is lost to a
    colour-blind reader. The tooltip says the band anyway, for the reader who wants the rule. */
-const WHY = {
-  buy: { ok:"1-6% of supply: skin in the game without a bag that can flatten the curve",
-         warn:"6-10%: heavy", crit:"over 10%, or unreadable: one wallet can flatten the curve",
-         nil:"under 1%: nothing meaningful at stake" },
-  tax: { ok:"2% or less: the creator earns on volume", warn:"2-5%", crit:"over 5%: traders pay it twice per round trip" },
-  ex:  { ok:"no wallets exempt from the opening tax", warn:"1-3 exempt wallets",
-         crit:"4 or more exempt wallets: a declared bundle" },
-};
-const UNREAD = "could not be read from the chain — scored as badly as the worst case, not as fine";
-for (const k of Object.keys(WHY)) WHY[k].unk = UNREAD;
+const why = (group, band) => t(`why_${group}_${band}`);
 
 const shortAge = (ms) => {
   const s = Math.max(0, Math.round(ms / 1000));
-  if (s < 60) return s + "s";
+  if (s < 60) return s + t("u_s");
   const m = Math.floor(s / 60);
-  return m < 60 ? m + "m" : Math.floor(m / 60) + "h";
+  return m < 60 ? m + t("u_m") : Math.floor(m / 60) + t("u_h");
 };
 
 function say(text, cls) {
@@ -484,24 +638,24 @@ function detailRow(e) {
     e.socials?.x && `<a href="${esc(e.socials.x)}" target="_blank" rel="noopener">x</a>`,
     e.socials?.web && `<a href="${esc(e.socials.web)}" target="_blank" rel="noopener">website</a>`,
     e.socials?.tg && `<a href="${esc(e.socials.tg)}" target="_blank" rel="noopener">telegram</a>`,
-  ].filter(Boolean).join(" · ") || '<span class="t-dim">none</span>';
+  ].filter(Boolean).join(" · ") || `<span class="t-dim">${esc(t("none"))}</span>`;
   tr.innerHTML = `<td colspan="10">
     ${e.description ? `<p class="blurb">${esc(e.description)}</p>` : ""}
     <div class="grid">
-      <dl class="kv"><dt>token</dt><dd>${esc(e.token)}</dd></dl>
-      <dl class="kv"><dt>deployer</dt><dd>${esc(e.deployer)}${e.deployerPrior != null ? ` · ${e.deployerPrior} prior, ${e.deployerGraduated} graduated` : ""}</dd></dl>
-      <dl class="kv"><dt>fees to</dt><dd>${e.feeRecipient ? (e.feeToDeployer ? "deployer" : `<span class="t-warn">third party</span> ${esc(e.feeRecipient)}`) : "?"}</dd></dl>
-      <dl class="kv"><dt>socials</dt><dd>${soc}</dd></dl>
-      ${e.exempt && e.exempt.length ? `<dl class="kv"><dt>exempt</dt><dd>${e.exempt.map(esc).join("<br>")}</dd></dl>` : ""}
+      <dl class="kv"><dt>${esc(t("d_token"))}</dt><dd>${esc(e.token)}</dd></dl>
+      <dl class="kv"><dt>${esc(t("d_deployer"))}</dt><dd>${esc(e.deployer)}${e.deployerPrior != null ? ` · ${esc(t("d_hist", { p: e.deployerPrior, g: e.deployerGraduated }))}` : ""}</dd></dl>
+      <dl class="kv"><dt>${esc(t("d_fees"))}</dt><dd>${e.feeRecipient ? (e.feeToDeployer ? esc(t("d_deployer")) : `<span class="t-warn">${esc(t("d_third"))}</span> ${esc(e.feeRecipient)}`) : esc(t("d_unknown"))}</dd></dl>
+      <dl class="kv"><dt>${esc(t("d_socials"))}</dt><dd>${soc}</dd></dl>
+      ${e.exempt && e.exempt.length ? `<dl class="kv"><dt>${esc(t("d_exempt"))}</dt><dd>${e.exempt.map(esc).join("<br>")}</dd></dl>` : ""}
     </div>
     <div class="why">${(e.reasons || []).map((r) => { const i = r.indexOf(" "); return `<b>${esc(r.slice(0, i))}</b> ${esc(r.slice(i + 1))}`; }).join(" &nbsp; ")}</div>
     ${e.flags && e.flags.length ? `<div class="note">${esc(e.flags.join(" · "))}</div>` : ""}
-    ${e.why && e.why.length ? `<div class="note">refused: ${esc(e.why.join("; "))}</div>` : ""}
+    ${e.why && e.why.length ? `<div class="note">${esc(t("d_refused", { x: e.why.join("; ") }))}</div>` : ""}
     <div class="row-links">
-      <a href="${esc(e.links.pons)}" target="_blank" rel="noopener">pons</a>
-      <a href="${esc(e.links.explorer)}" target="_blank" rel="noopener">explorer</a>
-      <span class="t-dim">read in ${e.readMs} ms</span>
-      ${e.errors && e.errors.length ? `<span class="t-crit">${e.errors.length} read${e.errors.length > 1 ? "s" : ""} failed</span>` : ""}
+      <a href="${esc(e.links.pons)}" target="_blank" rel="noopener">${esc(t("l_pons"))}</a>
+      <a href="${esc(e.links.explorer)}" target="_blank" rel="noopener">${esc(t("l_explorer"))}</a>
+      <span class="t-dim">${esc(t("d_read", { ms: e.readMs }))}</span>
+      ${e.errors && e.errors.length ? `<span class="t-crit">${esc(t("d_failed", { n: e.errors.length }))}</span>` : ""}
     </div></td>`;
   return tr;
 }
@@ -512,14 +666,14 @@ function launchRow(e) {
   tr.tabIndex = 0;
   tr.setAttribute("aria-expanded", "false");
   const pct = e.progress != null ? e.progress * 100 : 0;
-  const dev = e.deployerPrior == null ? "—" : e.deployerPrior === 0 ? "fresh" : `${e.deployerGraduated}/${e.deployerPrior}`;
+  const dev = e.deployerPrior == null ? "—" : e.deployerPrior === 0 ? t("row_fresh") : `${e.deployerGraduated}/${e.deployerPrior}`;
   tr.innerHTML = `
     <td class="mk"><i></i></td>
     <td class="r"><span class="sc">${e.score}</span></td>
-    <td class="who"><span class="tick">${esc(e.symbol ? "$" + e.symbol : e.token.slice(0, 10))}</span><span class="nm">${esc(e.name)}</span>${e.farmTwins ? `<span class="mini-flag">farm ×${e.farmTwins}</span>` : ""}${e.fire ? `<span class="mini-flag good">passes</span>` : ""}</td>
-    <td class="r"><span class="q ${bBuy(e.devPct)}" title="${esc(WHY.buy[bBuy(e.devPct)])}">${e.devPct == null ? "?" : e.devPct.toFixed(2) + "%"}</span></td>
-    <td class="r"><span class="q ${bTax(e.taxBps)}" title="${esc(WHY.tax[bTax(e.taxBps)])}">${e.taxBps == null ? "?" : e.taxBps / 100 + "%"}</span></td>
-    <td class="r"><span class="q ${bEx(e.exempt ? e.exempt.length : null)}" title="${esc(WHY.ex[bEx(e.exempt ? e.exempt.length : null)])}">${e.exempt == null ? "?" : e.exempt.length}</span></td>
+    <td class="who"><span class="tick">${esc(e.symbol ? "$" + e.symbol : e.token.slice(0, 10))}</span><span class="nm">${esc(e.name)}</span>${e.farmTwins ? `<span class="mini-flag">${esc(t("row_farm", { n: e.farmTwins }))}</span>` : ""}${e.fire ? `<span class="mini-flag good">${esc(t("row_passes"))}</span>` : ""}</td>
+    <td class="r"><span class="q ${bBuy(e.devPct)}" title="${esc(why("buy", bBuy(e.devPct)))}">${e.devPct == null ? "?" : e.devPct.toFixed(2) + "%"}</span></td>
+    <td class="r"><span class="q ${bTax(e.taxBps)}" title="${esc(why("tax", bTax(e.taxBps)))}">${e.taxBps == null ? "?" : e.taxBps / 100 + "%"}</span></td>
+    <td class="r"><span class="q ${bEx(e.exempt ? e.exempt.length : null)}" title="${esc(why("ex", bEx(e.exempt ? e.exempt.length : null)))}">${e.exempt == null ? "?" : e.exempt.length}</span></td>
     <td><span class="pair ${e.pairNative ? "" : "alt"}">${esc(e.pair)}</span></td>
     <td class="r"><div class="fill"><div class="t"><i style="width:${pct.toFixed(0)}%"></i></div><span class="p">${pct.toFixed(0)}%</span></div></td>
     <td class="r"><span class="cell-dim">${dev}</span></td>
@@ -568,7 +722,10 @@ setInterval(() => {
 
     // the opening tax, decaying for real rather than frozen at read time
     if (!e.launchedAt) continue;
-    const left = e.launchedAt * 1000 + TAX_SECONDS * 1000 - now;
+    // The curve's launchedAt is the block's clock, not this machine's, and the two disagree by a
+    // few seconds often enough to matter. Clamping keeps a skewed reading from drawing a bar past
+    // full and a countdown longer than the window itself.
+    const left = Math.min(TAX_SECONDS * 1000, e.launchedAt * 1000 + TAX_SECONDS * 1000 - now);
     let d = tr.querySelector(".decay");
     if (left > 0) {
       if (!d) {
@@ -579,7 +736,7 @@ setInterval(() => {
       }
       const frac = left / (TAX_SECONDS * 1000);
       d.querySelector("i").style.width = (frac * 100).toFixed(0) + "%";
-      d.querySelector(".v").textContent = (left / 1000).toFixed(1) + "s tax";
+      d.querySelector(".v").textContent = t("tax_left", { s: (left / 1000).toFixed(1) });
     } else if (d) d.remove();
   }
 }, 200);
@@ -590,7 +747,7 @@ function showEmpty() {
   const el = $("#blank");
   const visible = rows.some((tr) => !tr.hidden);
   el.hidden = visible;
-  el.textContent = rows.length === 0 ? "waiting for the first launch" : "no launch matches this filter";
+  el.textContent = rows.length === 0 ? t("blank_wait") : t("blank_filter");
 }
 
 function applyFilter() {
@@ -602,11 +759,12 @@ function applyFilter() {
 }
 
 function renderPositions(list) {
+  POSITIONS = list;
   const box = $("#positions");
   const open = list.filter((p) => p.status === "open");
   $("#pc").textContent = open.length;
   $("#k-open").textContent = open.length;
-  if (!list.length) { box.innerHTML = '<div class="blank">none</div>'; return; }
+  if (!list.length) { box.innerHTML = `<div class="blank">${esc(t("none"))}</div>`; return; }
   box.innerHTML = "";
   for (const p of [...list].reverse().slice(0, 12)) {
     const el = document.createElement("div");
@@ -615,32 +773,33 @@ function renderPositions(list) {
     el.innerHTML = `
       <div class="hd">
         <span class="tick">$${esc(p.symbol)}</span>
-        <span class="tag sm">${p.status}${p.dryRun ? " dry" : ""}</span>
+        <span class="tag sm">${esc(t(p.status === "open" ? "ps_open" : "ps_closed"))}${p.dryRun ? " " + esc(t("ps_dry")) : ""}</span>
         <span class="pnl ${up ? "up" : "dn"}">${up ? "+" : ""}${p.pnlPct.toFixed(1)}%</span>
       </div>
-      <div class="sub">in ${(Number(p.entryQuote) / 10 ** p.pairDecimals).toFixed(4)} ${esc(p.pair)}${p.exits.length ? " · " + esc(p.exits[p.exits.length - 1].reason) : ""}</div>
-      ${p.status === "open" ? `<div class="pos-act"><button class="mini" data-close="${esc(p.id)}">close now</button></div>` : ""}`;
+      <div class="sub">${esc(t("pos_in", { x: (Number(p.entryQuote) / 10 ** p.pairDecimals).toFixed(4), pair: p.pair }))}${p.exits.length ? " · " + esc(p.exits[p.exits.length - 1].reason) : ""}</div>
+      ${p.status === "open" ? `<div class="pos-act"><button class="mini" data-close="${esc(p.id)}">${esc(t("close_now"))}</button></div>` : ""}`;
     box.append(el);
   }
   box.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", async (ev) => {
     ev.stopPropagation(); b.disabled = true;
-    const r = await fetch("/close", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: b.dataset.close }) }).then((x) => x.json()).catch(() => ({ ok: false, error: "request failed" }));
-    say(r.ok ? `closed ${(r.pnlPct >= 0 ? "+" : "") + r.pnlPct.toFixed(1)}% on ${r.venue}` : `close refused: ${r.error}`, r.ok ? "g" : "r");
+    const r = await fetch("/close", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: b.dataset.close }) }).then((x) => x.json()).catch(() => ({ ok: false, error: t("log_req_failed") }));
+    say(r.ok ? t("log_closed", { p: (r.pnlPct >= 0 ? "+" : "") + r.pnlPct.toFixed(1), v: r.venue }) : t("log_close_refused", { e: r.error }), r.ok ? "g" : "r");
   }));
 }
 
 function renderRules(rules) {
+  RULES = rules;
   const box = $("#rules");
   box.innerHTML = "";
   for (const [key, value] of Object.entries(rules)) {
     const b = BOUNDS[key] || { min: 0, max: 1000 };
-    const label = key.replace(/([A-Z])/g, " $1").toLowerCase().trim();
+    const label = I18N[LANG]["r_" + key] ? t("r_" + key) : key.replace(/([A-Z])/g, " $1").toLowerCase().trim();
     const row = document.createElement("div");
     row.className = "rule";
     row.innerHTML = `<label for="r-${key}">${esc(label)}</label><input id="r-${key}" type="number" min="${b.min}" max="${b.max}" value="${value}">`;
     row.querySelector("input").addEventListener("change", async (ev) => {
-      const r = await fetch("/rule", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key, value: Number(ev.target.value) }) }).then((x) => x.json()).catch(() => ({ ok: false, error: "request failed" }));
-      if (r.ok) { ev.target.value = r.value; say(`${label} → ${r.value}`); } else say(`rule refused: ${r.error}`, "r");
+      const r = await fetch("/rule", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key, value: Number(ev.target.value) }) }).then((x) => x.json()).catch(() => ({ ok: false, error: t("log_req_failed") }));
+      if (r.ok) { ev.target.value = r.value; RULES = { ...RULES, [key]: r.value }; say(t("log_rule", { k: label, v: r.value })); } else say(t("log_rule_refused", { e: r.error }), "r");
     });
     box.append(row);
   }
@@ -649,10 +808,10 @@ function renderRules(rules) {
 function setPaused(p) {
   PAUSED = p;
   const st = $("#state");
-  st.textContent = p ? "paused" : LIVE ? "armed" : "running";
+  st.textContent = p ? t("st_paused") : LIVE ? t("st_armed") : t("st_running");
   st.className = "tag" + (p ? "" : LIVE ? " ok" : "");
   const b = $("#toggle");
-  b.textContent = p ? (LIVE ? "arm live" : "start") : "stop";
+  b.textContent = p ? (LIVE ? t("b_arm") : t("b_start")) : t("b_stop");
   b.className = p ? "solid" : "";
 }
 
@@ -678,7 +837,7 @@ async function boot() {
   const s = await fetch("/state").then((r) => r.json());
   LIVE = s.live; BOUNDS = s.bounds;
   if (s.taxSeconds) TAX_SECONDS = s.taxSeconds;
-  $("#mode").textContent = LIVE ? "live" : "dry run";
+  $("#mode").textContent = LIVE ? t("m_live") : t("m_dry");
   $("#mode").className = "tag" + (LIVE ? " crit" : "");
   setPaused(s.paused);
   renderRules(s.rules);
@@ -686,11 +845,12 @@ async function boot() {
   $("#k-spent").textContent = (Number(s.spent) / 1e18).toFixed(4);
   for (const e of s.recent) if (e.kind === "launch") addLaunch(e);
   drawSpark();
-  $("#link").textContent = "connected";
-  say("connected");
+  LINK = "net_connected";
+  $("#link").textContent = t(LINK);
+  say(t("log_connected"));
 
   const src = new EventSource("/events");
-  src.onopen = () => { $("#link").textContent = "connected"; };
+  src.onopen = () => { LINK = "net_connected"; $("#link").textContent = t(LINK); };
   src.onmessage = (m) => {
     const e = JSON.parse(m.data);
     switch (e.kind) {
@@ -703,18 +863,149 @@ async function boot() {
         $("#k-open").textContent = e.open;
         break;
       case "state": setPaused(e.paused); break;
-      case "fire": say(`entered ${e.symbol} at tax ${(e.taxBps / 100).toFixed(2)}% after ${e.waitedMs} ms`, "g"); break;
-      case "exit": say(`exit ${e.symbol} ${(e.pnlPct >= 0 ? "+" : "") + e.pnlPct.toFixed(1)}% — ${e.reason}`, e.pnlPct >= 0 ? "g" : "r"); break;
-      case "hold": say(`held ${e.symbol}: tax still ${(e.taxBps / 100).toFixed(1)}%`); break;
-      case "swept": say(`${e.symbol} is between the curve and the pool`); break;
-      case "index": say(`deployer index: ${e.launches} launches, ${e.graduations} graduated`); break;
+      case "fire": say(t("log_fire", { s: e.symbol, t: (e.taxBps / 100).toFixed(2), ms: e.waitedMs }), "g"); break;
+      case "exit": say(t("log_exit", { s: e.symbol, p: (e.pnlPct >= 0 ? "+" : "") + e.pnlPct.toFixed(1), r: e.reason }), e.pnlPct >= 0 ? "g" : "r"); break;
+      case "hold": say(t("log_hold", { s: e.symbol, t: (e.taxBps / 100).toFixed(1) })); break;
+      case "swept": say(t("log_swept", { s: e.symbol })); break;
+      case "index": say(t("log_index", { l: e.launches, g: e.graduations })); break;
       case "error": say(`${e.where}: ${e.message}`, "r"); break;
     }
   };
-  src.onerror = () => { $("#link").textContent = "reconnecting"; };
+  src.onerror = () => { LINK = "net_reconnecting"; $("#link").textContent = t(LINK); };
 }
 
-boot();
+/* ---- language switching --------------------------------------------------
+   Everything static is marked up with data-i18n; everything dynamic is re-rendered
+   from the state we already keep, so switching languages never needs a reload and
+   never loses the feed. */
+function applyLang(lang) {
+  LANG = I18N[lang] ? lang : "en";
+  try { localStorage.setItem("hoodterm.lang", LANG); } catch { /* nothing to do */ }
+  document.documentElement.lang = LANG;
+
+  for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
+  for (const el of document.querySelectorAll("[data-i18n-ph]")) el.placeholder = t(el.dataset.i18nPh);
+  for (const b of document.querySelectorAll(".langs button")) b.setAttribute("aria-pressed", String(b.dataset.lang === LANG));
+
+  setPaused(PAUSED);
+  $("#mode").textContent = LIVE ? t("m_live") : t("m_dry");
+  $("#link").textContent = t(LINK);
+  renderRules(RULES);
+  renderPositions(POSITIONS);
+  redrawRows();
+  showEmpty();
+  if (TOUR_AT >= 0) paintStep();
+}
+
+/* The rows carry their event, so the cheapest correct redraw is to build them again.
+   It costs a few milliseconds on a switch nobody makes twice a minute. */
+function redrawRows() {
+  const body = $("#feed");
+  const events = rows.map((tr) => tr._e);
+  for (const tr of rows) { tr._detach(); tr.remove(); }
+  rows.length = 0;
+  for (const e of events.reverse()) {
+    const tr = launchRow(e);
+    if (!matches(e)) tr.hidden = true;
+    body.prepend(tr);
+    rows.unshift(tr);
+  }
+}
+
+for (const b of document.querySelectorAll(".langs button")) {
+  b.addEventListener("click", () => applyLang(b.dataset.lang));
+}
+
+/* ---- the walkthrough -----------------------------------------------------
+   Nine stops, each pinned to something real on the page rather than to a screenshot,
+   so it cannot drift out of date. It runs itself once on a first visit and lives
+   behind the guide button after that. */
+const TOUR = [
+  { sel: ".mark",                        h: "t1h", p: "t1p" },
+  { sel: "#mode",                        h: "t2h", p: "t2p" },
+  { sel: ".ribbon",                      h: "t3h", p: "t3p" },
+  { sel: 'th[data-i18n="c_score"]',      h: "t4h", p: "t4p" },
+  { sel: 'th[data-i18n="c_buy"]',        h: "t5h", p: "t5p" },
+  { sel: 'th[data-i18n="c_tax"]',        h: "t6h", p: "t6p" },
+  { sel: 'th[data-i18n="c_exempt"]',     h: "t7h", p: "t7p" },
+  { sel: "#rules",                       h: "t8h", p: "t8p" },
+  { sel: "#toggle",                      h: "t9h", p: "t9p" },
+];
+let TOUR_AT = -1;
+
+function paintStep() {
+  const step = TOUR[TOUR_AT];
+  const target = document.querySelector(step.sel);
+  const ring = $("#ring"), coach = $("#coach");
+
+  if (target) {
+    const r = target.getBoundingClientRect();
+    const pad = 6;
+    ring.style.top = (r.top - pad) + "px";
+    ring.style.left = (r.left - pad) + "px";
+    ring.style.width = (r.width + pad * 2) + "px";
+    ring.style.height = (r.height + pad * 2) + "px";
+    ring.classList.add("on");
+    $("#veil").classList.remove("on");
+  } else {
+    ring.classList.remove("on");
+    $("#veil").classList.add("on");
+  }
+
+  $("#coach-h").textContent = t(step.h);
+  $("#coach-p").textContent = t(step.p);
+  $("#coach-n").textContent = t("c_step", { i: TOUR_AT + 1, n: TOUR.length });
+  $("#coach-skip").textContent = t("c_skip");
+  $("#coach-back").textContent = t("c_back");
+  $("#coach-back").hidden = TOUR_AT === 0;
+  $("#coach-next").textContent = TOUR_AT === TOUR.length - 1 ? t("c_done") : t("c_next");
+  coach.classList.add("on");
+
+  // below the target when there is room for the card, above it when there is not
+  const box = coach.getBoundingClientRect();
+  const r = target ? target.getBoundingClientRect() : { bottom: innerHeight / 2 - box.height / 2, top: innerHeight / 2 + box.height / 2, left: innerWidth / 2 - 165 };
+  const below = r.bottom + 12;
+  const top = below + box.height < innerHeight - 12 ? below : Math.max(12, r.top - box.height - 12);
+  coach.style.top = top + "px";
+  coach.style.left = Math.min(Math.max(12, r.left), innerWidth - box.width - 12) + "px";
+}
+
+function tourGo(i) {
+  if (i < 0 || i >= TOUR.length) { tourEnd(); return; }
+  TOUR_AT = i;
+  const target = document.querySelector(TOUR[i].sel);
+  if (target) target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  paintStep();
+}
+
+function tourEnd() {
+  TOUR_AT = -1;
+  $("#ring").classList.remove("on");
+  $("#veil").classList.remove("on");
+  $("#coach").classList.remove("on");
+  try { localStorage.setItem("hoodterm.toured", "1"); } catch { /* it will offer itself again */ }
+  $("#help").focus();
+}
+
+$("#help").addEventListener("click", () => tourGo(0));
+$("#coach-next").addEventListener("click", () => tourGo(TOUR_AT + 1));
+$("#coach-back").addEventListener("click", () => tourGo(TOUR_AT - 1));
+$("#coach-skip").addEventListener("click", tourEnd);
+addEventListener("resize", () => { if (TOUR_AT >= 0) paintStep(); });
+addEventListener("keydown", (e) => {
+  if (TOUR_AT < 0) return;
+  if (e.key === "Escape") { e.preventDefault(); tourEnd(); }
+  if (e.key === "ArrowRight") { e.preventDefault(); tourGo(TOUR_AT + 1); }
+  if (e.key === "ArrowLeft") { e.preventDefault(); tourGo(TOUR_AT - 1); }
+}, true);
+
+applyLang(LANG);
+boot().then(() => {
+  // A first-time reader gets the walkthrough once, after the page has something real on it.
+  let toured = "1";
+  try { toured = localStorage.getItem("hoodterm.toured") ?? ""; } catch { /* offer it every time, then */ }
+  if (!toured) setTimeout(() => tourGo(0), 600);
+});
 </script>
 </body>
 </html>
