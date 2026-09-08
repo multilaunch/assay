@@ -262,6 +262,9 @@ What changes when the board is not on loopback any more:
 - **`PRIVATE_KEY` is now on a machine you rent.** Root on the box, a volume snapshot, or the
   provider's console all read it, and no file mode changes that. Use a wallet funded with
   `SESSION_BUDGET_ETH` and nothing else: it is the only one of the limits an attacker cannot edit.
+- **The board's Host fence needs the public name.** `guard` in `src/board/server.ts` refuses any
+  `Host` it does not recognise, and Caddy forwards the client's `Host` unchanged — so
+  `BOARD_HOSTS` has to list the domain or every proxied request is a 403. `bootstrap.sh` sets it.
 - **The live feed goes through a proxy**, which is the usual way an SSE stream quietly dies. The
   Caddyfile turns off response buffering and every write and idle timeout on `/events`, and
   [docs/DEPLOY.md](./docs/DEPLOY.md) has a `curl -N` whose output proves it end to end.
@@ -270,6 +273,22 @@ Files: `compose.prod.yaml`, `deploy/Caddyfile`, `deploy/hoodterm.service`, `depl
 `deploy/env.prod.example`, `deploy/backup.sh`, `deploy/update.sh`. The guide, including how to
 verify, read logs, update, back up `positions.json` and roll back, is
 **[docs/DEPLOY.md](./docs/DEPLOY.md)**.
+
+## Credit
+
+The shape of this thing is not original. [bodkin](https://github.com/Phosphenq/bodkin) by
+phosphenq got to Robinhood Chain first and worked out the parts that are not obvious: that the
+99% opening tax makes racing the first block pointless, so the only real question is when to
+release; that the exempt wallets are declared in the launch calldata and can therefore be counted;
+that a score is worth nothing unless it hands you the reasons behind it. hoodterm follows that
+architecture, and parts of it are reused directly.
+
+Where it goes its own way: the journal and `accuracy`, which check the score against what actually
+happened instead of asking you to trust it; the board, with the guide and the second language; the
+opening tax drawn decaying in real time rather than frozen at read time; and a refusal to treat a
+failed read as good news anywhere.
+
+bodkin is MIT, and its notice is in [LICENSE](./LICENSE) alongside ours.
 
 ## License
 
