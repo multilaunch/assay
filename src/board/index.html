@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- The feed carries strings a stranger wrote on chain. Nothing here loads code from anywhere but this page. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
-<title>hoodterm</title>
+<title>assay</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* ==========================================================================
-   hoodterm — instrument
+   assay — instrument
 
    Every tool on Robinhood Chain wears the chain's own brand: #CCFF00 on black,
    pill radii, Instrument Serif. Pons does, bodkin does. Wearing it is not a
@@ -297,8 +297,10 @@ a:hover{border-bottom-color:var(--hot)}
 @media(max-width:1080px){
   .shell{grid-template-columns:minmax(0,1fr); overflow:auto}
   main{min-height:62vh}
-  .rail{border-left:0; border-top:1px solid var(--line-hard)}
-  .sec:last-child{flex:none}
+  /* Below the feed the rail is not a pane of its own; the whole shell scrolls, so it must not
+     become a 200px window with its own scrollbar inside a page that already scrolls. */
+  .rail{border-left:0; border-top:1px solid var(--line-hard); overflow:visible}
+  .sec:last-child{flex:none; min-height:0}
   #log{max-height:180px}
   .readout{display:none}
 }
@@ -319,7 +321,7 @@ a:hover{border-bottom-color:var(--hot)}
 <body>
 
 <header class="top">
-  <span class="mark">hoodterm<span>/pons v2</span></span>
+  <span class="mark">assay<span>/pons v2</span></span>
   <span class="tag" id="mode">…</span>
   <span class="tag" id="state">paused</span>
   <span class="spring"></span>
@@ -590,7 +592,7 @@ const I18N = {
 };
 
 let LANG = "en";
-try { const saved = localStorage.getItem("hoodterm.lang"); if (I18N[saved]) LANG = saved; }
+try { const saved = localStorage.getItem("assay.lang"); if (I18N[saved]) LANG = saved; }
 catch { /* private mode: English and no memory of the choice */ }
 
 /* Missing keys fall through to English rather than showing the key itself, so a gap in a
@@ -1012,7 +1014,7 @@ async function boot() {
    never loses the feed. */
 function applyLang(lang) {
   LANG = I18N[lang] ? lang : "en";
-  try { localStorage.setItem("hoodterm.lang", LANG); } catch { /* nothing to do */ }
+  try { localStorage.setItem("assay.lang", LANG); } catch { /* nothing to do */ }
   document.documentElement.lang = LANG;
 
   for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
@@ -1118,7 +1120,7 @@ function tourEnd() {
   $("#ring").classList.remove("on");
   $("#veil").classList.remove("on");
   $("#coach").classList.remove("on");
-  try { localStorage.setItem("hoodterm.toured", "1"); } catch { /* it will offer itself again */ }
+  try { localStorage.setItem("assay.toured", "1"); } catch { /* it will offer itself again */ }
   $("#help").focus();
 }
 
@@ -1138,7 +1140,7 @@ applyLang(LANG);
 boot().then(() => {
   // A first-time reader gets the walkthrough once, after the page has something real on it.
   let toured = "1";
-  try { toured = localStorage.getItem("hoodterm.toured") ?? ""; } catch { /* offer it every time, then */ }
+  try { toured = localStorage.getItem("assay.toured") ?? ""; } catch { /* offer it every time, then */ }
   if (!toured) setTimeout(() => tourGo(0), 600);
 });
 </script>
