@@ -89,6 +89,7 @@ only reads. `.env` works as shipped on the public endpoints.
 | `dev <address>` | every launch by one deployer, with its phase | no |
 | `positions` | open and closed positions, marked live | no |
 | `accuracy` | what the score has actually been worth, from your own journal | no |
+| `farms` | one operator, many wallets, the same token — who is doing it right now | no |
 | `wallet` | the signer: address, balance, unclaimed creator fees | yes |
 | `buy <token> <amt>` | buy wherever it trades: curve before graduation, v4 pool after | `--live` only |
 | `sell <token> [pct]` | sell a share of your balance, routed the same way | `--live` only |
@@ -190,6 +191,32 @@ significance is derived from the measured base rate rather than fixed: at 1.2 %,
 **318 judged launches** before twice that rate could be told apart from luck, and the report says so,
 along with how many launches you would have to watch to get there. Every scanner shows you a score.
 This one shows you whether its score has earned anything yet.
+
+## The one place a model earns its keep
+
+`FarmDetector` catches the operator who reuses the same numbers: same opening buy, same tax, same
+link pattern, same exemption count. It cannot catch the one who keeps the idea and changes the
+words. `farms --semantic` embeds each launch's name and description and clusters what is merely
+alike:
+
+```sh
+npx tsx src/cli/main.ts farms --blocks 40000            # exact name and symbol collisions
+npx tsx src/cli/main.ts farms --blocks 40000 --semantic # and the ones that only mean the same thing
+```
+
+Measured over 646 launches on 2026-09-09, the semantic pass found **ten clusters the exact match
+missed**, and about half of them are out of reach of any string comparison: `KEYTURNIP / KT /
+KTURN`, `BUTTER / BTTR`, `NVDASH / NVDAI / NVDOGE` — six wallets riding one ticker under names that
+share almost no characters. Real, and small.
+
+So it is a tool to look at, not a rule. **It is deliberately not wired into the score.** Everything
+that costs points here has to move the lift in `accuracy` first, and this has not been measured that
+way yet. It runs offline and batched, never in the three-second entry window, and everything else in
+the terminal works with the key unset.
+
+There is no chatbot and there will not be one. The product is that every number was read from the
+chain and every point has a reason you can check; a paraphrase of those numbers would be the only
+part of the page a reader could not verify, and the one most able to sound confident while wrong.
 
 ## What the chain actually looks like
 

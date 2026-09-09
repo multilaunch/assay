@@ -15,6 +15,7 @@ import { c, hhmmss, log, setQuiet } from "../util/log.js";
 import { renderCard, renderLine, toJson } from "./render.js";
 import { registerTradeCommands } from "./trade.js";
 import { registerAccuracyCommands } from "./accuracy.js";
+import { registerFarmsCommand } from "./farms.js";
 
 const program = new Command();
 program.name("hoodterm").description("Launch terminal for Robinhood Chain (pons v2). Local, open, non-custodial, dry run by default.").version("0.1.0");
@@ -207,5 +208,6 @@ program
 // unless it is given --live.
 registerTradeCommands(program);
 registerAccuracyCommands(program);
+registerFarmsCommand(program);
 
 program.parseAsync(process.argv).catch((e: Error) => { log.error(e.message.split("\n")[0]); process.exitCode = 1; });
