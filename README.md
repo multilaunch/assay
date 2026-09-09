@@ -237,6 +237,40 @@ is the **creator's** tax, not the opening one — checked against a live launch,
 on `$HOODFUND` carried exactly its 200 bps from the first to the last. Reading a non-zero `tax` as
 "this was sniped" would have handed every trade on every token with a creator fee to the launcher.
 
+### What the three labels say together
+
+13 990 launches priced. **9 632 of them were never traded at all** inside six hours; another 1 444
+were traded only inside the opening window, by the launcher. Of the 2 914 an outsider could actually
+enter, the median best price was **exactly the entry price** — it never went up once. 157 launches
+doubled at any point: 5.4 % of the ones you could enter, 1.1 % of all of them.
+
+Asking the same predicates three different questions is what settles the contradiction:
+
+| rule | graduated | doubled | still up at the end |
+|---|---|---|---|
+| `score >= 75` | 2.2x | 2.4x | 2.0x at `>= 90` |
+| `opening buy 1-6%` | — | 2.1x | 1.3x |
+| `creator tax > 500 bps` | — | 0 of 318 | 0.2x |
+| `opening buy = 0` | 0.2x | 0.2x | — |
+| `2+ farm twins` | 0 of 474 | 0.3x | faded |
+| **`opening buy > 10%`** | 2.5x | 2.5x | **0.9x — gone** |
+| **`4+ exempt wallets`** | 2.4x | 3.7x | **no signal** |
+
+The last two rows are the answer. A launch with a big opening buy and a declared bundle graduates
+more often and doubles more often, and by the end of the window it is worth no more than any other
+launch. It goes up because somebody is pushing it up, and it does not stay up. That is a pump, seen
+from the outside, in three columns — and it is why the hand-set penalties on those two signals turn
+out to have been right after all, for a reason I could not have articulated before the price label
+existed.
+
+Everything else agrees with the score, and the score orders correctly on its own: 1.7x at `>= 45`,
+1.9x at `>= 55`, 2.1x at `>= 65`, 2.4x at `>= 75`, on launches it was not fitted to. `score.ts` has
+not been changed, because nothing here says to change it.
+
+One caveat on all of the above: the holdout period was more generous than the fitting period (1.52 %
+of launches doubled against 0.95 %). Lift is computed against each side's own base rate, so the
+comparison holds, but the absolute rates drift with the mood of the chain.
+
 Two things this label still cannot see, and they are written here rather than glossed over: once a
 launch graduates the curve stops trading and everything that happens in the v4 pool afterwards is
 invisible to it, so `endX` on a graduated launch means "price at graduation"; and a launch nobody
