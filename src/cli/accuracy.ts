@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { MATURE_MS, report, resolveOutcomes, THIN, thinFor, lift, wilsonLower } from "../track/accuracy.js";
+import { MATURE_MS, report, resolveOutcomes, sampleNeeded, THIN, thinFor, lift, wilsonLower } from "../track/accuracy.js";
 import { backfill } from "../track/backfill.js";
 import { all, journalPath } from "../track/journal.js";
 import { ago, padL, padR } from "../util/fmt.js";
@@ -86,8 +86,8 @@ export function registerAccuracyCommands(program: Command): void {
       console.log(`\n${c.grey("by score band")}`);
       for (const band of rep.bands) {
         if (band.judged === 0) continue;
-        const bar = "▪".repeat(Math.min(40, Math.round(band.rate * 400)));
-        console.log(`  ${padR(`${band.from}-${band.to}`, 8)}${padL(String(band.judged), 7)} judged  ${padL(pc(band.rate), 8)}  ${bar}`);
+        const blocks = "▪".repeat(Math.min(40, Math.round(band.rate * 400)));
+        console.log(`  ${padR(`${band.from}-${band.to}`, 8)}${padL(String(band.judged), 7)} judged  ${padL(pc(band.rate), 8)}  ${blocks}`);
       }
 
       console.log("");
@@ -95,28 +95,33 @@ export function registerAccuracyCommands(program: Command): void {
       if (rep.base === 0 && overall.judged > 0) {
         console.log(c.yellow(`nothing in this sample graduated at all (0 of ${overall.judged}). there is no base rate to measure the score against yet.`));
         console.log(c.grey(`graduation is rare on this chain — around 1 launch in 80 — so a few hundred judged launches is the floor for saying anything. widen it: \`accuracy --backfill --limit 800\`.`));
-      } else if (rep.base > 0 && Number.isFinite(bar)) {
-        // How many launches you have to watch, not how many have to land in the bucket. Those are
-        // very different numbers when only a few per cent of launches earn the verdict.
-        const share = overall.judged > 0 ? (fire?.judged ?? 0) / overall.judged : 0;
-        const watch = share > 0 ? Math.ceil(bar / share) : 0;
-        console.log(c.grey(
-          `graduation is rare here: ${pc(rep.base)} of everything you judged. FIRE needs about ${bar} judged launches of its own before twice that rate could be told apart from luck` +
-          (watch > 0 ? `, which at your current ${pc(share)} FIRE rate means watching roughly ${watch.toLocaleString("en-US")} launches.` : "."),
-        ));
-      }
-      if (rep.base === 0) {
-        // already said above; repeating "too few FIRE" would imply the other buckets were enough
-      } else if (!fire || fire.judged < bar) {
-        console.log(c.yellow(`too few judged FIRE launches to say anything yet (${fire?.judged ?? 0} of ~${bar}).`));
-      } else {
+      } else if (rep.base > 0 && fire && fire.judged > 0) {
         const l = lift(fire, rep.base) ?? 0;
         const floor = wilsonLower(fire.graduated, fire.judged);
-        console.log(
-          l >= 1.5 && floor > rep.base
-            ? c.green(`FIRE graduates ${l.toFixed(1)}x more often than the average launch you saw, and the 95% floor still clears the base rate.`)
-            : c.yellow(`FIRE is ${l.toFixed(1)}x the base rate, but the 95% floor (${pc(floor)}) does not clear it (${pc(rep.base)}). Not proven yet.`),
-        );
+
+        // `bar` is the sample a 2x lift would need. A bucket running well above 2x needs fewer, so
+        // the bound has to be read before the bar: a floor that already clears the base rate is a
+        // result at 95%, and telling someone their result is not there yet would be false.
+        if (floor > rep.base) {
+          console.log(c.green(
+            `FIRE graduated ${fire.graduated} of ${fire.judged} (${pc(fire.rate)}), ${l.toFixed(1)}x the ${pc(rep.base)} you saw across everything. ` +
+            `The 95% floor is ${pc(floor)}, which clears the base rate: on this sample the verdict is worth something.`,
+          ));
+          const need = sampleNeeded(rep.base, 2);
+          if (Number.isFinite(need) && fire.judged < need) {
+            console.log(c.grey(`It rests on ${fire.graduated} graduations. A lift of exactly 2x would still be indistinguishable from luck below ~${need} judged FIRE launches, so keep collecting before quoting the multiple.`));
+          }
+        } else if (fire.judged < bar) {
+          const share = overall.judged > 0 ? fire.judged / overall.judged : 0;
+          const watch = share > 0 && Number.isFinite(bar) ? Math.ceil(bar / share) : 0;
+          console.log(c.yellow(`not enough judged FIRE launches to say anything yet: ${fire.judged}, and ${fire.graduated} graduated.`));
+          console.log(c.grey(
+            `graduation is rare here — ${pc(rep.base)} of everything you judged — so FIRE needs about ${bar} of its own before twice that rate could be told apart from luck` +
+            (watch > 0 ? `, which at your ${pc(share)} FIRE rate means watching roughly ${watch.toLocaleString("en-US")} launches.` : "."),
+          ));
+        } else {
+          console.log(c.yellow(`FIRE is ${l.toFixed(1)}x the base rate over ${fire.judged} judged launches, but the 95% floor (${pc(floor)}) does not clear it (${pc(rep.base)}). Not proven.`));
+        }
       }
       console.log(c.grey(`journal: ${journalPath()}`));
       if (rep.total - rep.pending < THIN) console.log(c.grey("`accuracy --backfill` scores launches that already happened, if you would rather not wait."));

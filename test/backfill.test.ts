@@ -39,3 +39,13 @@ test("the sample a rare outcome needs is far larger than a fixed threshold sugge
   // a common outcome needs far less
   assert.ok(sampleNeeded(0.4, 2) < n);
 });
+
+test("a bucket well above 2x clears the base long before the 2x sample size", () => {
+  // the first real reading: FIRE 3 of 97, against 6 of 900 overall
+  const base = 6 / 900;
+  const floor = wilsonLower(3, 97);
+  assert.ok(floor > base, `floor ${floor} should clear base ${base}`);
+  // and it does so on a sample far smaller than a 2x lift would need, which is why the report has
+  // to read the bound before the sample-size rule
+  assert.ok(97 < sampleNeeded(base, 2));
+});
