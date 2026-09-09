@@ -90,6 +90,7 @@ only reads. `.env` works as shipped on the public endpoints.
 | `positions` | open and closed positions, marked live | no |
 | `accuracy` | what the score has actually been worth, from your own journal | no |
 | `farms` | one operator, many wallets, the same token — who is doing it right now | no |
+| `rules` | sweeps the journal for rules that survive launches they were not fitted to | no |
 | `wallet` | the signer: address, balance, unclaimed creator fees | yes |
 | `buy <token> <amt>` | buy wherever it trades: curve before graduation, v4 pool after | `--live` only |
 | `sell <token> [pct]` | sell a share of your balance, routed the same way | `--live` only |
@@ -191,6 +192,37 @@ significance is derived from the measured base rate rather than fixed: at 1.2 %,
 **318 judged launches** before twice that rate could be told apart from luck, and the report says so,
 along with how many launches you would have to watch to get there. Every scanner shows you a score.
 This one shows you whether its score has earned anything yet.
+
+## Mining the rules instead of guessing them
+
+Every number in `score.ts` started as my judgement. `rules` checks them against the journal:
+
+```sh
+npx tsx src/cli/main.ts rules          # what survived
+npx tsx src/cli/main.ts rules --all    # and what did not
+```
+
+It sweeps thresholds over every signal already recorded per launch, and it splits the journal **by
+time, never at random** — earlier launches propose a rule, later launches judge it. A rule fitted to
+a farm that ran on Tuesday and was gone by Thursday looks perfect until it meets Thursday, and a
+random split would hide exactly that. Thirty predicates are tested, so about one or two clear the
+fitting half on luck alone; the holdout column is the only one worth reading, and the count is
+printed next to the results so you can do that arithmetic yourself.
+
+First run, 4 375 launches to fit and 1 875 held back: ten rules survived — and **four of them
+contradict the score**. Over 10 % opening buy graduated 2.5x more often than average, not less. Four
+or more exempt wallets, 2.4x more. Five or more prior launches from the deployer, 2.2x more. No
+exempt wallets at all graduated *less* often than the base rate.
+
+None of that has been acted on, and it should not be until the outcome is a better one. Graduation
+means the curve filled, and an operator with a bundle and a large opening buy can fill his own
+curve. So these rules may be measuring who is able to manufacture a graduation rather than who is
+worth buying — the signal is real and the label is wrong for the question. The next thing this
+needs is an outcome that records what a position would have been worth, not merely that the pool
+opened. Until then `rules` is evidence about graduation and says so.
+
+The composite held up on its own terms: `score >= 75` graduated 2.2x the base rate on launches it
+was not fitted to.
 
 ## The one place a model earns its keep
 

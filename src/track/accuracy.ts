@@ -129,6 +129,16 @@ export function wilsonLower(successes: number, n: number, z = 1.96): number {
   return Math.max(0, (centre - margin) / d);
 }
 
+/** The other end of the same interval: the highest rate the sample supports. */
+export function wilsonUpper(successes: number, n: number, z = 1.96): number {
+  if (n === 0) return 1;
+  const p = successes / n;
+  const d = 1 + (z * z) / n;
+  const centre = p + (z * z) / (2 * n);
+  const margin = z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n));
+  return Math.min(1, (centre + margin) / d);
+}
+
 /**
  * The smallest sample in which a bucket running at `mult` times the base rate would actually be
  * distinguishable from the base rate — the point where its 95% floor clears it.
