@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { MATURE_MS, report, resolveOutcomes, sampleNeeded, THIN, thinFor, lift, wilsonLower } from "../track/accuracy.js";
+import { MATURE_MS, report, resolveOutcomes, resolvePrices, sampleNeeded, THIN, thinFor, lift, wilsonLower } from "../track/accuracy.js";
 import { backfill } from "../track/backfill.js";
 import { all, journalPath } from "../track/journal.js";
 import { ago, padL, padR } from "../util/fmt.js";
@@ -15,8 +15,9 @@ export function registerAccuracyCommands(program: Command): void {
     .option("--backfill", "score launches that already happened, so there is something to report on day one")
     .option("--limit <n>", "how many launches to reconstruct with --backfill", (v: string) => Math.max(1, Math.min(2000, Math.round(Number(v)))), 400)
     .option("--live-only", "count only launches this terminal saw as they happened")
+    .option("--price", "read every mature launch's trade history and record what holding it was worth")
     .option("--json", "machine-readable")
-    .action(async (o: { resolve?: boolean; backfill?: boolean; limit: number; liveOnly?: boolean; json?: boolean }) => {
+    .action(async (o: { resolve?: boolean; backfill?: boolean; limit: number; liveOnly?: boolean; price?: boolean; json?: boolean }) => {
       if (o.backfill) {
         if (!o.json) log.info(c.grey(`reconstructing up to ${o.limit} launches old enough to judge. this reads the chain and takes a few minutes.`));
         let shown = -1;
@@ -42,6 +43,21 @@ export function registerAccuracyCommands(program: Command): void {
       if (o.resolve) {
         const r = await resolveOutcomes();
         if (!o.json) log.info(c.grey(`resolved ${r.settled} of ${r.checked} mature launches, ${r.pending} still too young to judge\n`));
+      }
+
+      if (o.price) {
+        let shown = -1;
+        const r = await resolvePrices(Date.now(), (done, total) => {
+          if (o.json || total === 0) return;
+          const tenth = Math.floor((done / total) * 20);
+          if (tenth === shown) return;
+          shown = tenth;
+          process.stderr.write(`\r  ${done}/${total}`);
+        });
+        if (!o.json) {
+          process.stderr.write("\r                    \r");
+          log.info(c.grey(`priced ${r.scanned} launches; ${r.withTrades} of them were traded at all${r.failedChunks ? c.yellow(`, ${r.failedChunks} log ranges refused`) : ""}\n`));
+        }
       }
 
       const every = await all();

@@ -2,6 +2,7 @@ import { factoryAbi } from "../abi/pons.js";
 import { client } from "../chain/clients.js";
 import { PONS } from "../chain/config.js";
 import { all, isResolved, rewrite, type Entry, type Outcome, type Verdict } from "./journal.js";
+import { priceOutcomes } from "./price.js";
 
 /**
  * Turning the journal into a verdict on the verdicts.
@@ -49,6 +50,37 @@ export async function resolveOutcomes(now = Date.now(), batch = 60): Promise<{ c
   for (const e of entries) byToken.set(e.token.toLowerCase(), e);
   rewrite([...byToken.values()].sort((a, b) => a.t - b.t));
   return { checked: todo.length, settled, pending: stillYoung };
+}
+
+/**
+ * Fills in what each mature launch would have been worth to hold.
+ *
+ * Separate from resolveOutcomes because it costs far more: graduation is one multicall for sixty
+ * launches, price is every trade log the curve ever emitted. Run it when you want the honest label,
+ * not on every report.
+ */
+export async function resolvePrices(now = Date.now(), onProgress?: (done: number, total: number) => void): Promise<{ scanned: number; withTrades: number; failedChunks: number }> {
+  const entries = await all();
+  const todo = entries.filter((e) => e.trades === undefined && now - e.t >= MATURE_MS);
+  if (todo.length === 0) return { scanned: 0, withTrades: 0, failedChunks: 0 };
+
+  // the opening window is a protocol parameter the owner can change, so read it rather than assume
+  const windowSec = Number(await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "snipeTaxSeconds" }).catch(() => 3n));
+  const r = await priceOutcomes(todo.map((e) => ({ curve: e.curve, t: e.t })), { horizonMs: MATURE_MS, windowSec, ...(onProgress ? { onProgress } : {}) });
+  let withTrades = 0;
+  for (const e of todo) {
+    const o = r.outcomes.get(e.curve.toLowerCase());
+    if (!o) continue;
+    e.trades = o.trades;
+    if (o.peakX !== null) e.peakX = Number(o.peakX.toFixed(4));
+    if (o.endX !== null) e.endX = Number(o.endX.toFixed(4));
+    if (o.trades > 0) withTrades++;
+  }
+
+  const byToken = new Map<string, Entry>();
+  for (const e of entries) byToken.set(e.token.toLowerCase(), e);
+  rewrite([...byToken.values()].sort((a, b) => a.t - b.t));
+  return { scanned: todo.length, withTrades, failedChunks: r.failed };
 }
 
 export interface Bucket {

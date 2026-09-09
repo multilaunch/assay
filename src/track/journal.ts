@@ -43,6 +43,15 @@ export interface Entry {
   resolvedAt?: number;
   /** how far along the curve it got, 0..1, at resolution time */
   peakFill?: number;
+  /**
+   * What holding it would have been worth, as a multiple of the first untaxed price: the best the
+   * curve reached inside the judging window, and where it ended up. Filled in by `accuracy --price`.
+   * `trades` is how many trades that window saw at all — zero is the most common outcome on this
+   * chain and the reason a graduation rate alone flatters everything.
+   */
+  peakX?: number;
+  endX?: number;
+  trades?: number;
 }
 
 const dir = () => process.env.HOODTERM_DATA ?? resolve(process.cwd(), "data");

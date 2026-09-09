@@ -1,6 +1,16 @@
 import { wilsonLower, wilsonUpper } from "./accuracy.js";
 import { isResolved, type Entry } from "./journal.js";
 
+/** What counts as a win. Graduation is the cheap one; the price labels are the honest ones. */
+export type Label = "graduated" | "peak2x" | "peak5x" | "endUp";
+
+export const LABELS: Record<Label, { won: (e: Entry) => boolean; judged: (e: Entry) => boolean; describe: string }> = {
+  graduated: { won: (e) => e.outcome === "graduated", judged: isResolved, describe: "the pool opened" },
+  peak2x: { won: (e) => (e.peakX ?? 0) >= 2, judged: (e) => e.peakX !== undefined || e.trades !== undefined, describe: "doubled at some point after the opening tax" },
+  peak5x: { won: (e) => (e.peakX ?? 0) >= 5, judged: (e) => e.peakX !== undefined || e.trades !== undefined, describe: "went 5x at some point after the opening tax" },
+  endUp: { won: (e) => (e.endX ?? 0) > 1, judged: (e) => e.endX !== undefined || e.trades !== undefined, describe: "was still above its entry price at the end of the window" },
+};
+
 /**
  * Looking for rules in the journal instead of in my own head.
  *
@@ -101,13 +111,14 @@ export interface MineReport {
   trainBase: number;
   holdoutBase: number;
   splitAt: number | null;
+  label: Label;
   /** how many of `tested` you would expect to clear on the training half by luck */
   expectedFalse: number;
 }
 
-function side(rows: Entry[], base: number): Side {
+function side(rows: Entry[], base: number, won: (e: Entry) => boolean): Side {
   const n = rows.length;
-  const graduated = rows.filter((e) => e.outcome === "graduated").length;
+  const graduated = rows.filter(won).length;
   const rate = n ? graduated / n : 0;
   return { n, graduated, rate, lift: base > 0 ? rate / base : 0, lo: wilsonLower(graduated, n), hi: wilsonUpper(graduated, n) };
 }
@@ -117,26 +128,29 @@ export interface MineOptions {
   holdout?: number;
   /** below this many launches on a side, say nothing */
   minN?: number;
+  /** what counts as a win; graduation by default, for continuity with what came before */
+  label?: Label;
 }
 
 export function mine(entries: Entry[], opts: MineOptions = {}): MineReport {
   const holdoutShare = Math.min(0.6, Math.max(0.1, opts.holdout ?? 0.3));
   const minN = opts.minN ?? 40;
 
-  const judged = entries.filter(isResolved).sort((a, b) => a.t - b.t);
+  const { won, judged: isJudged } = LABELS[opts.label ?? "graduated"];
+  const judged = entries.filter(isJudged).sort((a, b) => a.t - b.t);
   const cut = Math.floor(judged.length * (1 - holdoutShare));
   const trainRows = judged.slice(0, cut);
   const holdRows = judged.slice(cut);
 
-  const trainBase = trainRows.length ? trainRows.filter((e) => e.outcome === "graduated").length / trainRows.length : 0;
-  const holdoutBase = holdRows.length ? holdRows.filter((e) => e.outcome === "graduated").length / holdRows.length : 0;
+  const trainBase = trainRows.length ? trainRows.filter(won).length / trainRows.length : 0;
+  const holdoutBase = holdRows.length ? holdRows.filter(won).length / holdRows.length : 0;
 
   const cands = candidates();
   const findings: Finding[] = [];
 
   for (const cand of cands) {
-    const train = side(trainRows.filter(cand.test), trainBase);
-    const holdout = side(holdRows.filter(cand.test), holdoutBase);
+    const train = side(trainRows.filter(cand.test), trainBase, won);
+    const holdout = side(holdRows.filter(cand.test), holdoutBase, won);
     const direction: "up" | "down" = train.rate >= trainBase ? "up" : "down";
 
     // A predicate has to separate on the half that fitted it before the holdout is worth reading.
@@ -164,6 +178,7 @@ export function mine(entries: Entry[], opts: MineOptions = {}): MineReport {
     trainBase,
     holdoutBase,
     splitAt: holdRows[0]?.t ?? null,
+    label: opts.label ?? "graduated",
     expectedFalse: cands.length * 0.05,
   };
 }

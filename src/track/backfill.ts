@@ -1,6 +1,7 @@
 import type { Address } from "viem";
 import type { DeployerRecord } from "../pons/deployers.js";
 import { factoryAbi } from "../abi/pons.js";
+import { blockClock } from "../chain/clock.js";
 import { client } from "../chain/clients.js";
 import { DEAD, PONS } from "../chain/config.js";
 import { toLaunch, type LaunchEvent } from "../pons/detect.js";
@@ -70,33 +71,9 @@ async function logsOver(event: unknown, from: bigint, to: bigint): Promise<Logs>
 }
 
 /**
- * Seconds per block, measured rather than assumed, so the maturity offset is right on a slow day.
- *
- * Both samples sit well behind the head: the endpoint that answered getBlockNumber is not always
- * the one that serves the next call, and asking a node one block behind for the tip is an error,
- * not a slow answer.
- */
-async function blockClock(head: bigint, span = 10_000n): Promise<{ secs: number; at: (block: bigint) => number }> {
-  const near = head > 200n ? head - 200n : 0n;
-  const far = near > span ? near - span : 0n;
-  let secs = 0.1;
-  let anchor = { block: near, ms: Date.now() };
-  if (near !== far) {
-    try {
-      const [a, b] = await Promise.all([client.getBlock({ blockNumber: far }), client.getBlock({ blockNumber: near })]);
-      const dt = Number(b.timestamp - a.timestamp);
-      const dn = Number(near - far);
-      if (dn > 0 && dt > 0) secs = dt / dn;
-      anchor = { block: near, ms: Number(b.timestamp) * 1000 };
-    } catch { /* the estimate below is still better than pretending a launch happened just now */ }
-  }
-  return { secs, at: (block) => anchor.ms - Number(anchor.block - block) * secs * 1000 };
-}
-
-/**
  * The deployer's record as it stood at `block`, not as it stands now.
  *
- * The whole backfill turns on this one function. A token that graduated *after* the launch being
+ * The whole backfill turns on this one function. A token that graduated after the launch being
  * scored was not evidence the scorer could have had; count it and the reconstruction turns into a
  * report on hindsight. A token with no graduation recorded has not graduated at all.
  */

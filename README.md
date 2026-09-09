@@ -214,12 +214,34 @@ contradict the score**. Over 10 % opening buy graduated 2.5x more often than ave
 or more exempt wallets, 2.4x more. Five or more prior launches from the deployer, 2.2x more. No
 exempt wallets at all graduated *less* often than the base rate.
 
-None of that has been acted on, and it should not be until the outcome is a better one. Graduation
-means the curve filled, and an operator with a bundle and a large opening buy can fill his own
-curve. So these rules may be measuring who is able to manufacture a graduation rather than who is
-worth buying — the signal is real and the label is wrong for the question. The next thing this
-needs is an outcome that records what a position would have been worth, not merely that the pool
-opened. Until then `rules` is evidence about graduation and says so.
+None of that was acted on, because graduation is the wrong thing to measure. It only means the curve
+filled, and an operator with a bundle and a large opening buy can fill his own curve. Those rules
+were probably measuring who can manufacture a graduation, not who is worth buying.
+
+So there is now a second label, read from the curve's own trade logs:
+
+```sh
+npx tsx src/cli/main.ts accuracy --price      # what holding each launch would have been worth
+npx tsx src/cli/main.ts rules --label peak2x  # and mine against that instead
+```
+
+Both curve events carry their legs, so the price is recoverable without any archive state:
+`CurveBuy` gives `(quoteIn − fee − tax) / tokensOut`, `CurveSell` gives
+`(quoteOut + fee + tax) / tokensIn`. Entry is the first trade **outside the opening-tax window**,
+because that is the first moment an outsider could buy at a normal price and it is where this
+terminal enters; everything before it belongs to the launcher and his exempt wallets. `peakX` is the
+best the curve reached afterwards, as a multiple of that entry, and `endX` where it finished.
+
+The window is counted in blocks from the curve's first trade, not read off the event. The `tax` word
+is the **creator's** tax, not the opening one — checked against a live launch, where 293 of 293 buys
+on `$HOODFUND` carried exactly its 200 bps from the first to the last. Reading a non-zero `tax` as
+"this was sniped" would have handed every trade on every token with a creator fee to the launcher.
+
+Two things this label still cannot see, and they are written here rather than glossed over: once a
+launch graduates the curve stops trading and everything that happens in the v4 pool afterwards is
+invisible to it, so `endX` on a graduated launch means "price at graduation"; and a launch nobody
+traded outside the opening window has no entry price at all, which is recorded as *no entry*, never
+as a zero.
 
 The composite held up on its own terms: `score >= 75` graduated 2.2x the base rate on launches it
 was not fitted to.
