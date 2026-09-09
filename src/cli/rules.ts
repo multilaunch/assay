@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import { LABELS, mine, type Label } from "../track/mine.js";
-import { all, journalPath } from "../track/journal.js";
+import { all, journalLabel } from "../track/journal.js";
 import { padL, padR } from "../util/fmt.js";
 import { c, log } from "../util/log.js";
 
@@ -24,7 +24,7 @@ export function registerRulesCommand(program: Command): void {
       if (o.json) { console.log(JSON.stringify(rep, null, 2)); return; }
 
       if (rep.trainN === 0 || rep.holdoutN === 0) {
-        log.info(`not enough judged launches to split. ${c.grey(journalPath())}`);
+        log.info(`not enough judged launches to split. ${c.grey(journalLabel())}`);
         log.info(c.grey(label === "graduated" ? "run `accuracy --backfill --limit 2000`, then `accuracy --resolve`." : "that label needs `accuracy --price` to have run."));
         return;
       }
@@ -57,6 +57,6 @@ export function registerRulesCommand(program: Command): void {
         console.log(c.grey(`${keeps.length} of ${rep.tested} still separated on launches they were not fitted to. those are worth turning into points in score.ts; the rest are not.`));
       }
       if (!o.all) console.log(c.grey("--all shows every predicate, including the ones that faded."));
-      console.log(c.grey(`journal: ${journalPath()}`));
+      console.log(c.grey(`journal: ${journalLabel()}`));
     });
 }

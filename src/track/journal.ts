@@ -1,6 +1,6 @@
 import { appendFileSync, createReadStream, existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import type { Address } from "viem";
 
 /**
@@ -56,6 +56,18 @@ export interface Entry {
 
 const dir = () => process.env.HOODTERM_DATA ?? resolve(process.cwd(), "data");
 export const journalPath = (): string => resolve(dir(), "journal.jsonl");
+
+/**
+ * The journal path as it should be printed.
+ *
+ * Terminal output ends up in screenshots and pasted into chats, and an absolute path carries the
+ * name of whoever ran it. Relative when it sits under the working directory, which is the normal
+ * case; absolute only when HOODTERM_DATA points somewhere else and the short form would be a lie.
+ */
+export function journalLabel(): string {
+  const rel = relative(process.cwd(), journalPath());
+  return rel && !rel.startsWith("..") ? rel : journalPath();
+}
 
 let warned = false;
 

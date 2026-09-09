@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 import { MATURE_MS, report, resolveOutcomes, resolvePrices, sampleNeeded, THIN, thinFor, lift, wilsonLower } from "../track/accuracy.js";
 import { backfill } from "../track/backfill.js";
-import { all, journalPath } from "../track/journal.js";
+import { all, journalLabel } from "../track/journal.js";
 import { ago, padL, padR } from "../util/fmt.js";
 import { c, log } from "../util/log.js";
 
@@ -63,7 +63,7 @@ export function registerAccuracyCommands(program: Command): void {
       const every = await all();
       const rows = o.liveOnly ? every.filter((e) => e.source !== "backfill") : every;
       if (rows.length === 0) {
-        log.info(o.liveOnly && every.length > 0 ? "nothing was seen live yet; drop --live-only to include the reconstructed launches." : `nothing recorded yet. ${c.grey(journalPath())}`);
+        log.info(o.liveOnly && every.length > 0 ? "nothing was seen live yet; drop --live-only to include the reconstructed launches." : `nothing recorded yet. ${c.grey(journalLabel())}`);
         if (!o.liveOnly) log.info(c.grey("run `hunt` or `snipe` for a while, or `accuracy --backfill` to score launches that already happened."));
         return;
       }
@@ -139,7 +139,7 @@ export function registerAccuracyCommands(program: Command): void {
           console.log(c.yellow(`FIRE is ${l.toFixed(1)}x the base rate over ${fire.judged} judged launches, but the 95% floor (${pc(floor)}) does not clear it (${pc(rep.base)}). Not proven.`));
         }
       }
-      console.log(c.grey(`journal: ${journalPath()}`));
+      console.log(c.grey(`journal: ${journalLabel()}`));
       if (rep.total - rep.pending < THIN) console.log(c.grey("`accuracy --backfill` scores launches that already happened, if you would rather not wait."));
     });
 }
