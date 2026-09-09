@@ -11,9 +11,9 @@
 #   ACME_EMAIL     required   where Let's Encrypt sends expiry warnings.
 #   MODE           docker     "docker" (compose + Caddy in containers) or "systemd" (node + Caddy
 #                             as host services, no Docker).
-#   ADMIN_IPS      auto       space-separated source addresses allowed to POST to the board.
-#                             Defaults to the address of the SSH session running this, if there is
-#                             one, else to 192.0.2.1 — nobody — which leaves the board read-only.
+#   ADMIN_IPS      ""         optional. When set, the proxy additionally pins control actions to
+#                             these source addresses. The password gate is in the application and
+#                             applies either way; this only ever narrows further.
 #   APP_DIR        /opt/assay/app
 #   REPO           ""         git URL to clone if this script is not already inside a checkout.
 #   REF            ""         branch/tag/commit to check out. Empty = leave the checkout alone.
@@ -34,7 +34,6 @@ ETC_DIR="${ETC_DIR:-/etc/assay}"
 DATA_DIR="${DATA_DIR:-/var/lib/assay}"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/assay}"
 SERVICE_USER="${SERVICE_USER:-assay}"
-BOARD_USER="${BOARD_USER:-ops}"
 REPO="${REPO:-}"
 REF="${REF:-}"
 SKIP_FIREWALL="${SKIP_FIREWALL:-}"
@@ -71,19 +70,12 @@ info "mode          ${MODE}"
 info "domain        ${BOARD_DOMAIN}"
 info "app dir       ${APP_DIR}"
 
-# The address allowed to press pause / resume / close. Derive it from the SSH session so the box
-# is usable straight after a first run from a static office or VPN address; fall back to nobody.
-if [ -z "${ADMIN_IPS:-}" ]; then
-  ssh_ip="$(printf '%s' "${SSH_CLIENT:-}" | awk '{print $1}')"
-  if [ -n "$ssh_ip" ]; then
-    ADMIN_IPS="$ssh_ip"
-    info "admin ips     ${ADMIN_IPS} (from SSH_CLIENT)"
-  else
-    ADMIN_IPS="192.0.2.1"
-    info "admin ips     none — control actions will be refused; use the SSH tunnel"
-  fi
+# An optional second fence in front of the writes. The first one is the board's own password.
+ADMIN_IPS="${ADMIN_IPS:-}"
+if [ -n "$ADMIN_IPS" ]; then
+  info "admin ips     ${ADMIN_IPS} (control actions also pinned to these)"
 else
-  info "admin ips     ${ADMIN_IPS}"
+  info "admin ips     not pinned; the board password is the gate"
 fi
 
 # DNS is not fatal — it is common to bootstrap while the record propagates — but say so loudly,
@@ -271,42 +263,48 @@ else
 fi
 
 # ---- finish the caddy env now that a hashing tool exists ---------------------------------------
-step "board credentials"
-if [ -f "${ETC_DIR}/caddy.env" ] && ! grep -q 'REPLACE_ME' "${ETC_DIR}/caddy.env"; then
-  skip "password already set — to rotate it, delete ${ETC_DIR}/caddy.env and run this again"
-else
-  # 32 characters out of /dev/urandom. Basic auth over TLS is only as good as this string.
-  board_password="$(head -c 48 /dev/urandom | base64 | tr -d '/+=' | head -c 32)"
-  if [ "$MODE" = "docker" ]; then
-    pw_hash="$(docker run --rm "$CADDY_IMAGE" caddy hash-password --plaintext "$board_password")"
-    upstream="board:4663"
-  else
-    pw_hash="$(caddy hash-password --plaintext "$board_password")"
-    upstream="127.0.0.1:4663"
-  fi
-
-  umask 077
-  cat > "${ETC_DIR}/caddy.env" <<EOF
+step "proxy config"
+if [ "$MODE" = "docker" ]; then upstream="board:4663"; else upstream="127.0.0.1:4663"; fi
+umask 077
+cat > "${ETC_DIR}/caddy.env" <<EOF
 BOARD_DOMAIN=${BOARD_DOMAIN}
 ACME_EMAIL=${ACME_EMAIL}
-BOARD_USER=${BOARD_USER}
-BOARD_PASSWORD_HASH=${pw_hash}
 BOARD_ADMIN_IPS=${ADMIN_IPS}
 BOARD_UPSTREAM=${upstream}
 EOF
-  chown root:root "${ETC_DIR}/caddy.env"
-  chmod 0600 "${ETC_DIR}/caddy.env"
+chown root:root "${ETC_DIR}/caddy.env"
+chmod 0600 "${ETC_DIR}/caddy.env"
+info "domain ${BOARD_DOMAIN}, upstream ${upstream}"
 
-  # bcrypt is one-way, so the plaintext is written once to a root-only file and printed once.
-  # Delete caddy.env and re-run to rotate.
-  printf '%s:%s\n' "$BOARD_USER" "$board_password" > "${ETC_DIR}/board-credentials"
+step "board password"
+# The page is public to read. This is the password for the controls, and it gates a process that
+# can hold a private key, so it is hashed with scrypt by the application itself and the plaintext
+# is written once to a root-only file.
+if grep -q '^BOARD_ADMIN_PASSWORD_HASH=.\+' "${ETC_DIR}/env.prod" 2>/dev/null; then
+  skip "already set — to rotate it, clear BOARD_ADMIN_PASSWORD_HASH in ${ETC_DIR}/env.prod and run this again"
+else
+  board_password="$(head -c 48 /dev/urandom | base64 | tr -d '/+=' | head -c 32)"
+  if [ "$MODE" = "docker" ]; then
+    pw_hash="$(printf '%s' "$board_password" | docker run --rm -i --entrypoint node "$(docker compose -f "${APP_DIR}/compose.prod.yaml" --project-directory "$APP_DIR" config --images | head -1)" dist/cli/main.js password 2>/dev/null)"
+  else
+    pw_hash="$(printf '%s' "$board_password" | node "${APP_DIR}/dist/cli/main.js" password 2>/dev/null)"
+  fi
+  [ -n "$pw_hash" ] || die "could not hash the password; is the image built? re-run after the stack starts"
+
+  if grep -q '^BOARD_ADMIN_PASSWORD_HASH=' "${ETC_DIR}/env.prod"; then
+    sed -i "s|^BOARD_ADMIN_PASSWORD_HASH=.*|BOARD_ADMIN_PASSWORD_HASH=${pw_hash}|" "${ETC_DIR}/env.prod"
+  else
+    printf 'BOARD_ADMIN_PASSWORD_HASH=%s\n' "$pw_hash" >> "${ETC_DIR}/env.prod"
+  fi
+
+  printf 'board password: %s\n' "$board_password" > "${ETC_DIR}/board-credentials"
   chown root:root "${ETC_DIR}/board-credentials"
   chmod 0600 "${ETC_DIR}/board-credentials"
 
   info "generated a 32-character password"
-  info "user      ${BOARD_USER}"
   info "password  ${board_password}"
   info "also in   ${ETC_DIR}/board-credentials (0600 root)"
+  info "the page itself is public; this only unlocks the controls"
 fi
 
 # ---- wire the config files the runtime expects -------------------------------------------------
@@ -361,9 +359,9 @@ fi
 # ---- done ---------------------------------------------------------------------------------------
 step "done"
 cat <<EOF
-    board      https://${BOARD_DOMAIN}/           (basic auth: ${BOARD_USER})
+    board      https://${BOARD_DOMAIN}/           (public to read)
     health     https://${BOARD_DOMAIN}/healthz    (public, says only "ok")
-    controls   POST allowed from: ${ADMIN_IPS}
+    controls   sign in on the page with the password above${ADMIN_IPS:+, and only from ${ADMIN_IPS}}
     tunnel     ssh -N -L 4663:127.0.0.1:4663 root@${BOARD_DOMAIN}  then http://127.0.0.1:4663
 
     The board is in DRY RUN. It has no key and will not sign anything.

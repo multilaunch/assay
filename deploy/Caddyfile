@@ -3,9 +3,8 @@
 # Values come from deploy/caddy.env (see deploy/caddy.env.example):
 #   BOARD_DOMAIN          board.example.com
 #   ACME_EMAIL            you@example.com          expiry notices from Let's Encrypt
-#   BOARD_USER            the basic-auth username
-#   BOARD_PASSWORD_HASH   output of `caddy hash-password` (bcrypt). NOT the password.
-#   BOARD_ADMIN_IPS       source addresses allowed to POST. Space-separated, CIDR ok.
+#   BOARD_ADMIN_IPS       optional. When set, POSTs are additionally pinned to these source
+#                         addresses. Space-separated, CIDR ok. Leave empty for password only.
 #   BOARD_UPSTREAM        board:4663 under compose; 127.0.0.1:4663 for the systemd install
 #
 # Check it after any edit, then restart. `caddy reload` needs the admin API, which is off below,
@@ -53,15 +52,14 @@
 		Cross-Origin-Opener-Policy same-origin
 	}
 
-	# ---- gate 1: everything except the health probe needs the password ---------------------------
-	# Basic auth is weak on its own and strong enough over TLS with a random 32-character secret:
-	# there is no account to enumerate, no session to steal, and Caddy stores only a bcrypt hash.
-	# It is a single shared credential with no audit trail, which is exactly its limit — see the
-	# access-control paragraph in docs/DEPLOY.md.
-	@needs_auth not path /healthz
-	basic_auth @needs_auth {
-		{$BOARD_USER} {$BOARD_PASSWORD_HASH}
-	}
+	# ---- who may read, who may drive --------------------------------------------------------------
+	# Nothing here asks for a password. The board is meant to be read by anyone, and the four verbs
+	# that move money are gated by the application itself: a session cookie issued against a scrypt
+	# hash in BOARD_ADMIN_PASSWORD_HASH, with a backoff on failed attempts. That gate knows who is
+	# signed in and can withhold the operator's positions from everyone else, which a proxy sitting
+	# in front of one shared password never could.
+	#
+	# The proxy's job here is TLS, the headers above, and keeping the event stream unbuffered.
 
 	# ---- the public probe ------------------------------------------------------------------------
 	# Answered by Caddy, not the board: it proves the proxy and the certificate are alive and
@@ -70,17 +68,17 @@
 		respond "ok" 200
 	}
 
-	# ---- gate 2: the four verbs that move money --------------------------------------------------
-	# pause, resume, close a position and edit a rule are all POST. Everything the page reads is
-	# GET. So the control surface is exactly "POST", and it is additionally pinned to a source
-	# address. Fail closed: BOARD_ADMIN_IPS defaults to a documentation address that is nobody,
-	# so an unconfigured box serves the read-only view and refuses every control action.
-	@blocked_control {
+	# ---- an optional second fence in front of the controls -----------------------------------------
+	# Off by default. Set BOARD_ADMIN_IPS to pin the writes to a static address as well as to the
+	# password — useful if the operator always works from one place, useless and annoying otherwise.
+	# The application refuses these verbs without a session either way, so this only ever narrows.
+	@pinned_control {
 		method POST PUT PATCH DELETE
+		expression {env.BOARD_ADMIN_IPS} != ""
 		not remote_ip {$BOARD_ADMIN_IPS:192.0.2.1}
 	}
-	handle @blocked_control {
-		respond "control actions are restricted to BOARD_ADMIN_IPS; use the SSH tunnel instead" 403
+	handle @pinned_control {
+		respond "this board pins control actions to an address list, and yours is not on it" 403
 	}
 
 	# ---- the live feed ---------------------------------------------------------------------------

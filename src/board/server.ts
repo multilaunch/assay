@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { clearCookie, LoginThrottle, readCookie, sessionCookie, Sessions, verifyPassword } from "./auth.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,6 +45,22 @@ const HTML = () => {
  * until someone edits the proxy config; enforcing it here survives that.
  */
 const readOnly = (): boolean => /^(1|true|yes)$/i.test(process.env.BOARD_READONLY ?? "");
+
+/**
+ * The stored password hash, or "" when the operator never set one.
+ *
+ * Empty means the controls are unreachable from the page at all. That is the right default: a board
+ * put on a public box before anyone thought about a password should be a board nobody can drive.
+ */
+const adminHash = (): string => (process.env.BOARD_ADMIN_PASSWORD_HASH ?? "").trim();
+
+/** Behind a proxy the client is on https even though the hop to us is not. Caddy sets this. */
+const isSecure = (req: IncomingMessage): boolean =>
+  (req.headers["x-forwarded-proto"] ?? "").toString().split(",")[0]?.trim() === "https";
+
+/** Who to throttle. The proxy's own address would throttle everyone at once, so prefer the header. */
+const clientKey = (req: IncomingMessage): string =>
+  (req.headers["x-forwarded-for"] ?? "").toString().split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
 
 /** Host names this board answers to. Behind a proxy, add the public one via BOARD_HOSTS. */
 const knownHosts = (): Set<string> => {
@@ -256,7 +273,18 @@ export interface BoardOptions {
 }
 
 export function startBoard(opts: BoardOptions): { engine: Engine; close: () => void; url: string; host: string } {
-  const clients = new Set<ServerResponse>();
+  /**
+   * Subscribers, each remembering whether it signed in.
+   *
+   * The stream carries two kinds of frame: what the chain is doing, which anyone may watch, and
+   * what this wallet is doing, which is nobody else's business. A subscriber's rights are fixed
+   * when it connects — a session that expires mid-stream keeps its open stream until it reconnects,
+   * which is the usual trade for not re-authenticating every frame.
+   */
+  const clients = new Set<{ res: ServerResponse; admin: boolean }>();
+
+  /** Frames that describe this operator rather than the chain. */
+  const isPrivate = (kind: unknown): boolean => kind === "positions" || kind === "pulse" || kind === "mark" || kind === "exit" || kind === "fire" || kind === "swept";
   const recent: Record<string, unknown>[] = [];
 
   // The opening-tax window is a protocol parameter the owner can change, so it is read rather than
@@ -277,7 +305,11 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
       if (recent.length > 120) recent.shift();
     }
     const frame = `data: ${JSON.stringify(data)}\n\n`;
-    for (const res of clients) { try { res.write(frame); } catch { clients.delete(res); } }
+    const priv = isPrivate(data.kind);
+    for (const c of clients) {
+      if (priv && !c.admin) continue;
+      try { c.res.write(frame); } catch { clients.delete(c); }
+    }
   };
 
   // Always starts paused: the page opens as a feed and fires nothing until someone presses start.
@@ -300,13 +332,51 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
 
   const hosts = knownHosts();
   const frozen = readOnly();
+  const sessions = new Sessions();
+  const throttle = new LoginThrottle();
+  const SESSION_SEC = 12 * 60 * 60;
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const path = url.pathname;
 
     const refused = guard(req, hosts);
     if (refused) { json(res, 403, { error: refused }); return; }
-    if (frozen && req.method === "POST") { json(res, 403, { error: "this board is read only" }); return; }
+    const admin = sessions.verify(readCookie(req.headers.cookie, "assay_session"));
+
+    // Login is the one POST an anonymous caller may make. Everything else that writes needs a
+    // session, and read-only refuses even a signed-in operator.
+    if (req.method === "POST" && path === "/admin/login") {
+      const wait = throttle.retryAfter(clientKey(req));
+      if (wait > 0) { json(res, 429, { error: `too many attempts, wait ${Math.ceil(wait / 1000)} s` }); return; }
+      const hash = adminHash();
+      void readBody(req).then(async (b) => {
+        const ok = hash !== "" && (await verifyPassword(String(b.password ?? ""), hash));
+        if (!ok) {
+          throttle.fail(clientKey(req));
+          // The same answer whether the password was wrong or never configured: which of the two
+          // it is tells an attacker something and tells the operator nothing they cannot read in
+          // their own logs.
+          json(res, 401, { error: "wrong password" });
+          return;
+        }
+        throttle.succeed(clientKey(req));
+        res.setHeader("set-cookie", sessionCookie(sessions.create(), { secure: isSecure(req), maxAgeSec: SESSION_SEC }));
+        json(res, 200, { admin: true });
+      });
+      return;
+    }
+
+    if (req.method === "POST" && path === "/admin/logout") {
+      sessions.destroy(readCookie(req.headers.cookie, "assay_session"));
+      res.setHeader("set-cookie", clearCookie(isSecure(req)));
+      json(res, 200, { admin: false });
+      return;
+    }
+
+    if (req.method === "POST") {
+      if (!admin) { json(res, 401, { error: "sign in first" }); return; }
+      if (frozen) { json(res, 403, { error: "this board is read only" }); return; }
+    }
 
     if (req.method === "GET" && (path === "/" || path === "/index.html")) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
@@ -315,11 +385,22 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     }
 
     if (req.method === "GET" && path === "/state") {
+      // The feed and the parameters of the protocol are public; what this wallet is holding is not.
+      // A page anyone can open should not publish its operator's positions and P&L.
       json(res, 200, {
-        live: opts.live, paused: engine.isPaused(), spent: engine.spent().toString(), readOnly: frozen,
-        taxSeconds, taxStartBps,
-        rules: Object.fromEntries(Object.keys(EDITABLE).map((k) => [k, engine.rules[k as EditableKey]])),
-        bounds: EDITABLE, recent, positions: positionsPayload(),
+        live: opts.live, paused: engine.isPaused(), readOnly: frozen, taxSeconds, taxStartBps,
+        // `recent` is the replay buffer, and it holds entries and exits alongside launches. Anyone
+        // may see what the chain did; only the operator may see what this wallet did about it.
+        recent: admin ? recent : recent.filter((e) => e.kind === "launch"),
+        admin, canSignIn: adminHash() !== "",
+        ...(admin
+          ? {
+              spent: engine.spent().toString(),
+              rules: Object.fromEntries(Object.keys(EDITABLE).map((k) => [k, engine.rules[k as EditableKey]])),
+              bounds: EDITABLE,
+              positions: positionsPayload(),
+            }
+          : {}),
       });
       return;
     }
@@ -334,8 +415,9 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     if (req.method === "GET" && path === "/events") {
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
       res.write(`data: ${JSON.stringify({ kind: "hello", at: Date.now(), live: opts.live, paused: engine.isPaused() })}\n\n`);
-      clients.add(res);
-      req.on("close", () => clients.delete(res));
+      const sub = { res, admin };
+      clients.add(sub);
+      req.on("close", () => clients.delete(sub));
       return;
     }
 
@@ -378,6 +460,6 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     engine,
     host,
     url: `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${opts.port}`,
-    close: () => { clearInterval(beat); for (const r of clients) r.end(); server.close(); engine.stop(); },
+    close: () => { clearInterval(beat); for (const c of clients) c.res.end(); server.close(); engine.stop(); },
   };
 }

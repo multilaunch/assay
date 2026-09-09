@@ -92,8 +92,13 @@ only the budget cannot lose more than it.
 
 The board binds loopback and has no route that buys on demand. It checks the `Host` on every request
 and requires same-origin JSON on the four verbs that move money, because loopback on its own stops
-nothing: any page you have open can post a form to `127.0.0.1`. `BOARD_READONLY=1` removes those
-four verbs entirely.
+nothing: any page you have open can post a form to `127.0.0.1`.
+
+On a public box the page is meant to be read by anyone — the feed, the ribbon and the track record
+need no password. The four verbs do, and so does everything about the wallet: positions, spend and
+the activity log are withheld from anyone not signed in, on the event stream as well as on the page.
+Set the password with `assay password` into `BOARD_ADMIN_PASSWORD_HASH`; leave it empty and the
+controls simply cannot be reached. `BOARD_READONLY=1` removes them even for a signed-in operator.
 
 No live trade has ever been executed with this. Both directions are encoded, decoded against the
 chain's own bytes and simulated against the live router, but never signed.
