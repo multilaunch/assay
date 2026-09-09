@@ -95,6 +95,17 @@ function guard(req: IncomingMessage, hosts: Set<string>): string | null {
   return null;
 }
 
+/** Read once: it never changes while the process runs, and a crawler should not cost a disk read. */
+let ogCache: Buffer | null | undefined;
+function ogImage(): Buffer | null {
+  if (ogCache !== undefined) return ogCache;
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const p of [join(here, "og.png"), join(here, "..", "..", "src", "board", "og.png")]) {
+    try { return (ogCache = readFileSync(p)); } catch { /* try the next one */ }
+  }
+  return (ogCache = null);
+}
+
 /** Only these rules can be changed from the page, and only inside these bounds. */
 const EDITABLE = {
   minScore: { min: 0, max: 100 },
@@ -431,6 +442,16 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
       const key = url.searchParams.get("key") ?? "";
       if (!key) { json(res, 400, { error: "which fingerprint?" }); return; }
       json(res, 200, engine.farmCohort(key));
+      return;
+    }
+
+    // The link preview. A crawler reaches this with no session and no Origin, which the guard
+    // already allows for a GET; it is the one asset a stranger fetches before ever seeing the page.
+    if (req.method === "GET" && path === "/og.png") {
+      const png = ogImage();
+      if (!png) { json(res, 404, { error: "no preview image" }); return; }
+      res.writeHead(200, { "content-type": "image/png", "content-length": png.length, "cache-control": "public, max-age=86400" });
+      res.end(png);
       return;
     }
 

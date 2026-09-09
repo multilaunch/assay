@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+  <!--
+    The link preview. Deliberately carries no measured number: a card is cached by Telegram and by
+    every other crawler for a long time, and a stale 3.59% quoted with confidence is exactly the
+    kind of claim this project exists not to make. The numbers live on the page, where they are
+    recomputed.
+
+    Regenerate with: rsvg-convert -w 1200 -h 630 src/board/og.svg -o src/board/og.png
+  -->
+  <rect width="1200" height="630" fill="#0e1012"/>
+  <rect x="0" y="0" width="1200" height="3" fill="#e8eaed"/>
+
+  <!-- the mark, the same ascending chart as the icon -->
+  <g transform="translate(88 96)">
+    <rect x="0" y="42" width="16" height="16" fill="#767c84"/>
+    <rect x="22" y="24" width="16" height="34" fill="#e8eaed"/>
+    <rect x="44" y="0" width="16" height="58" fill="#e8eaed"/>
+    <rect x="-2" y="62" width="64" height="6" fill="#e8eaed"/>
+  </g>
+
+  <text x="176" y="152" font-size="58" font-weight="600" fill="#e8eaed" letter-spacing="-1">assay</text>
+  <text x="322" y="152" font-size="30" fill="#767c84" font-family="SF Mono, Menlo, Consolas, monospace">/ pons v2</text>
+
+  <text x="88" y="268" font-size="46" fill="#e8eaed" letter-spacing="-0.5">Every launch on Robinhood Chain,</text>
+  <text x="88" y="326" font-size="46" fill="#e8eaed" letter-spacing="-0.5">read off the chain and scored.</text>
+
+  <rect x="88" y="376" width="1024" height="1" fill="#2a2e33"/>
+
+  <text x="88" y="428" font-size="27" fill="#a8aeb6">Every point comes with the reason behind it.</text>
+  <text x="88" y="470" font-size="27" fill="#a8aeb6">Every verdict is written down before the outcome is known,</text>
+  <text x="88" y="512" font-size="27" fill="#a8aeb6">then checked against what actually happened.</text>
+
+  <text x="88" y="576" font-size="22" fill="#767c84" font-family="SF Mono, Menlo, Consolas, monospace">assay.mlaunch.xyz</text>
+  <text x="1112" y="576" font-size="22" fill="#767c84" text-anchor="end" font-family="SF Mono, Menlo, Consolas, monospace">local · open · non-custodial</text>
+</svg>

@@ -14,7 +14,7 @@
     "start": "tsx src/cli/main.ts",
     "doctor": "tsx src/cli/main.ts doctor",
     "hunt": "tsx src/cli/main.ts hunt",
-    "build": "tsc -p tsconfig.json && node -e \"require('fs').mkdirSync('dist/board',{recursive:true});require('fs').copyFileSync('src/board/index.html','dist/board/index.html')\"",
+    "build": "tsc -p tsconfig.json && node -e \"require('fs').mkdirSync('dist/board',{recursive:true});for (const f of ['index.html','og.png']) require('fs').copyFileSync('src/board/'+f,'dist/board/'+f)\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
     "board": "tsx src/cli/main.ts board",
