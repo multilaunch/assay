@@ -41,3 +41,44 @@ test("the terminal still gets its sign in front of the points", () => {
   assert.equal(renderReason({ code: "dev_band", points: 15, vars: { pct: "3.20" } }), "+15 opening buy 3.20%, inside the 1–6% band");
   assert.equal(renderReason({ code: "dev_none", points: -10 }), "-10 no opening buy, nothing at stake");
 });
+
+/**
+ * The board renders the same codes out of its own dictionary. A code with wording in the terminal
+ * and none on the page is the exact gap this refactor existed to close, and it is invisible until
+ * somebody switches to Russian and reads `dev_band` where a sentence should be.
+ */
+function boardDict(lang: "en" | "ru"): Set<string> {
+  const html = readFileSync("src/board/index.html", "utf8");
+  const block = new RegExp(`\\n  ${lang}: \\{(.*?)\\n  \\},`, "s").exec(html);
+  assert.ok(block, `no ${lang} dictionary in the board`);
+  return new Set([...block[1]!.matchAll(/^\s*(rc_[a-z0-9_]+)\s*:/gm)].map((m) => m[1]!));
+}
+
+for (const lang of ["en", "ru"] as const) {
+  test(`the board has ${lang} wording for every reason the code can emit`, () => {
+    const dict = boardDict(lang);
+    const missing = emittedCodes().filter((c) => !dict.has(`rc_${c}`));
+    assert.deepEqual(missing, [], `no ${lang} wording for: ${missing.join(", ")}`);
+  });
+}
+
+test("the two board dictionaries agree on which reasons exist", () => {
+  const en = [...boardDict("en")].sort();
+  const ru = [...boardDict("ru")].sort();
+  assert.deepEqual(en, ru);
+});
+
+test("every board reason carries the placeholders its wording needs", () => {
+  const html = readFileSync("src/board/index.html", "utf8");
+  for (const lang of ["en", "ru"] as const) {
+    const block = new RegExp(`\\n  ${lang}: \\{(.*?)\\n  \\},`, "s").exec(html)![1]!;
+    for (const m of block.matchAll(/^\s*rc_([a-z0-9_]+)\s*:\s*"(.*?)",$/gm)) {
+      const [, code, text] = m as unknown as [string, string, string];
+      const en = TEXT[code];
+      if (typeof en !== "function") continue;
+      // the English renderer names every variable it uses; the translation must name the same ones
+      const wanted = [...String(en({ pct: "{pct}", n: "{n}", perSide: "{perSide}", graduated: "{graduated}", prior: "{prior}", sec: "{sec}", address: "{address}", symbol: "{symbol}", decimals: "{decimals}", detail: "{detail}", have: "{have}", max: "{max}", spent: "{spent}", budget: "{budget}", twins: "{twins}", score: "{score}", min: "{min}", pattern: "{pattern}" })).matchAll(/\{(\w+)\}/g)].map((x) => x[1]!);
+      for (const v of wanted) assert.ok(text.includes(`{${v}}`), `${lang} rc_${code} never uses {${v}}`);
+    }
+  }
+});

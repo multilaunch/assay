@@ -6,6 +6,7 @@
 <!-- The feed carries strings a stranger wrote on chain. Nothing here loads code from anywhere but this page. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
 <title>assay</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230e1012'/><rect x='5' y='19' width='6' height='6' fill='%23767c84'/><rect x='13' y='13' width='6' height='12' fill='%23e8eaed'/><rect x='21' y='6' width='6' height='19' fill='%23e8eaed'/><rect x='4' y='26' width='24' height='2.5' fill='%23e8eaed'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -228,6 +229,34 @@ a{color:var(--ink); text-decoration:none; border-bottom:1px solid var(--line-har
 a:hover{border-bottom-color:var(--hot)}
 .row-links{margin-top:var(--s3); display:flex; gap:var(--s4); font-size:11.5px; font-family:var(--mono)}
 
+/* ---- the visitor's own buy ------------------------------------------------
+   The board holds one operator's key and will never hold anyone else's, so a
+   visitor gets the bytes rather than the execution. Everything here is priced
+   and shown before a wallet is ever asked to sign, and the sentence under the
+   control is what our own journal measured, not a disclaimer. */
+.buy{margin-top:var(--s3); padding-top:var(--s3); border-top:1px solid var(--line)}
+.buy-in{display:flex; align-items:center; gap:var(--s2); flex-wrap:wrap}
+.buy-in input{width:98px; text-align:right}
+.chips{display:flex; border:1px solid var(--line-hard)}
+.chips button{border:0; padding:3px 9px; font-family:var(--mono); font-size:11px; color:var(--ink-3)}
+.chips button+button{border-left:1px solid var(--line)}
+.chips button[aria-pressed="true"]{background:var(--hot); color:var(--hot-ink); font-weight:600}
+.buy-truth{margin:var(--s2) 0 0; font-size:11.5px; line-height:1.6; color:var(--ink-2); max-width:74ch}
+.buy-q{margin-top:var(--s2); border:1px solid var(--line); background:var(--surface-3); padding:var(--s2) var(--s3); max-width:380px}
+.buy-f{display:flex; align-items:baseline; gap:var(--s2); line-height:1.7; font-size:11.5px}
+.buy-f .k{flex:1; min-width:0; color:var(--ink-3)}
+.buy-f .v{flex:none; font-family:var(--mono); font-variant-numeric:tabular-nums slashed-zero}
+.buy-go{display:flex; align-items:center; gap:var(--s3); margin-top:var(--s2); padding-top:var(--s2); border-top:1px solid var(--line)}
+.buy-left{flex:1; font-family:var(--mono); font-size:11px; color:var(--ink-3)}
+.buy-left.out{color:var(--warn)}
+.buy-msg{margin:var(--s2) 0 0; font-size:11.5px; line-height:1.6; color:var(--ink-2); max-width:74ch}
+.buy-msg.bad{color:var(--crit)}
+.buy-msg.dim{color:var(--ink-3)}
+.buy-tx{margin-top:var(--s2); display:flex; gap:var(--s3); align-items:baseline; font-size:11.5px; font-family:var(--mono); flex-wrap:wrap}
+.buy-tx .st{font-family:var(--ui)}
+.buy-tx .st.ok{color:var(--ok)}
+.buy-tx .st.no{color:var(--crit)}
+
 /* ---- rail --------------------------------------------------------------- */
 /* The rail scrolls when it has to. Four sections fit a laptop; on a short window the log used to be
    squeezed to nothing instead of the rail simply being longer than the screen. */
@@ -318,6 +347,13 @@ a:hover{border-bottom-color:var(--hot)}
 .langs button[aria-pressed="true"]{background:var(--hot); color:var(--hot-ink); font-weight:600}
 @media(max-width:720px){#coach{left:var(--s3) !important; right:var(--s3); max-width:none; width:auto}}
 
+/* The table is wider than a phone and scrolls sideways inside its pane. The buy control must not
+   need that scroll: it is pinned to something a thumb can reach with the columns at rest. */
+@media(max-width:560px){
+  .buy,.buy-q,.buy-truth,.buy-msg{max-width:300px}
+  .buy-in input{width:78px}
+}
+
 @media(max-width:1080px){
   .shell{grid-template-columns:minmax(0,1fr); overflow:auto}
   main{min-height:62vh}
@@ -354,6 +390,11 @@ a:hover{border-bottom-color:var(--hot)}
     <button data-lang="en" aria-pressed="true">EN</button>
     <button data-lang="ru" aria-pressed="false">RU</button>
   </div>
+  <!-- The visitor's own wallet. Not a sign-in: nothing on the server knows or cares who this is,
+       and the address leaves the page only as the buyer of a quote. -->
+  <span class="tag n" id="wal-addr" hidden></span>
+  <button id="wal-chain" data-i18n="w_switch" hidden>wrong chain, switch</button>
+  <button id="wallet" data-i18n="w_connect">connect</button>
   <button id="help" data-i18n="help" title="Walk me through it">guide</button>
   <!-- Hidden until /state says who is reading: the page is public, and the controls are not. -->
   <button id="signin" data-i18n="signin" hidden>sign in</button>
@@ -468,6 +509,65 @@ const clock = (ms) => new Date(ms).toTimeString().slice(0, 8);
    half-translated interface is worse than an untranslated one. */
 const I18N = {
   en: {
+    /* why the score said what it said — reason codes */
+    rc_tx_unreadable: "launch transaction unreadable: opening buy and declared bundle unknown",
+    rc_no_record: "no factory record: creator tax and fee recipient unknown",
+    rc_curve_unreadable: "curve unreadable",
+    rc_dev_none: "no opening buy, nothing at stake",
+    rc_dev_tiny: "opening buy {pct}% of supply, token-sized",
+    rc_dev_band: "opening buy {pct}%, inside the 1–6% band",
+    rc_dev_heavy: "opening buy {pct}%, heavy",
+    rc_dev_huge: "opening buy {pct}%, over 10%: one wallet can flatten the curve",
+    rc_tax_none: "no creator tax",
+    rc_tax_low: "creator tax {pct}%: earns on volume, has a reason to keep posting",
+    rc_tax_mid: "creator tax {pct}%",
+    rc_tax_high: "creator tax {pct}%: traders pay {perSide}% per side, flow dies",
+    rc_fees_third_party: "fees routed to a third party (builder / KOL deal shape)",
+    rc_no_socials: "no socials: no one to bring flow",
+    rc_has_x: "has X",
+    rc_has_web: "has website",
+    rc_has_tg: "has telegram",
+    rc_real_description: "real description",
+    rc_entrypoint_unknown: "unrecognised launch entrypoint: the declared bundle could not be read",
+    rc_exempt_none: "no wallets exempt from the opening tax",
+    rc_exempt_few: "wallets exempt from the opening tax: {n}",
+    rc_exempt_many: "wallets exempt from the opening tax: {n} — a declared bundle",
+    rc_farm_many: "launch farm: {n} launches with this exact fingerprint in 30 min",
+    rc_farm_one: "one earlier launch with this exact fingerprint in 30 min",
+    rc_dep_fresh: "fresh deployer",
+    rc_dep_good: "deployer graduated {graduated} of {prior} recent launches",
+    rc_dep_serial: "serial deployer: {prior} launches, none graduated",
+    rc_dep_mixed: "deployer: {prior} recent launches, {graduated} graduated",
+    rc_buyers_many: "distinct buyers: {n}",
+    rc_buyers_some: "distinct buyers: {n}",
+    rc_bots_only: "every buy so far landed inside the opening-tax window: bots only",
+    rc_more_sells: "more sells than buys",
+    rc_fast_fill: "{pct}% of the curve filled in {sec}s",
+    rc_flag_mint_elsewhere: "opening buy minted to {address}, not the launcher",
+    rc_flag_fee_recipient: "fee recipient {address}",
+    rc_flag_pair_not_eth: "paired with {symbol} ({decimals} decimals), not ETH",
+    rc_flag_buyback: "buyback-and-lock enabled",
+    rc_flag_reads_failed: "reads failed: {n}",
+    rc_no_data: "unreadable: {detail}",
+    rc_gate_open_positions: "open positions {have} ≥ {max}",
+    rc_gate_budget: "session budget spent ({spent} of {budget} wei)",
+    rc_gate_farm: "launch farm: {twins} twins in 30 min > {max}",
+    rc_gate_pair_not_eth: "pair is {symbol}, not ETH",
+    rc_gate_pair_decimals: "pair {symbol} has {decimals} decimals and no entry size of its own",
+    rc_gate_score: "score {score} < {min}",
+    rc_gate_tx_unreadable: "launch transaction unreadable: opening buy and exempt wallets unknown",
+    rc_gate_dev: "opening buy {pct}% > {max}%",
+    rc_gate_exempt: "exempt wallets {n} > {max}",
+    rc_gate_no_record: "no factory record: creator tax unknown",
+    rc_gate_tax: "creator tax {pct}% > {max}%",
+    rc_gate_no_socials: "no socials",
+    rc_gate_keyword: "keyword {pattern} not found",
+    rc_gate_deployer: "deployer not on the allow-list",
+    rc_gate_curve_unreadable: "curve unreadable",
+    rc_gate_curve_closed: "curve already closed",
+    rc_gate_not_armed: "not armed",
+    rc_gate_dry_run: "dry run not started",
+
     help:"guide", ribbon:"launches / sec · 90s",
     k_seen:"seen", k_rate:"per min", k_pass:"passing", k_open:"open", k_spent:"spent",
     f_all:"all", f_fire:"fire", f_watch:"watch", f_pass:"passes rules",
@@ -480,6 +580,19 @@ const I18N = {
     g_title:"sign in", g_hint:"reading needs no password. the controls do.",
     g_pw:"password", g_go:"sign in", g_cancel:"cancel",
     log_signed_in:"signed in",
+
+    w_connect:"connect", w_disconnect:"disconnect", w_none:"no wallet",
+    w_none_t:"no wallet in this browser — install one, or open the board where you keep yours",
+    w_switch:"wrong chain, switch", w_switching:"switching", w_declined:"you turned that down",
+    b_buy:"buy", b_amount:"eth", b_quote:"quote", b_requote:"re-quote", b_working:"pricing",
+    b_send:"sign and send", b_sending:"waiting for the wallet",
+    b_out:"you get", b_min:"at least", b_slip:"slippage", b_fee:"fee",
+    b_creator:"creator tax", b_open:"opening tax", b_spend:"you spend",
+    b_left:"{s}s left", b_stale:"expired, quote again",
+    b_need_chain:"your wallet is on another chain",
+    b_rejected:"you turned it down; nothing was sent",
+    b_pending:"in the mempool", b_ok:"confirmed", b_no:"reverted on chain",
+    b_truth:"of the launches an outsider could enter, the median never went above its entry price, and about one in twenty doubled.",
 
     pf_skip:"skip",
     pf_proven:"95% floor {f} clears the {b} base rate. on this sample the verdict is worth something.",
@@ -554,6 +667,65 @@ const I18N = {
     t9p:"Start reads and scores and, in a dry run, takes paper entries. In live mode this button says arm — press it and the next launch that passes every rule is bought with real ETH. Positions appear on the right, and you can close any of them by hand.",
   },
   ru: {
+    /* why the score said what it said — reason codes */
+    rc_tx_unreadable: "транзакция запуска не прочиталась: закуп дева и бандл неизвестны",
+    rc_no_record: "нет записи в фабрике: налог создателя и получатель комиссий неизвестны",
+    rc_curve_unreadable: "кривая не прочиталась",
+    rc_dev_none: "закупа нет, деплоеру нечего терять",
+    rc_dev_tiny: "закуп {pct}% саплая, символический",
+    rc_dev_band: "закуп {pct}%, в полосе 1–6%",
+    rc_dev_heavy: "закуп {pct}%, тяжеловато",
+    rc_dev_huge: "закуп {pct}%, больше 10%: один кошелёк кладёт кривую",
+    rc_tax_none: "налога создателя нет",
+    rc_tax_low: "налог {pct}%: зарабатывает на обороте, есть смысл продолжать",
+    rc_tax_mid: "налог создателя {pct}%",
+    rc_tax_high: "налог {pct}%: трейдер платит {perSide}% с каждой стороны, поток умирает",
+    rc_fees_third_party: "комиссии уходят третьей стороне — похоже на сделку с билдером или KOL",
+    rc_no_socials: "соцсетей нет: некому привести поток",
+    rc_has_x: "есть X",
+    rc_has_web: "есть сайт",
+    rc_has_tg: "есть телеграм",
+    rc_real_description: "описание не пустое",
+    rc_entrypoint_unknown: "неизвестная точка входа: заявленный бандл прочитать не удалось",
+    rc_exempt_none: "никто не освобождён от стартового налога",
+    rc_exempt_few: "кошельков без стартового налога: {n}",
+    rc_exempt_many: "кошельков без стартового налога: {n} — заявленный бандл",
+    rc_farm_many: "ферма: {n} запусков с тем же отпечатком за 30 мин",
+    rc_farm_one: "был один запуск с тем же отпечатком за 30 мин",
+    rc_dep_fresh: "деплоер новый",
+    rc_dep_good: "деплоер довёл до пула {graduated} из {prior}",
+    rc_dep_serial: "серийный деплоер: {prior} запусков, ни один не доехал",
+    rc_dep_mixed: "деплоер: {prior} запусков, доехали {graduated}",
+    rc_buyers_many: "разных покупателей: {n}",
+    rc_buyers_some: "разных покупателей: {n}",
+    rc_bots_only: "все покупки пришлись на окно стартового налога: одни боты",
+    rc_more_sells: "продаж больше, чем покупок",
+    rc_fast_fill: "кривая заполнена на {pct}% за {sec}с",
+    rc_flag_mint_elsewhere: "закуп ушёл на {address}, а не лаунчеру",
+    rc_flag_fee_recipient: "получатель комиссий {address}",
+    rc_flag_pair_not_eth: "пара {symbol} ({decimals} знаков), не ETH",
+    rc_flag_buyback: "включён выкуп с блокировкой",
+    rc_flag_reads_failed: "чтений сорвалось: {n}",
+    rc_no_data: "не прочиталось: {detail}",
+    rc_gate_open_positions: "открытых позиций {have} ≥ {max}",
+    rc_gate_budget: "бюджет сессии исчерпан ({spent} из {budget} wei)",
+    rc_gate_farm: "ферма: близнецов за 30 мин {twins} > {max}",
+    rc_gate_pair_not_eth: "пара {symbol}, а не ETH",
+    rc_gate_pair_decimals: "у пары {symbol} {decimals} знаков и нет своего размера входа",
+    rc_gate_score: "скор {score} < {min}",
+    rc_gate_tx_unreadable: "транзакция запуска не прочиталась: закуп и освобождённые неизвестны",
+    rc_gate_dev: "закуп дева {pct}% > {max}%",
+    rc_gate_exempt: "освобождённых кошельков {n} > {max}",
+    rc_gate_no_record: "нет записи в фабрике: налог создателя неизвестен",
+    rc_gate_tax: "налог создателя {pct}% > {max}%",
+    rc_gate_no_socials: "нет соцсетей",
+    rc_gate_keyword: "ключевое слово {pattern} не найдено",
+    rc_gate_deployer: "деплоера нет в списке разрешённых",
+    rc_gate_curve_unreadable: "кривая не прочиталась",
+    rc_gate_curve_closed: "кривая уже закрыта",
+    rc_gate_not_armed: "не заряжено",
+    rc_gate_dry_run: "вхолостую, не запущено",
+
     help:"гайд", ribbon:"запусков / сек · 90с",
     k_seen:"всего", k_rate:"в минуту", k_pass:"проходят", k_open:"в позиции", k_spent:"потрачено",
     f_all:"все", f_fire:"огонь", f_watch:"наблюдать", f_pass:"проходят фильтр",
@@ -566,6 +738,19 @@ const I18N = {
     g_title:"вход", g_hint:"смотреть можно без пароля. управлять — нет.",
     g_pw:"пароль", g_go:"войти", g_cancel:"отмена",
     log_signed_in:"вы вошли",
+
+    w_connect:"подключить", w_disconnect:"отключить", w_none:"нет кошелька",
+    w_none_t:"в этом браузере нет кошелька — поставьте расширение или откройте доску там, где он есть",
+    w_switch:"не та сеть, сменить", w_switching:"меняю сеть", w_declined:"вы отказались",
+    b_buy:"купить", b_amount:"eth", b_quote:"цена", b_requote:"пересчитать", b_working:"считаю",
+    b_send:"подписать и отправить", b_sending:"ждём кошелёк",
+    b_out:"получите", b_min:"не меньше", b_slip:"проскальзывание", b_fee:"комиссия",
+    b_creator:"налог создателя", b_open:"стартовый налог", b_spend:"платите",
+    b_left:"{s}с", b_stale:"устарело, посчитайте заново",
+    b_need_chain:"кошелёк в другой сети",
+    b_rejected:"вы отклонили подпись; ничего не ушло",
+    b_pending:"в мемпуле", b_ok:"подтверждено", b_no:"откатилась на чейне",
+    b_truth:"из запусков, в которые чужой мог войти, медианный так и не поднялся выше цены входа, а удвоился примерно один из двадцати.",
 
     pf_skip:"мимо",
     pf_proven:"нижняя граница 95% — {f}, это выше базовых {b}. на этой выборке вердикт чего-то стоит.",
@@ -742,6 +927,21 @@ function matches(e) {
   return `${e.symbol || ""} ${e.name || ""} ${e.token} ${e.deployer}`.toLowerCase().includes(QUERY);
 }
 
+/* Reasons, flags and refusals arrive as codes and numbers rather than as sentences, so the page
+   renders them out of its own dictionary: `rc_<code>` when there is an entry, the bare code when
+   there is not — loud, rather than a silent blank. A plain string is still understood, because an
+   older board binary on the other end of this page is not a reason to show nothing at all. */
+function noteText(n) {
+  if (typeof n === "string") return n;
+  if (!n || typeof n !== "object") return String(n ?? "");
+  const key = "rc_" + n.code;
+  return I18N[LANG]?.[key] || I18N.en[key] ? t(key, n.vars || {}) : String(n.code ?? "");
+}
+const reasonBit = (r) => {
+  if (typeof r === "string") { const i = r.indexOf(" "); return `<b>${esc(r.slice(0, i))}</b> ${esc(r.slice(i + 1))}`; }
+  return `<b>${esc((r.points >= 0 ? "+" : "") + r.points)}</b> ${esc(noteText(r))}`;
+};
+
 function detailRow(e) {
   const tr = document.createElement("tr");
   tr.className = "detail";
@@ -759,15 +959,19 @@ function detailRow(e) {
       <dl class="kv"><dt>${esc(t("d_socials"))}</dt><dd>${soc}</dd></dl>
       ${e.exempt && e.exempt.length ? `<dl class="kv"><dt>${esc(t("d_exempt"))}</dt><dd>${e.exempt.map(esc).join("<br>")}</dd></dl>` : ""}
     </div>
-    <div class="why">${(e.reasons || []).map((r) => { const i = r.indexOf(" "); return `<b>${esc(r.slice(0, i))}</b> ${esc(r.slice(i + 1))}`; }).join(" &nbsp; ")}</div>
-    ${e.flags && e.flags.length ? `<div class="note">${esc(e.flags.join(" · "))}</div>` : ""}
-    ${e.why && e.why.length ? `<div class="note">${esc(t("d_refused", { x: e.why.join("; ") }))}</div>` : ""}
+    <div class="why">${(e.reasons || []).map(reasonBit).join(" &nbsp; ")}</div>
+    ${e.flags && e.flags.length ? `<div class="note">${esc(e.flags.map(noteText).join(" · "))}</div>` : ""}
+    ${e.why && e.why.length ? `<div class="note">${esc(t("d_refused", { x: e.why.map(noteText).join("; ") }))}</div>` : ""}
     <div class="row-links">
       <a href="${esc(e.links.pons)}" target="_blank" rel="noopener">${esc(t("l_pons"))}</a>
       <a href="${esc(e.links.explorer)}" target="_blank" rel="noopener">${esc(t("l_explorer"))}</a>
       <span class="t-dim">${esc(t("d_read", { ms: e.readMs }))}</span>
       ${e.errors && e.errors.length ? `<span class="t-crit">${esc(t("d_failed", { n: e.errors.length }))}</span>` : ""}
     </div></td>`;
+  /* Only an ETH pair still on the curve can be bought in one signature. An ERC-20 pair needs an
+     approve first and a graduated launch trades through the router, so the quote route refuses
+     both — offering the control there would be offering bytes that fail in the wallet. */
+  if (e.pairNative && (e.progress == null || e.progress < 1)) tr.querySelector("td").append(buyBox(e));
   return tr;
 }
 
@@ -993,6 +1197,390 @@ async function loadStats() {
     return true;
   } catch { renderStats(null); return false; }
 }
+
+/* ---- the visitor's own wallet ---------------------------------------------
+   The board signs for exactly one operator and never for a visitor, so a
+   visitor who wants in gets the transaction instead of the execution: the
+   server prices the buy and encodes it, and the wallet in their own browser
+   does the signing. Nothing here is authentication — there is no session, the
+   server does not know who is reading, and the address goes nowhere except
+   into the `buyer` parameter of a quote, because the opening tax is read for
+   the address that will actually pay it.
+
+   The wallet methods used are the whole list: eth_accounts, eth_requestAccounts,
+   eth_chainId, wallet_switchEthereumChain, wallet_addEthereumChain,
+   eth_sendTransaction, eth_getTransactionReceipt. No key, no phrase, no signing
+   of anything that is not this transaction. */
+const CHAIN_ID = 4663;
+const CHAIN_HEX = "0x1237";
+const CHAIN_ADD = {
+  chainId: CHAIN_HEX,
+  chainName: "Robinhood Chain",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: ["https://robinhood-rpc.publicnode.com"],
+};
+const SLIPPAGE_BPS = 300;
+const CHIPS = ["0.005", "0.01", "0.05"];
+
+const eth = () => window.ethereum || null;
+/* WMSG is what the wallet last said when there was no panel to say it in — a dismissed connect
+   prompt otherwise leaves the masthead looking as though the click did nothing. */
+let ACC = null, CHAIN = null, WBUSY = false, WMSG = null;
+
+/* Whether the visitor wants to be connected, not whether they are. Reconnecting on load asks
+   eth_accounts, which prompts nobody; eth_requestAccounts only ever follows a click. */
+const want = () => { try { return localStorage.getItem("assay.wallet") === "1"; } catch { return false; } };
+const setWant = (v) => { try { v ? localStorage.setItem("assay.wallet", "1") : localStorage.removeItem("assay.wallet"); } catch { /* private mode: connected for this page load only */ } };
+
+const chainNum = () => (CHAIN == null ? null : typeof CHAIN === "string" ? parseInt(CHAIN, 16) : Number(CHAIN));
+const chainOk = () => chainNum() === CHAIN_ID;
+const short = (a) => `${String(a).slice(0, 6)}…${String(a).slice(-4)}`;
+const codeOf = (e) => (e && (e.code ?? (e.data && e.data.originalError && e.data.originalError.code))) ?? null;
+/* 4001 is the user saying no. That is an answer, not a failure, and it is worded like one —
+   which is a different sentence for a prompt they dismissed than for a signature they refused. */
+const walletWords = (e, no) => (codeOf(e) === 4001 ? no || t("b_rejected") : e && e.message ? String(e.message) : t("log_req_failed"));
+
+async function walletConnect() {
+  const p = eth();
+  if (!p || WBUSY) return;
+  WBUSY = true; WMSG = null; paintWallet();
+  try {
+    const a = await p.request({ method: "eth_requestAccounts" });
+    ACC = (Array.isArray(a) && a[0]) || null;
+    if (ACC) setWant(true);
+    CHAIN = await p.request({ method: "eth_chainId" }).catch(() => CHAIN);
+  } catch (e) { noteAll(walletWords(e, t("w_declined")), codeOf(e) === 4001 ? "" : "bad"); }
+  WBUSY = false;
+  dropQuotes();
+  paintWallet();
+}
+
+/* There is no EIP-1193 disconnect; the wallet keeps its own permission list. All this can do is
+   forget, and say so, which is what the visitor means by the word. */
+function walletForget() {
+  ACC = null; WMSG = null;
+  setWant(false);
+  dropQuotes();
+  paintWallet();
+}
+
+async function walletSwitch() {
+  const p = eth();
+  if (!p || WBUSY) return;
+  WBUSY = true; WMSG = null; paintWallet();
+  try {
+    await p.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN_HEX }] });
+  } catch (e) {
+    // 4902: the wallet has never heard of this chain. Offer it the parameters rather than
+    // telling the visitor to type them in themselves.
+    if (codeOf(e) === 4902) {
+      try { await p.request({ method: "wallet_addEthereumChain", params: [CHAIN_ADD] }); }
+      catch (e2) { noteAll(walletWords(e2, t("w_declined")), codeOf(e2) === 4001 ? "" : "bad"); WBUSY = false; paintWallet(); return; }
+    } else { noteAll(walletWords(e, t("w_declined")), codeOf(e) === 4001 ? "" : "bad"); WBUSY = false; paintWallet(); return; }
+  }
+  try { CHAIN = await p.request({ method: "eth_chainId" }); } catch { /* chainChanged will say */ }
+  WBUSY = false;
+  dropQuotes();
+  paintWallet();
+}
+
+function walletBind(p) {
+  if (!p || !p.on || p._assay) return;
+  p._assay = true;
+  // A quote is priced for one address on one chain. Either changing makes it bytes for somebody
+  // else's trade, so it is dropped rather than left on screen looking valid.
+  p.on("accountsChanged", (a) => {
+    ACC = (Array.isArray(a) && a[0]) || null;
+    if (!ACC) setWant(false);
+    dropQuotes(); paintWallet();
+  });
+  p.on("chainChanged", (c) => { CHAIN = c; dropQuotes(); paintWallet(); });
+}
+
+async function walletBoot() {
+  const p = eth();
+  if (!p) {
+    // Some wallets inject after the page has parsed. One listener, no polling.
+    addEventListener("ethereum#initialized", () => { void walletBoot(); }, { once: true });
+    paintWallet();
+    return;
+  }
+  walletBind(p);
+  try { CHAIN = await p.request({ method: "eth_chainId" }); } catch { /* shown as unknown */ }
+  if (want()) {
+    try { const a = await p.request({ method: "eth_accounts" }); ACC = (Array.isArray(a) && a[0]) || null; } catch { /* stay disconnected */ }
+    if (!ACC) setWant(false);
+  }
+  paintWallet();
+}
+
+function paintWallet() {
+  const p = eth(), b = $("#wallet"), a = $("#wal-addr"), c = $("#wal-chain");
+  if (!p) {
+    b.textContent = t("w_none"); b.disabled = true; b.title = t("w_none_t");
+    a.hidden = true; c.hidden = true;
+  } else {
+    b.disabled = WBUSY;
+    b.textContent = ACC ? t("w_disconnect") : t("w_connect");
+    b.title = "";
+    // the address when there is one, otherwise whatever the wallet last answered
+    a.hidden = !(ACC || WMSG);
+    a.textContent = ACC ? short(ACC) : WMSG || "";
+    a.classList.toggle("n", !!ACC);
+    c.hidden = !(ACC && !chainOk());
+    c.textContent = WBUSY ? t("w_switching") : t("w_switch");
+    c.disabled = WBUSY;
+  }
+  for (const tok of BUY.keys()) paintBuy(tok);
+}
+
+$("#wallet").addEventListener("click", () => { if (ACC) walletForget(); else void walletConnect(); });
+$("#wal-chain").addEventListener("click", () => { void walletSwitch(); });
+
+/* ---- buying a launch ------------------------------------------------------
+   One panel per expanded row, one state per token, so a quote survives the row
+   being collapsed and a language being switched. Nothing is signed before the
+   numbers are on screen, and nothing stale is ever sent: the countdown is the
+   server's own TTL and the send is refused past it. */
+const BUY = new Map();
+
+function buySt(tok, e) {
+  let s = BUY.get(tok);
+  if (!s) { s = { amt: CHIPS[1], q: null, deadline: 0, stale: false, msg: null, tone: "", busy: false, hash: null, status: null }; BUY.set(tok, s); }
+  if (e) s.e = e;
+  return s;
+}
+const panelFor = (tok) => document.querySelector(`.buy[data-token="${tok}"]`);
+function dropQuotes() {
+  for (const [tok, s] of BUY) { if (!s.q) continue; s.q = null; s.deadline = 0; s.stale = false; paintBuy(tok); }
+}
+function noteAll(msg, tone) {
+  WMSG = msg || null;
+  for (const [tok, s] of BUY) { s.msg = msg; s.tone = tone || ""; paintBuy(tok); }
+}
+
+/* A decimal string of ETH to an integer of wei, without ever touching a float for the ordinary
+   case. The server judges the amount; nothing here invents a refusal of its own. */
+function toWei(v) {
+  let s = String(v ?? "").trim().replace(",", ".");
+  if (s === "" || s === "." || !/^\d*(\.\d*)?$/.test(s)) {
+    const n = Number(s);
+    if (!Number.isFinite(n) || n <= 0) return "0";
+    s = n.toLocaleString("en-US", { useGrouping: false, maximumFractionDigits: 18 });
+  }
+  const [i, f = ""] = s.split(".");
+  return (((i || "0") + f.padEnd(18, "0").slice(0, 18)).replace(/^0+(?=\d)/, "")) || "0";
+}
+
+/* 18 decimals in, something a person can read out. Wide numbers lose the fraction; small ones
+   keep it, because that is where the information is. */
+function fmtUnits(raw) {
+  const s = String(raw).padStart(19, "0");
+  const int = s.slice(0, -18).replace(/^0+(?=\d)/, ""), frac = s.slice(-18);
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, LANG === "ru" ? " " : ",");
+  if (int !== "0") return int.length > 6 ? grouped : `${grouped}.${frac.slice(0, 2)}`;
+  const cut = frac.slice(0, 8).replace(/0+$/, "");
+  return cut ? `0.${cut}` : "0";
+}
+const pctBps = (bps) => `${Number(bps) / 100}%`;
+
+/* The explorer is wherever the row's own links point; the tx path is that host's. */
+function txUrl(e, hash) {
+  try { return `${new URL(e.links.explorer).origin}/tx/${hash}`; } catch { return ""; }
+}
+
+function buyBox(e) {
+  const st = buySt(e.token, e);
+  const box = document.createElement("div");
+  box.className = "buy";
+  box.dataset.token = e.token;
+  box.innerHTML = `
+    <div class="buy-in">
+      <span class="lbl">${esc(t("b_buy"))}</span>
+      <div class="chips">${CHIPS.map((c) => `<button type="button" data-chip="${esc(c)}" aria-pressed="false">${esc(c)}</button>`).join("")}</div>
+      <input type="number" min="0" step="0.001" inputmode="decimal" placeholder="${esc(t("b_amount"))}" aria-label="${esc(t("b_amount"))}">
+      <span class="pair">ETH</span>
+      <button type="button" data-act="quote"></button>
+    </div>
+    <p class="buy-truth">${esc(t("b_truth"))}</p>
+    <div class="buy-q" hidden></div>
+    <p class="buy-msg" hidden></p>
+    <div class="buy-tx" hidden></div>`;
+
+  box.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button");
+    if (!b) return;
+    ev.stopPropagation();
+    if (b.dataset.chip) { st.amt = b.dataset.chip; st.q = null; st.deadline = 0; st.stale = false; st.msg = null; paintBuy(e.token); return; }
+    switch (b.dataset.act) {
+      case "connect": void walletConnect(); break;
+      case "switch": void walletSwitch(); break;
+      case "quote": void doQuote(e.token); break;
+      case "send": void doSend(e.token); break;
+    }
+  });
+  box.querySelector("input").addEventListener("input", (ev) => {
+    st.amt = ev.target.value;
+    st.q = null; st.deadline = 0; st.stale = false;   // the old price is not this amount's price
+    paintBuy(e.token);
+  });
+
+  // painted before it is in the document, so the panel is handed over rather than looked up
+  paintBuy(e.token, box);
+  return box;
+}
+
+function paintBuy(tok, into) {
+  const box = into || panelFor(tok), st = BUY.get(tok);
+  if (!box || !st) return;
+  const e = st.e;
+
+  const inp = box.querySelector("input");
+  if (document.activeElement !== inp) inp.value = st.amt;
+  for (const c of box.querySelectorAll("[data-chip]")) c.setAttribute("aria-pressed", String(c.dataset.chip === st.amt));
+
+  // one control, whatever the next real step happens to be
+  const go = box.querySelector(".buy-in [data-act]");
+  let act = "quote", label = st.q ? t("b_requote") : t("b_quote"), dis = st.busy;
+  if (st.busy) label = t("b_working");
+  if (!eth()) { act = "none"; label = t("w_none"); dis = true; }
+  else if (!ACC) { act = "connect"; label = t("w_connect"); dis = WBUSY; }
+  else if (!chainOk()) { act = "switch"; label = WBUSY ? t("w_switching") : t("w_switch"); dis = WBUSY; }
+  go.dataset.act = act;
+  go.textContent = label;
+  go.disabled = dis;
+  inp.disabled = !eth();
+
+  const qb = box.querySelector(".buy-q");
+  if (!st.q) { qb.hidden = true; qb.textContent = ""; }
+  else {
+    const q = st.q;
+    const sym = e && e.symbol ? ` $${e.symbol}` : "";
+    const left = Math.max(0, st.deadline - Date.now());
+    const line = (k, v) => `<div class="buy-f"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`;
+    qb.hidden = false;
+    qb.innerHTML =
+      line(t("b_spend"), `${fmtUnits(q.quoteIn)} ${q.pairSymbol}`)
+      + line(t("b_out"), fmtUnits(q.tokensOut) + sym)
+      + line(t("b_min"), fmtUnits(q.minOut) + sym)
+      + line(t("b_slip"), pctBps(q.slippageBps))
+      + line(t("b_fee"), pctBps(q.feeBps))
+      + line(t("b_creator"), pctBps(q.creatorTaxBps))
+      + line(t("b_open"), pctBps(q.openingTaxBps))
+      + `<div class="buy-go">
+           <span class="buy-left${left > 0 ? "" : " out"}">${esc(left > 0 ? t("b_left", { s: Math.ceil(left / 1000) }) : t("b_stale"))}</span>
+           <button type="button" class="solid" data-act="send"${st.busy || left <= 0 ? " disabled" : ""}>${esc(t("b_send"))}</button>
+         </div>`;
+  }
+
+  const m = box.querySelector(".buy-msg");
+  const msg = !eth() ? t("w_none_t") : st.msg;
+  m.hidden = !msg;
+  m.textContent = msg || "";
+  m.className = "buy-msg " + (!eth() ? "dim" : st.tone);
+
+  const tx = box.querySelector(".buy-tx");
+  if (!st.hash) { tx.hidden = true; tx.textContent = ""; }
+  else {
+    const url = txUrl(e, st.hash);
+    const cut = `${st.hash.slice(0, 10)}…${st.hash.slice(-8)}`;
+    const state = st.status === "ok" ? ["ok", t("b_ok")] : st.status === "bad" ? ["no", t("b_no")] : ["", t("b_pending")];
+    tx.hidden = false;
+    tx.innerHTML = (url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(cut)}</a>` : `<span>${esc(cut)}</span>`)
+      + `<span class="st ${state[0]}">${esc(state[1])}</span>`;
+  }
+}
+
+async function doQuote(tok) {
+  const st = BUY.get(tok);
+  if (!st || st.busy) return;
+  if (!eth()) { st.msg = t("w_none_t"); st.tone = "dim"; paintBuy(tok); return; }
+  if (!ACC) { void walletConnect(); return; }
+  if (!chainOk()) { st.msg = t("b_need_chain"); st.tone = ""; paintBuy(tok); return; }
+
+  st.busy = true; st.msg = null; st.tone = ""; st.q = null; st.deadline = 0; st.stale = false;
+  st.hash = null; st.status = null;
+  paintBuy(tok);
+
+  const url = `/quote?token=${encodeURIComponent(tok)}&buyer=${encodeURIComponent(ACC)}&wei=${encodeURIComponent(toWei(st.amt))}&slippageBps=${SLIPPAGE_BPS}`;
+  let body = null, ok = false;
+  try {
+    const r = await fetch(url, { headers: { accept: "application/json" } });
+    body = await r.json().catch(() => null);
+    ok = r.ok && !!body && !!body.tx;
+  } catch { /* the message below covers it */ }
+
+  st.busy = false;
+  if (!ok) {
+    // The server refuses with a reason a person can act on — not an ETH pair, off the curve,
+    // out of bounds. Repeating it is the point; paraphrasing it would lose the reason.
+    st.msg = body && typeof body.error === "string" && body.error ? body.error : t("log_req_failed");
+    st.tone = "bad";
+  } else {
+    st.q = body;
+    // The TTL is the server's, but the two clocks are not the same clock. A window that is not
+    // plausibly the one the server meant falls back to the TTL measured from right now.
+    const ttl = Number(body.expiresAt) - Date.now();
+    st.deadline = ttl > 0 && ttl <= 30_000 ? Number(body.expiresAt) : Date.now() + 20_000;
+  }
+  paintBuy(tok);
+}
+
+async function doSend(tok) {
+  const st = BUY.get(tok), p = eth();
+  if (!st || !st.q || !p || st.busy) return;
+  if (!chainOk()) { st.msg = t("b_need_chain"); st.tone = ""; paintBuy(tok); return; }
+  if (Date.now() >= st.deadline) { st.q = null; st.stale = false; st.msg = t("b_stale"); st.tone = ""; paintBuy(tok); return; }
+
+  st.busy = true; st.msg = t("b_sending"); st.tone = "dim"; paintBuy(tok);
+  let hash = null;
+  try {
+    // Exactly the object the server handed back. Nothing here edits to, data, value or from.
+    hash = await p.request({ method: "eth_sendTransaction", params: [st.q.tx] });
+  } catch (err) {
+    st.busy = false;
+    st.msg = walletWords(err);
+    st.tone = codeOf(err) === 4001 ? "" : "bad";
+    paintBuy(tok);
+    return;
+  }
+  st.busy = false; st.msg = null; st.tone = "";
+  st.q = null; st.deadline = 0; st.stale = false;
+  st.hash = String(hash); st.status = null;
+  paintBuy(tok);
+  void watchTx(tok, st.hash);
+}
+
+/* Whether it landed. Polled rather than subscribed, because a wallet is not obliged to have a
+   subscription to give us, and four minutes is longer than this chain ever needs. */
+async function watchTx(tok, hash) {
+  const p = eth();
+  for (let i = 0; i < 96 && p; i++) {
+    await new Promise((r) => setTimeout(r, 2500));
+    const st = BUY.get(tok);
+    if (!st || st.hash !== hash) return;          // superseded by a newer send
+    let r = null;
+    try { r = await p.request({ method: "eth_getTransactionReceipt", params: [hash] }); }
+    catch { continue; }
+    if (!r) continue;
+    const s = r.status;
+    st.status = s === "0x1" || s === 1 || s === true ? "ok" : "bad";
+    paintBuy(tok);
+    return;
+  }
+}
+
+/* The countdown, on the one timer this page already runs. Only the seconds are rewritten while a
+   quote is alive; the panel is repainted once, when it dies. */
+setInterval(() => {
+  for (const [tok, st] of BUY) {
+    if (!st.q) continue;
+    const left = st.deadline - Date.now();
+    if (left <= 0) { if (!st.stale) { st.stale = true; paintBuy(tok); } continue; }
+    const el = panelFor(tok)?.querySelector(".buy-left");
+    if (el) el.textContent = t("b_left", { s: Math.ceil(left / 1000) });
+  }
+}, 250);
 
 /* ---- two audiences --------------------------------------------------------
    The board is a public page with a private half. The server already decides
@@ -1222,6 +1810,7 @@ function applyLang(lang) {
   renderRules(RULES);
   renderPositions(POSITIONS);
   renderStats(STATS);
+  paintWallet();
   redrawRows();
   showEmpty();
   if (TOUR_AT >= 0) paintStep();
@@ -1343,6 +1932,7 @@ addEventListener("keydown", (e) => {
 }, true);
 
 applyLang(LANG);
+void walletBoot();
 boot().then(() => {
   // A first-time reader gets the walkthrough once, after the page has something real on it.
   let toured = "1";
