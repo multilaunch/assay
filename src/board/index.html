@@ -76,6 +76,9 @@ body{
 }
 /* nothing on this page is rounded. that is the statement. */
 button,input,.box{border-radius:0}
+/* Half this page is hidden from a visitor who has not signed in, and several of the things that
+   get hidden carry a display of their own. `hidden` has to win over all of them. */
+[hidden]{display:none !important}
 .n{font-family:var(--mono); font-variant-numeric:tabular-nums slashed-zero}
 .lbl{font-size:10px; font-weight:600; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-3)}
 :focus-visible{outline:2px solid var(--hot); outline-offset:-2px}
@@ -127,6 +130,9 @@ button:disabled{opacity:.4; cursor:not-allowed}
 
 /* ---- shell -------------------------------------------------------------- */
 .shell{flex:1; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 300px}
+/* A visitor who has not signed in may end up with nothing in the rail at all; an empty 300px
+   column is worse than no column. */
+.shell.solo{grid-template-columns:minmax(0,1fr)}
 main{display:flex; flex-direction:column; min-width:0; min-height:0}
 
 .bar{
@@ -137,12 +143,12 @@ main{display:flex; flex-direction:column; min-width:0; min-height:0}
 .seg button{border:0; padding:3px 11px; color:var(--ink-3); font-size:11.5px}
 .seg button+button{border-left:1px solid var(--line)}
 .seg button[aria-pressed="true"]{background:var(--hot); color:var(--hot-ink); font-weight:600}
-input[type=search],input[type=number]{
+input[type=search],input[type=number],input[type=password]{
   font:inherit; font-family:var(--mono); font-size:11.5px;
   background:var(--bg); color:var(--ink); border:1px solid var(--line-hard); padding:4px 8px;
 }
 input[type=search]{width:190px}
-input[type=search]::placeholder{color:var(--ink-3)}
+input[type=search]::placeholder,input[type=password]::placeholder{color:var(--ink-3)}
 
 /* ---- table -------------------------------------------------------------- */
 .pane{flex:1; min-height:0; overflow:auto; overscroll-behavior:contain}
@@ -228,9 +234,11 @@ a:hover{border-bottom-color:var(--hot)}
 .rail{border-left:1px solid var(--line-hard); background:var(--surface); display:flex; flex-direction:column;
   min-width:0; min-height:0; overflow:auto; overscroll-behavior:contain}
 /* A section keeps its own height rather than being squeezed by the ones above it; only the last
-   one stretches, and only down to a floor, so the log is always a log and not a sliver. */
+   one stretches, and only down to a floor, so the log is always a log and not a sliver.
+   Which one is last depends on who is looking, so it is a class the page sets rather than
+   `:last-child` — half these sections are not there for a visitor. */
 .sec{border-bottom:1px solid var(--line); padding:var(--s3) var(--s4); flex:none}
-.sec:last-child{flex:1; min-height:118px; display:flex; flex-direction:column; border-bottom:0}
+.sec.grow{flex:1; min-height:118px; display:flex; flex-direction:column; border-bottom:0}
 .sec h2{margin:0 0 var(--s3); display:flex; align-items:center; gap:var(--s2); font-size:10px;
   font-weight:600; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-3)}
 .sec h2 .c{font-family:var(--mono); color:var(--ink-2)}
@@ -289,6 +297,22 @@ a:hover{border-bottom-color:var(--hot)}
 #coach p{margin:0 0 var(--s3); font-size:12.5px; line-height:1.6; color:var(--ink-2); max-width:60ch}
 #coach .foot{display:flex; align-items:center; gap:var(--s2)}
 #coach .step{font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-right:auto; white-space:nowrap}
+/* ---- the door -------------------------------------------------------------
+   Same card as the walkthrough, centred rather than pinned to anything: it does
+   not point at a control, it is the control. */
+#gate{
+  position:fixed; z-index:62; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:min(320px, calc(100vw - 24px)); background:var(--surface-2);
+  border:1px solid var(--line-hard); padding:var(--s4);
+}
+#gate h3{margin:0 0 var(--s2); font-size:13px; font-weight:600}
+#gate p{margin:0 0 var(--s3); font-size:12.5px; line-height:1.6; color:var(--ink-2)}
+#gate input{width:100%; margin-bottom:var(--s3)}
+#gate .foot{display:flex; align-items:center; gap:var(--s2); justify-content:flex-end}
+/* The server says why a sign-in failed — wrong password, or wait n seconds. The page repeats it
+   rather than paraphrasing it. */
+#gate-err{margin:0 0 var(--s3); font-size:11.5px; line-height:1.5; color:var(--crit)}
+
 .langs{display:flex; border:1px solid var(--line-hard)}
 .langs button{border:0; padding:3px 8px; font-size:11px; color:var(--ink-3); font-family:var(--mono)}
 .langs button[aria-pressed="true"]{background:var(--hot); color:var(--hot-ink); font-weight:600}
@@ -300,7 +324,7 @@ a:hover{border-bottom-color:var(--hot)}
   /* Below the feed the rail is not a pane of its own; the whole shell scrolls, so it must not
      become a 200px window with its own scrollbar inside a page that already scrolls. */
   .rail{border-left:0; border-top:1px solid var(--line-hard); overflow:visible}
-  .sec:last-child{flex:none; min-height:0}
+  .sec.grow{flex:none; min-height:0}
   #log{max-height:180px}
   .readout{display:none}
 }
@@ -331,7 +355,10 @@ a:hover{border-bottom-color:var(--hot)}
     <button data-lang="ru" aria-pressed="false">RU</button>
   </div>
   <button id="help" data-i18n="help" title="Walk me through it">guide</button>
-  <button id="toggle" class="solid">start</button>
+  <!-- Hidden until /state says who is reading: the page is public, and the controls are not. -->
+  <button id="signin" data-i18n="signin" hidden>sign in</button>
+  <button id="signout" data-i18n="signout" hidden>sign out</button>
+  <button id="toggle" class="solid" hidden>start</button>
 </header>
 
 <div class="ribbon">
@@ -341,8 +368,8 @@ a:hover{border-bottom-color:var(--hot)}
     <div class="cell"><span class="lbl" data-i18n="k_seen">seen</span><span class="v" id="k-seen">0</span></div>
     <div class="cell"><span class="lbl" data-i18n="k_rate">per min</span><span class="v" id="k-rate">0</span></div>
     <div class="cell"><span class="lbl" data-i18n="k_pass">passing</span><span class="v" id="k-pass">0</span></div>
-    <div class="cell"><span class="lbl" data-i18n="k_open">open</span><span class="v" id="k-open">0</span></div>
-    <div class="cell"><span class="lbl" data-i18n="k_spent">spent</span><span class="v" id="k-spent">0.0000</span></div>
+    <div class="cell" id="cell-open" hidden><span class="lbl" data-i18n="k_open">open</span><span class="v" id="k-open">0</span></div>
+    <div class="cell" id="cell-spent" hidden><span class="lbl" data-i18n="k_spent">spent</span><span class="v" id="k-spent">0.0000</span></div>
   </div>
 </div>
 
@@ -356,6 +383,17 @@ a:hover{border-bottom-color:var(--hot)}
     <button id="coach-skip"></button>
     <button id="coach-back"></button>
     <button id="coach-next" class="solid"></button>
+  </div>
+</div>
+
+<div id="gate" role="dialog" aria-modal="true" aria-labelledby="gate-h" hidden>
+  <h3 id="gate-h" data-i18n="g_title">sign in</h3>
+  <p data-i18n="g_hint">reading needs no password. the controls do.</p>
+  <input type="password" id="gate-pw" data-i18n-ph="g_pw" placeholder="password" autocomplete="current-password" aria-labelledby="gate-h" spellcheck="false">
+  <p id="gate-err" role="alert" hidden></p>
+  <div class="foot">
+    <button id="gate-cancel" data-i18n="g_cancel">cancel</button>
+    <button id="gate-go" class="solid" data-i18n="g_go">sign in</button>
   </div>
 </div>
 
@@ -395,11 +433,13 @@ a:hover{border-bottom-color:var(--hot)}
   </main>
 
   <aside class="rail">
-    <section class="sec">
+    <!-- What this wallet holds, what it is told to buy, and what it has done are the operator's
+         business. They stay out of the document until /state says the reader is the operator. -->
+    <section class="sec" id="sec-pos" hidden>
       <h2><span data-i18n="s_pos">positions</span> <span class="c" id="pc">0</span></h2>
       <div id="positions"><div class="blank">none</div></div>
     </section>
-    <section class="sec">
+    <section class="sec" id="sec-rules" hidden>
       <h2 data-i18n="s_rules">rules</h2>
       <div id="rules"></div>
     </section>
@@ -409,7 +449,7 @@ a:hover{border-bottom-color:var(--hot)}
       <h2><span data-i18n="s_proof">track record</span> <span class="c" id="rec-n"></span></h2>
       <div id="rec"></div>
     </section>
-    <section class="sec">
+    <section class="sec" id="sec-log" hidden>
       <h2 data-i18n="s_log">log</h2>
       <div id="log" role="log" aria-live="polite"></div>
     </section>
@@ -435,6 +475,11 @@ const I18N = {
     c_score:"score", c_launch:"launch", c_buy:"opening buy", c_tax:"tax", c_exempt:"exempt",
     c_pair:"pair", c_curve:"curve", c_dev:"deployer", c_age:"age",
     s_pos:"positions", s_rules:"rules", s_log:"log", s_proof:"track record",
+
+    signin:"sign in", signout:"sign out",
+    g_title:"sign in", g_hint:"reading needs no password. the controls do.",
+    g_pw:"password", g_go:"sign in", g_cancel:"cancel",
+    log_signed_in:"signed in",
 
     pf_skip:"skip",
     pf_proven:"95% floor {f} clears the {b} base rate. on this sample the verdict is worth something.",
@@ -516,6 +561,11 @@ const I18N = {
     c_score:"скор", c_launch:"запуск", c_buy:"закуп дева", c_tax:"налог", c_exempt:"без налога",
     c_pair:"пара", c_curve:"кривая", c_dev:"деплоер", c_age:"возраст",
     s_pos:"позиции", s_rules:"правила", s_log:"лог", s_proof:"проверка скора",
+
+    signin:"войти", signout:"выйти",
+    g_title:"вход", g_hint:"смотреть можно без пароля. управлять — нет.",
+    g_pw:"пароль", g_go:"войти", g_cancel:"отмена",
+    log_signed_in:"вы вошли",
 
     pf_skip:"мимо",
     pf_proven:"нижняя граница 95% — {f}, это выше базовых {b}. на этой выборке вердикт чего-то стоит.",
@@ -607,6 +657,10 @@ const t = (key, vars) => {
 let LIVE = false, PAUSED = true, BOUNDS = {}, FILTER = "all", QUERY = "";
 let RULES = {}, POSITIONS = [], LINK = "net_connecting", FROZEN = false, STATS = null;
 let TAX_SECONDS = 3;
+/* Who is reading. The server decides this, not the page: /state simply leaves the operator's
+   half out for everyone else, so ADMIN is a description of what arrived and never a permission. */
+let ADMIN = false, CAN_SIGNIN = false;
+let SRC = null, STATS_TIMER = null;
 let seen = 0, passing = 0;
 const rows = [];                       // newest first, for the age and decay ticks
 const buckets = new Array(90).fill(0); // launches per second, last 90 s
@@ -815,8 +869,12 @@ function applyFilter() {
   showEmpty();
 }
 
+/* `positions` and `rules` only exist in /state for the operator, so both of these have to be
+   happy with nothing at all: for most readers there is nothing to draw and no section to draw
+   it in. */
 function renderPositions(list) {
-  POSITIONS = list;
+  POSITIONS = Array.isArray(list) ? list : [];
+  list = POSITIONS;
   const box = $("#positions");
   const open = list.filter((p) => p.status === "open");
   $("#pc").textContent = open.length;
@@ -845,10 +903,10 @@ function renderPositions(list) {
 }
 
 function renderRules(rules) {
-  RULES = rules;
+  RULES = rules && typeof rules === "object" ? rules : {};
   const box = $("#rules");
   box.innerHTML = "";
-  for (const [key, value] of Object.entries(rules)) {
+  for (const [key, value] of Object.entries(RULES)) {
     const b = BOUNDS[key] || { min: 0, max: 1000 };
     const label = I18N[LANG]["r_" + key] ? t("r_" + key) : key.replace(/([A-Z])/g, " $1").toLowerCase().trim();
     const row = document.createElement("div");
@@ -880,8 +938,9 @@ const VERDICT_KEY = { FIRE: "f_fire", WATCH: "f_watch", SKIP: "pf_skip", all: "f
 function renderStats(s) {
   STATS = s;
   const sec = $("#record");
-  if (!s) { sec.hidden = true; return; }
+  if (!s) { sec.hidden = true; railLayout(); return; }
   sec.hidden = false;
+  railLayout();
 
   const box = $("#rec");
   const overall = (s.buckets || []).find((b) => b.verdict === "all");
@@ -935,6 +994,118 @@ async function loadStats() {
   } catch { renderStats(null); return false; }
 }
 
+/* ---- two audiences --------------------------------------------------------
+   The board is a public page with a private half. The server already decides
+   which half a request gets; all the page does is stop reserving room for the
+   parts that never arrived. Nothing here is a permission — hiding the start
+   button does not stop a POST, /pause refusing it does. */
+function railLayout() {
+  const secs = [...document.querySelectorAll(".rail .sec")];
+  const shown = secs.filter((el) => !el.hidden);
+  const last = shown[shown.length - 1];
+  for (const el of secs) el.classList.toggle("grow", el === last);
+  $(".rail").hidden = shown.length === 0;
+  $(".shell").classList.toggle("solo", shown.length === 0);
+}
+
+function applyAudience() {
+  $("#sec-pos").hidden = !ADMIN;
+  $("#sec-rules").hidden = !ADMIN;
+  $("#sec-log").hidden = !ADMIN;
+  $("#cell-open").hidden = !ADMIN;
+  $("#cell-spent").hidden = !ADMIN;
+  $("#toggle").hidden = !ADMIN || FROZEN;
+  // No password configured means signing in is impossible, so the page does not offer it.
+  $("#signin").hidden = ADMIN || !CAN_SIGNIN;
+  $("#signout").hidden = !ADMIN;
+  railLayout();
+}
+
+/* ---- the door -------------------------------------------------------------
+   The password goes from the field into one request body and nowhere else: it
+   is never held in a variable that outlives the fetch, never stored, and the
+   field is emptied whichever way the attempt ends. The cookie the server sets
+   is the session, and the browser keeps that. */
+let GATE_FROM = null;
+
+function gateSay(msg) {
+  const box = $("#gate-err");
+  box.textContent = msg || "";
+  box.hidden = !msg;
+}
+
+function openGate() {
+  if (TOUR_AT >= 0) tourEnd();
+  GATE_FROM = document.activeElement && document.activeElement !== document.body ? document.activeElement : $("#signin");
+  gateSay("");
+  $("#gate-pw").value = "";
+  $("#gate").hidden = false;
+  $("#veil").classList.add("on");
+  $("#gate-pw").focus();
+}
+
+function closeGate() {
+  if ($("#gate").hidden) return;
+  $("#gate-pw").value = "";
+  gateSay("");
+  $("#gate").hidden = true;
+  $("#veil").classList.remove("on");
+  const back = GATE_FROM && GATE_FROM.isConnected && !GATE_FROM.hidden ? GATE_FROM : $("#signout").hidden ? null : $("#signout");
+  GATE_FROM = null;
+  if (back) back.focus();
+}
+
+async function signIn() {
+  const pw = $("#gate-pw"), go = $("#gate-go");
+  go.disabled = true;
+  gateSay("");
+  let ok = false, said = "";
+  try {
+    const r = await fetch("/admin/login", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: pw.value }),
+    });
+    const body = await r.json().catch(() => ({}));
+    ok = r.ok && body.admin === true;
+    // 401 and 429 both arrive with the server's own wording — a wrong password, or how long the
+    // throttle wants. Repeating it is the point; inventing a second version of it is not.
+    if (!ok) said = typeof body.error === "string" && body.error ? body.error : t("log_req_failed");
+  } catch { said = t("log_req_failed"); }
+  pw.value = "";
+  go.disabled = false;
+  if (!ok) { gateSay(said); pw.focus(); return; }
+  closeGate();
+  await boot();
+  // The control that opened this is gone now, so focus lands on the one that replaced it.
+  const at = document.activeElement;
+  if ((!at || at === document.body || !onScreen(at)) && !$("#signout").hidden) $("#signout").focus();
+  say(t("log_signed_in"), "g");
+}
+
+async function signOut() {
+  try { await fetch("/admin/logout", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }); }
+  catch { /* the boot below will show whether the session actually went */ }
+  await boot();
+  if (!$("#signin").hidden) $("#signin").focus();
+}
+
+$("#signin").addEventListener("click", openGate);
+$("#signout").addEventListener("click", () => { void signOut(); });
+$("#gate-cancel").addEventListener("click", closeGate);
+// the veil belongs to whichever of the two is up; only the dialog treats a click on it as cancel
+$("#veil").addEventListener("click", () => { if (!$("#gate").hidden) closeGate(); });
+$("#gate-go").addEventListener("click", () => { void signIn(); });
+$("#gate").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeGate(); return; }
+  if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) { e.preventDefault(); void signIn(); return; }
+  if (e.key !== "Tab") return;
+  // aria-modal says the rest of the page is not there, so tab has to agree with it
+  const stops = [...$("#gate").querySelectorAll("input, button")].filter((el) => !el.disabled && !el.hidden);
+  if (!stops.length) return;
+  const edge = e.shiftKey ? stops[0] : stops[stops.length - 1];
+  if (document.activeElement === edge) { e.preventDefault(); (e.shiftKey ? stops[stops.length - 1] : stops[0]).focus(); }
+});
+
 function setPaused(p) {
   PAUSED = p;
   const st = $("#state");
@@ -946,7 +1117,11 @@ function setPaused(p) {
 }
 
 $("#toggle").addEventListener("click", async () => {
-  const r = await fetch(PAUSED ? "/resume" : "/pause", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).then((x) => x.json());
+  const r = await fetch(PAUSED ? "/resume" : "/pause", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+    .then((x) => x.json()).catch(() => ({ error: t("log_req_failed") }));
+  // A session can expire under a page that is still open. The server refuses, and the button
+  // goes back to saying what the engine is actually doing rather than what was asked of it.
+  if (typeof r.paused !== "boolean") { say(r.error || t("log_req_failed"), "r"); setPaused(PAUSED); return; }
   setPaused(r.paused);
 });
 document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
@@ -958,15 +1133,34 @@ $("#q").addEventListener("input", (e) => { QUERY = e.target.value.trim().toLower
 document.addEventListener("keydown", (e) => {
   // Without the modifier guard, cmd+P and ctrl+P — print — were starting and stopping the engine.
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!$("#gate").hidden) return;   // the dialog owns the keyboard while it is up
   if (e.target.closest("input, textarea, select, [contenteditable]")) { if (e.key === "Escape") e.target.blur(); return; }
-  if (e.key === "p") { e.preventDefault(); $("#toggle").click(); }
+  if (e.key === "p" && !$("#toggle").hidden) { e.preventDefault(); $("#toggle").click(); }
   if (e.key === "/") { e.preventDefault(); $("#q").focus(); }
 });
 
+/* Signing in and out both re-run boot rather than reloading, so it has to be able to run twice:
+   the old stream is dropped and the feed rebuilt from whichever replay buffer the server hands
+   this reader. */
+function teardown() {
+  if (SRC) { SRC.close(); SRC = null; }
+  for (const tr of rows) { tr._detach(); tr.remove(); }
+  rows.length = 0;
+  seen = 0; passing = 0;
+  $("#k-seen").textContent = "0";
+  $("#k-pass").textContent = "0";
+  $("#k-open").textContent = "0";
+  $("#k-spent").textContent = "0.0000";
+  $("#log").textContent = "";
+  showEmpty();
+}
+
 async function boot() {
+  teardown();
   const s = await fetch("/state").then((r) => r.json());
-  LIVE = s.live; BOUNDS = s.bounds; FROZEN = s.readOnly === true;
-  $("#toggle").hidden = FROZEN;
+  LIVE = s.live; BOUNDS = s.bounds || {}; FROZEN = s.readOnly === true;
+  ADMIN = s.admin === true; CAN_SIGNIN = s.canSignIn === true;
+  applyAudience();
   if (s.taxSeconds) TAX_SECONDS = s.taxSeconds;
   $("#mode").textContent = FROZEN ? t("m_readonly") : LIVE ? t("m_live") : t("m_dry");
   $("#mode").className = "tag" + (LIVE && !FROZEN ? " crit" : "");
@@ -975,15 +1169,16 @@ async function boot() {
   renderPositions(s.positions);
   // Off the critical path: the journal is a big file and the feed should not wait on it. The
   // server caches it for minutes at a time, so re-asking occasionally is nearly free.
-  void loadStats().then((ok) => { if (ok) setInterval(loadStats, 5 * 60 * 1000); });
-  $("#k-spent").textContent = (Number(s.spent) / 1e18).toFixed(4);
-  for (const e of s.recent) if (e.kind === "launch") addLaunch(e);
+  void loadStats().then((ok) => { if (ok && !STATS_TIMER) STATS_TIMER = setInterval(loadStats, 5 * 60 * 1000); });
+  if (s.spent != null) $("#k-spent").textContent = (Number(s.spent) / 1e18).toFixed(4);
+  for (const e of s.recent || []) if (e.kind === "launch") addLaunch(e);
   drawSpark();
   LINK = "net_connected";
   $("#link").textContent = t(LINK);
   say(t("log_connected"));
 
   const src = new EventSource("/events");
+  SRC = src;
   src.onopen = () => { LINK = "net_connected"; $("#link").textContent = t(LINK); };
   src.onmessage = (m) => {
     const e = JSON.parse(m.data);
@@ -1087,13 +1282,18 @@ function paintStep() {
     $("#veil").classList.add("on");
   }
 
+  // "7 of 9" on a page whose last two stops do not exist is a walkthrough that looks broken.
+  // The count is of the stops this reader will actually be shown.
+  const stops = TOUR.filter((s) => onScreen(document.querySelector(s.sel)));
+  const at = stops.indexOf(step);
+
   $("#coach-h").textContent = t(step.h);
   $("#coach-p").textContent = t(step.p);
-  $("#coach-n").textContent = t("c_step", { i: TOUR_AT + 1, n: TOUR.length });
+  $("#coach-n").textContent = t("c_step", { i: at + 1, n: stops.length });
   $("#coach-skip").textContent = t("c_skip");
   $("#coach-back").textContent = t("c_back");
-  $("#coach-back").hidden = TOUR_AT === 0;
-  $("#coach-next").textContent = TOUR_AT === TOUR.length - 1 ? t("c_done") : t("c_next");
+  $("#coach-back").hidden = at <= 0;
+  $("#coach-next").textContent = at === stops.length - 1 ? t("c_done") : t("c_next");
   coach.classList.add("on");
 
   // below the target when there is room for the card, above it when there is not
@@ -1105,10 +1305,16 @@ function paintStep() {
   coach.style.left = Math.min(Math.max(12, r.left), innerWidth - box.width - 12) + "px";
 }
 
+/* Laid out, not merely present: the rules and the start button are in the document for everyone
+   but only on screen for the operator, and a ring drawn around a 0×0 box is worse than a step
+   that is not there. */
+const onScreen = (el) => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+
 function tourGo(i) {
+  // a read-only or unsigned board has no start button; step over anything it cannot point at
+  const step = TOUR_AT >= 0 && i <= TOUR_AT ? -1 : 1;
+  while (i >= 0 && i < TOUR.length && !onScreen(document.querySelector(TOUR[i].sel))) i += step;
   if (i < 0 || i >= TOUR.length) { tourEnd(); return; }
-  // a read-only board has no start button, and pointing at nothing is worse than stopping short
-  if (FROZEN && TOUR[i].sel === "#toggle") { tourEnd(); return; }
   TOUR_AT = i;
   const target = document.querySelector(TOUR[i].sel);
   if (target) target.scrollIntoView({ block: "nearest", behavior: "smooth" });
