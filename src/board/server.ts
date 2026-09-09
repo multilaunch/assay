@@ -352,13 +352,19 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const path = url.pathname;
 
+    // HEAD is a GET that keeps its mouth shut. Crawlers and health checks use it, and without this
+    // every route here answered them with a 404, which is a confusing thing to tell a link preview.
+    const head = req.method === "HEAD";
+    if (head) { const end = res.end.bind(res); (res as unknown as { end: () => void }).end = () => { end(); }; }
+    const method = head ? "GET" : req.method;
+
     const refused = guard(req, hosts);
     if (refused) { json(res, 403, { error: refused }); return; }
     const admin = sessions.verify(readCookie(req.headers.cookie, "assay_session"));
 
     // Login is the one POST an anonymous caller may make. Everything else that writes needs a
     // session, and read-only refuses even a signed-in operator.
-    if (req.method === "POST" && path === "/admin/login") {
+    if (method === "POST" && path === "/admin/login") {
       const wait = throttle.retryAfter(clientKey(req));
       if (wait > 0) { json(res, 429, { error: `too many attempts, wait ${Math.ceil(wait / 1000)} s` }); return; }
       const hash = adminHash();
@@ -379,25 +385,25 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
       return;
     }
 
-    if (req.method === "POST" && path === "/admin/logout") {
+    if (method === "POST" && path === "/admin/logout") {
       sessions.destroy(readCookie(req.headers.cookie, "assay_session"));
       res.setHeader("set-cookie", clearCookie(isSecure(req)));
       json(res, 200, { admin: false });
       return;
     }
 
-    if (req.method === "POST") {
+    if (method === "POST") {
       if (!admin) { json(res, 401, { error: "sign in first" }); return; }
       if (frozen) { json(res, 403, { error: "this board is read only" }); return; }
     }
 
-    if (req.method === "GET" && (path === "/" || path === "/index.html")) {
+    if (method === "GET" && (path === "/" || path === "/index.html")) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
       res.end(HTML());
       return;
     }
 
-    if (req.method === "GET" && path === "/state") {
+    if (method === "GET" && path === "/state") {
       // The feed and the parameters of the protocol are public; what this wallet is holding is not.
       // A page anyone can open should not publish its operator's positions and P&L.
       json(res, 200, {
@@ -423,7 +429,7 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     // A read that prices a buy and hands back the bytes for it. GET on purpose: it changes nothing
     // here, and the only thing it can do to the caller is quote them a trade their own wallet then
     // refuses or signs. Public, because the whole point is that a visitor needs no account.
-    if (req.method === "GET" && path === "/quote") {
+    if (method === "GET" && path === "/quote") {
       void buyQuote({
         token: url.searchParams.get("token") ?? "",
         buyer: url.searchParams.get("buyer") ?? "",
@@ -438,7 +444,7 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
 
     // What is behind a "farm x8" badge: the fingerprint spelled out, and every launch still in the
     // window that shares it. In memory and thirty minutes wide, so it answers for this session only.
-    if (req.method === "GET" && path === "/farm") {
+    if (method === "GET" && path === "/farm") {
       const key = url.searchParams.get("key") ?? "";
       if (!key) { json(res, 400, { error: "which fingerprint?" }); return; }
       json(res, 200, engine.farmCohort(key));
@@ -447,7 +453,7 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
 
     // The link preview. A crawler reaches this with no session and no Origin, which the guard
     // already allows for a GET; it is the one asset a stranger fetches before ever seeing the page.
-    if (req.method === "GET" && path === "/og.png") {
+    if (method === "GET" && path === "/og.png") {
       const png = ogImage();
       if (!png) { json(res, 404, { error: "no preview image" }); return; }
       res.writeHead(200, { "content-type": "image/png", "content-length": png.length, "cache-control": "public, max-age=86400" });
@@ -455,12 +461,12 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
       return;
     }
 
-    if (req.method === "GET" && path === "/stats") {
+    if (method === "GET" && path === "/stats") {
       void stats().then((s) => json(res, 200, s)).catch(() => json(res, 200, emptyStats()));
       return;
     }
 
-    if (req.method === "GET" && path === "/events") {
+    if (method === "GET" && path === "/events") {
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
       res.write(`data: ${JSON.stringify({ kind: "hello", at: Date.now(), live: opts.live, paused: engine.isPaused() })}\n\n`);
       const sub = { res, admin };
@@ -469,10 +475,10 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
       return;
     }
 
-    if (req.method === "POST" && path === "/pause") { engine.pause(); json(res, 200, { paused: true }); return; }
-    if (req.method === "POST" && path === "/resume") { engine.resume(); json(res, 200, { paused: false }); return; }
+    if (method === "POST" && path === "/pause") { engine.pause(); json(res, 200, { paused: true }); return; }
+    if (method === "POST" && path === "/resume") { engine.resume(); json(res, 200, { paused: false }); return; }
 
-    if (req.method === "POST" && path === "/close") {
+    if (method === "POST" && path === "/close") {
       void readBody(req).then(async (b) => {
         const id = String(b.id ?? "");
         try { const r = await engine.closeNow(id); json(res, 200, { ok: true, quoteOut: r.quoteOut.toString(), pnlPct: r.pnlPct, venue: r.venue }); }
@@ -481,7 +487,7 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
       return;
     }
 
-    if (req.method === "POST" && path === "/rule") {
+    if (method === "POST" && path === "/rule") {
       void readBody(req).then((b) => {
         const key = String(b.key ?? "") as EditableKey;
         const bound = EDITABLE[key];
