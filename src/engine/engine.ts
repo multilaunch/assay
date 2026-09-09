@@ -4,7 +4,7 @@ import { DeployerIndex } from "../pons/deployers.js";
 import { watchLaunches, type LaunchEvent } from "../pons/detect.js";
 import { devSharePct, enrichLaunch, type LaunchIntel } from "../pons/enrich.js";
 import { record } from "../track/journal.js";
-import { FarmDetector } from "../pons/farm.js";
+import { FarmDetector, type Cohort } from "../pons/farm.js";
 import { scoreLaunch, type Score } from "../score/score.js";
 import { buyOnCurve, sellOnCurve } from "../trade/curveTrade.js";
 import { closeWithExit, exitReason, openPosition, openPositions, pnlPct, updatePosition } from "../trade/positions.js";
@@ -15,7 +15,7 @@ import { getAccount } from "../trade/wallet.js";
 import { decide, entryQuoteFor, type EngineRules } from "./rules.js";
 
 export type EngineEvent =
-  | { kind: "launch"; at: number; intel: LaunchIntel; score: Score; fire: boolean; why: string[]; farmTwins: number; deployer: { prior: number; graduated: number } | null; readMs: number }
+  | { kind: "launch"; at: number; intel: LaunchIntel; score: Score; fire: boolean; why: string[]; farmTwins: number; farmKey: string | null; deployer: { prior: number; graduated: number } | null; readMs: number }
   | { kind: "draw"; at: number; token: Address; symbol: string }
   | { kind: "fire"; at: number; token: Address; symbol: string; quoteIn: bigint; tokens: bigint; taxBps: number; waitedMs: number; hash?: string | undefined; live: boolean; positionId: string }
   | { kind: "hold"; at: number; token: Address; symbol: string; taxBps: number; waitedMs: number }
@@ -40,6 +40,8 @@ export interface Engine {
   resume: () => void;
   isPaused: () => boolean;
   spent: () => bigint;
+  /** every launch still in the window sharing one fingerprint, and what that fingerprint is */
+  farmCohort: (key: string) => Cohort;
   /** sell a position now, whatever the exit rules say */
   closeNow: (positionId: string) => Promise<{ quoteOut: bigint; pnlPct: number; venue: string }>;
   rules: EngineRules;
@@ -119,7 +121,7 @@ export function startEngine(opts: EngineOptions): Engine {
     try {
       index.note(ev);
       const intel = await enrichLaunch(ev, recipient, { retries: 3, retryDelayMs: 400 });
-      const { twins } = farms.observe(intel);
+      const { twins, key: farmKey } = farms.observe(intel);
       const deployer = index.lookup(ev.deployer, ev.token);
       const score = scoreLaunch(intel, { deployer, farmTwins: twins });
       const d = decide(intel, score, rules, { openCount: openPositions().length + busy.size, farmTwins: twins, spent: spend.total() });
@@ -134,11 +136,11 @@ export function startEngine(opts: EngineOptions): Engine {
         devPct: intel.tx ? devSharePct(intel.tx) : null,
         taxBps: intel.record ? Number(intel.record.creatorTaxBps) : null,
         exempt: intel.tx?.exemptions.length ?? null,
-        farmTwins: twins,
+        farmTwins: twins, farmKey,
         deployerPrior: deployer?.prior ?? null, deployerGraduated: deployer?.graduated ?? null,
         pair: intel.pair.symbol, pairNative: intel.pair.native,
       });
-      emit({ kind: "launch", at: t0, intel, score, fire: d.why.length === 0, why: d.why, farmTwins: twins, deployer, readMs: Date.now() - t0 });
+      emit({ kind: "launch", at: t0, intel, score, fire: d.why.length === 0, why: d.why, farmTwins: twins, farmKey, deployer, readMs: Date.now() - t0 });
       if (d.why.length > 0) return;
 
       busy.add(ev.token);
@@ -232,6 +234,7 @@ export function startEngine(opts: EngineOptions): Engine {
     pause: () => { paused = true; emit({ kind: "state", at: Date.now(), paused, spent: spend.total() }); },
     resume: () => { paused = false; emit({ kind: "state", at: Date.now(), paused, spent: spend.total() }); },
     isPaused: () => paused,
+    farmCohort: (key: string) => farms.cohort(key),
     spent: () => spend.total(),
     closeNow: async (positionId: string) => {
       if (!openPositions().some((p) => p.id === positionId)) throw new Error("no open position with that id");

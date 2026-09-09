@@ -27,6 +27,14 @@ export interface Entry {
   taxBps: number | null;
   exempt: number | null;
   farmTwins: number;
+  /**
+   * The fingerprint this launch shared with its twins, when it had one.
+   *
+   * The detector itself is in memory and thirty minutes wide, so a restart forgets every cohort it
+   * ever built. Writing the key down means a farm can still be reassembled from the journal
+   * afterwards, which is the difference between a badge and evidence.
+   */
+  farmKey?: string | null;
   deployerPrior: number | null;
   deployerGraduated: number | null;
   pair: string;

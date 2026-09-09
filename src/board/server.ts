@@ -131,6 +131,7 @@ function wire(e: EngineEvent): Record<string, unknown> {
     description: (intel.meta?.description ?? "").replace(/\s+/g, " ").trim().slice(0, 280),
     socials: { x: soc.x ? link(intel.meta?.socials.twitter) : "", web: soc.web ? link(intel.meta?.socials.website) : "", tg: soc.tg ? link(intel.meta?.socials.telegram) : "" },
     score: score.total, verdict: score.verdict, reasons: score.reasons, flags: score.flags,
+    farmKey: e.farmKey,
     devPct: intel.tx ? devSharePct(intel.tx) : null,
     exempt: intel.tx?.exemptions ?? null,
     taxBps: intel.record ? Number(intel.record.creatorTaxBps) : null,
@@ -421,6 +422,15 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
         (r) => (r.ok ? json(res, 200, r.quote) : json(res, 400, { error: r.error })),
         () => json(res, 502, { error: "the chain would not answer just now" }),
       );
+      return;
+    }
+
+    // What is behind a "farm x8" badge: the fingerprint spelled out, and every launch still in the
+    // window that shares it. In memory and thirty minutes wide, so it answers for this session only.
+    if (req.method === "GET" && path === "/farm") {
+      const key = url.searchParams.get("key") ?? "";
+      if (!key) { json(res, 400, { error: "which fingerprint?" }); return; }
+      json(res, 200, engine.farmCohort(key));
       return;
     }
 
