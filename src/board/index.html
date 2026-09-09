@@ -359,6 +359,29 @@ a:hover{border-bottom-color:var(--hot)}
    rather than paraphrasing it. */
 #gate-err{margin:0 0 var(--s3); font-size:11.5px; line-height:1.5; color:var(--crit)}
 
+#farm{
+  position:fixed; z-index:62; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:min(560px, calc(100vw - 24px)); max-height:calc(100vh - 48px); overflow:auto;
+  background:var(--surface-2); border:1px solid var(--line-hard); padding:var(--s4);
+}
+#farm h3{margin:0 0 var(--s2); font-size:13px; font-weight:600}
+#farm .lede{margin:0 0 var(--s3); font-size:12.5px; line-height:1.6; color:var(--ink-2)}
+#farm dl{display:grid; grid-template-columns:auto 1fr; gap:2px var(--s3); margin:0 0 var(--s3);
+  font-family:var(--mono); font-size:11.5px}
+#farm dt{color:var(--ink-3)}
+#farm dd{margin:0; color:var(--ink)}
+#farm .who-list{border-top:1px solid var(--line); margin-bottom:var(--s3)}
+#farm .who-row{display:flex; align-items:baseline; gap:var(--s2); padding:5px 0;
+  border-bottom:1px solid var(--line); font-family:var(--mono); font-size:11.5px}
+#farm .who-row .tick{color:var(--ink); font-weight:500; min-width:9ch}
+#farm .who-row .addr{color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+#farm .who-row .age{margin-left:auto; color:var(--ink-3); white-space:nowrap}
+#farm .who-row a{color:var(--ink-3)}
+#farm .caveat{margin:0 0 var(--s3); font-size:11px; line-height:1.5; color:var(--ink-3)}
+#farm .foot{display:flex; justify-content:flex-end}
+.mini-flag.tap{cursor:pointer}
+.mini-flag.tap:hover{border-color:var(--hot); color:var(--ink)}
+
 .langs{display:flex; border:1px solid var(--line-hard)}
 .langs button{border:0; padding:3px 8px; font-size:11px; color:var(--ink-3); font-family:var(--mono)}
 .langs button[aria-pressed="true"]{background:var(--hot); color:var(--hot-ink); font-weight:600}
@@ -456,6 +479,15 @@ a:hover{border-bottom-color:var(--hot)}
   </div>
 </div>
 
+<div id="farm" role="dialog" aria-modal="true" aria-labelledby="farm-h" hidden>
+  <h3 id="farm-h" data-i18n="fm_title">the same launch, again</h3>
+  <p class="lede" data-i18n="fm_lede">these launches match each other exactly on every field below. one operator, several wallets.</p>
+  <dl id="farm-parts"></dl>
+  <div class="who-list" id="farm-list"></div>
+  <p class="caveat" id="farm-caveat"></p>
+  <div class="foot"><button id="farm-close" data-i18n="fm_close">close</button></div>
+</div>
+
 <div class="shell">
   <main>
     <div class="bar">
@@ -527,6 +559,14 @@ const clock = (ms) => new Date(ms).toTimeString().slice(0, 8);
    half-translated interface is worse than an untranslated one. */
 const I18N = {
   en: {
+    fm_title:"the same launch, again",
+    fm_lede:"these launches match each other exactly on every field below. one operator, several wallets.",
+    fm_buy:"opening buy", fm_tax:"creator tax", fm_links:"links", fm_exempt:"exempt wallets", fm_pair:"pair",
+    fm_links_none:"none", fm_raw:"{n} raw units",
+    fm_count:"{n} launches · {w} wallets",
+    fm_caveat:"a {min}-minute window, and only what this board has seen since it started. restart it and the count begins again.",
+    fm_empty:"nothing else with this fingerprint is still inside the window.", fm_close:"close",
+    fm_failed:"could not read that cohort just now.",
     /* why the score said what it said — reason codes */
     rc_tx_unreadable: "launch transaction unreadable: opening buy and declared bundle unknown",
     rc_no_record: "no factory record: creator tax and fee recipient unknown",
@@ -685,6 +725,14 @@ const I18N = {
     t9p:"Start reads and scores and, in a dry run, takes paper entries. In live mode this button says arm — press it and the next launch that passes every rule is bought with real ETH. Positions appear on the right, and you can close any of them by hand.",
   },
   ru: {
+    fm_title:"тот же запуск, снова",
+    fm_lede:"эти запуски совпадают друг с другом точь-в-точь по каждому полю ниже. один оператор, несколько кошельков.",
+    fm_buy:"закуп дева", fm_tax:"налог создателя", fm_links:"соцсети", fm_exempt:"без налога", fm_pair:"пара",
+    fm_links_none:"нет", fm_raw:"{n} единиц",
+    fm_count:"запусков {n} · кошельков {w}",
+    fm_caveat:"окно {min} минут, и только то, что борда видела с момента запуска. перезапустите — счёт начнётся заново.",
+    fm_empty:"больше ничего с этим отпечатком в окне не осталось.", fm_close:"закрыть",
+    fm_failed:"не удалось прочитать состав.",
     /* why the score said what it said — reason codes */
     rc_tx_unreadable: "транзакция запуска не прочиталась: закуп дева и бандл неизвестны",
     rc_no_record: "нет записи в фабрике: налог создателя и получатель комиссий неизвестны",
@@ -1003,7 +1051,7 @@ function launchRow(e) {
   tr.innerHTML = `
     <td class="mk"><i></i></td>
     <td class="r"><span class="sc">${e.score}</span></td>
-    <td class="who"><span class="tick">${esc(e.symbol ? "$" + e.symbol : e.token.slice(0, 10))}</span><span class="nm">${esc(e.name)}</span>${e.farmTwins ? `<span class="mini-flag">${esc(t("row_farm", { n: e.farmTwins }))}</span>` : ""}${e.fire ? `<span class="mini-flag good">${esc(t("row_passes"))}</span>` : ""}</td>
+    <td class="who"><span class="tick">${esc(e.symbol ? "$" + e.symbol : e.token.slice(0, 10))}</span><span class="nm">${esc(e.name)}</span>${e.farmTwins ? `<span class="mini-flag${e.farmKey ? " tap" : ""}"${e.farmKey ? ` role="button" tabindex="0" data-farm="${esc(e.farmKey)}"` : ""}>${esc(t("row_farm", { n: e.farmTwins }))}</span>` : ""}${e.fire ? `<span class="mini-flag good">${esc(t("row_passes"))}</span>` : ""}</td>
     <td class="r"><span class="q ${bBuy(e.devPct)}" title="${esc(why("buy", bBuy(e.devPct)))}">${e.devPct == null ? "?" : e.devPct.toFixed(2) + "%"}</span></td>
     <td class="r"><span class="q ${bTax(e.taxBps)}" title="${esc(why("tax", bTax(e.taxBps)))}">${e.taxBps == null ? "?" : e.taxBps / 100 + "%"}</span></td>
     <td class="r"><span class="q ${bEx(e.exempt ? e.exempt.length : null)}" title="${esc(why("ex", bEx(e.exempt ? e.exempt.length : null)))}">${e.exempt == null ? "?" : e.exempt.length}</span></td>
@@ -1019,7 +1067,15 @@ function launchRow(e) {
     tr.after(open);
     tr.setAttribute("aria-expanded", "true");
   };
-  tr.addEventListener("click", toggle);
+  tr.addEventListener("click", (ev) => {
+    const badge = ev.target.closest?.("[data-farm]");
+    if (badge) { ev.stopPropagation(); openFarm(badge.dataset.farm, badge); return; }
+    toggle();
+  });
+  tr.addEventListener("keydown", (ev) => {
+    const badge = ev.target.closest?.("[data-farm]");
+    if (badge && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); ev.stopPropagation(); openFarm(badge.dataset.farm, badge); }
+  });
   tr.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(); } });
   tr._e = e;
   tr._detach = () => { if (open) { open.remove(); open = null; tr.setAttribute("aria-expanded", "false"); } };
@@ -1640,6 +1696,73 @@ function gateSay(msg) {
   box.hidden = !msg;
 }
 
+/* A badge reading "farm x8" is a dead end unless the eight are somewhere. This is where. */
+let FARM_FROM = null, FARM_DATA = null;
+
+const LINK_SLOTS = ["x", "telegram", "discord", "website", "farcaster"];
+
+function paintFarm() {
+  const c = FARM_DATA;
+  if (!c) return;
+  const p = c.parts;
+  const parts = $("#farm-parts");
+  parts.innerHTML = p ? [
+    [t("fm_buy"), t("fm_raw", { n: Number(p.devBuy).toLocaleString(LANG === "ru" ? "ru-RU" : "en-US") })],
+    [t("fm_tax"), `${p.creatorTaxBps / 100}%`],
+    [t("fm_links"), LINK_SLOTS.filter((_, i) => p.links[i] === "1").join(" · ") || t("fm_links_none")],
+    [t("fm_exempt"), String(p.exempt)],
+    [t("fm_pair"), p.pair === "0x0000000000000000000000000000000000000000" ? "ETH" : p.pair],
+  ].map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("") : "";
+
+  const now = Date.now();
+  $("#farm-list").innerHTML = c.members.length
+    ? c.members.map((m) => `<div class="who-row">
+        <span class="tick">${esc(m.symbol ? "$" + m.symbol : "?")}</span>
+        <span class="addr">${esc(m.deployer)}</span>
+        <a href="${esc(PONS_URL(m.token))}" target="_blank" rel="noopener">pons</a>
+        <span class="age">${esc(shortAge(now - m.t))}</span>
+      </div>`).join("")
+    : `<div class="who-row"><span class="addr">${esc(t("fm_empty"))}</span></div>`;
+
+  $("#farm-caveat").textContent = `${t("fm_count", { n: c.members.length, w: c.wallets })} — ${t("fm_caveat", { min: Math.round(c.windowMs / 60000) })}`;
+}
+
+/* The row already carries a pons link; reuse its shape rather than hardcoding a second one. */
+let PONS_BASE = "https://www.ponsfamily.com/launchpad/";
+const PONS_URL = (token) => PONS_BASE + token;
+
+async function openFarm(key, from) {
+  if (TOUR_AT >= 0) tourEnd();
+  FARM_FROM = from || null;
+  FARM_DATA = null;
+  $("#farm-parts").innerHTML = "";
+  $("#farm-list").innerHTML = "";
+  $("#farm-caveat").textContent = "";
+  $("#farm").hidden = false;
+  $("#veil").classList.add("on");
+  $("#farm-close").focus();
+  try {
+    const r = await fetch("/farm?key=" + encodeURIComponent(key));
+    if (!r.ok) throw new Error(String(r.status));
+    FARM_DATA = await r.json();
+    paintFarm();
+  } catch {
+    $("#farm-caveat").textContent = t("fm_failed");
+  }
+}
+
+function closeFarm() {
+  if ($("#farm").hidden) return;
+  $("#farm").hidden = true;
+  FARM_DATA = null;
+  if (!$("#gate").hidden) return;   // the sign-in dialog may still want the veil
+  $("#veil").classList.remove("on");
+  if (FARM_FROM && FARM_FROM.isConnected) FARM_FROM.focus();
+  FARM_FROM = null;
+}
+
+$("#farm-close").addEventListener("click", closeFarm);
+
 function openGate() {
   if (TOUR_AT >= 0) tourEnd();
   GATE_FROM = document.activeElement && document.activeElement !== document.body ? document.activeElement : $("#signin");
@@ -1833,6 +1956,7 @@ function applyLang(lang) {
   redrawRows();
   showEmpty();
   if (TOUR_AT >= 0) paintStep();
+  paintFarm();
 }
 
 /* The rows carry their event, so the cheapest correct redraw is to build them again.
