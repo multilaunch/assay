@@ -10,6 +10,7 @@ import { progress } from "../pons/curve.js";
 import { allPositions, openPositions, pnlPct } from "../trade/positions.js";
 import { EXPLORER, PONS } from "../chain/config.js";
 import { client } from "../chain/clients.js";
+import { buyQuote } from "./quote.js";
 import { factoryAbi } from "../abi/pons.js";
 import { MATURE_MS, lift, report, thinFor, wilsonLower } from "../track/accuracy.js";
 import { all } from "../track/journal.js";
@@ -407,6 +408,22 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
 
     // GET only, and behind `guard` like everything else. Nothing here writes, so there is no verb
     // to fence off; a POST simply falls through to the 404 at the bottom.
+    // A read that prices a buy and hands back the bytes for it. GET on purpose: it changes nothing
+    // here, and the only thing it can do to the caller is quote them a trade their own wallet then
+    // refuses or signs. Public, because the whole point is that a visitor needs no account.
+    if (req.method === "GET" && path === "/quote") {
+      void buyQuote({
+        token: url.searchParams.get("token") ?? "",
+        buyer: url.searchParams.get("buyer") ?? "",
+        quoteIn: url.searchParams.get("wei") ?? "0",
+        ...(url.searchParams.has("slippageBps") ? { slippageBps: Number(url.searchParams.get("slippageBps")) } : {}),
+      }).then(
+        (r) => (r.ok ? json(res, 200, r.quote) : json(res, 400, { error: r.error })),
+        () => json(res, 502, { error: "the chain would not answer just now" }),
+      );
+      return;
+    }
+
     if (req.method === "GET" && path === "/stats") {
       void stats().then((s) => json(res, 200, s)).catch(() => json(res, 200, emptyStats()));
       return;
