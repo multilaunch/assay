@@ -8,16 +8,16 @@ import { allPositions, closeWithExit, openPosition, openPositions, updatePositio
 
 const A = (n: number): Address => `0x${n.toString(16).padStart(40, "0")}` as Address;
 
-/** positions.ts resolves the file on every call, so a temporary HOODTERM_DATA is enough to keep the suite off the real ledger. */
+/** positions.ts resolves the file on every call, so a temporary ASSAY_DATA is enough to keep the suite off the real ledger. */
 function withData<T>(run: (dir: string) => T): T {
-  const dir = mkdtempSync(join(tmpdir(), "hoodterm-positions-"));
-  const before = process.env.HOODTERM_DATA;
-  process.env.HOODTERM_DATA = dir;
+  const dir = mkdtempSync(join(tmpdir(), "assay-positions-"));
+  const before = process.env.ASSAY_DATA;
+  process.env.ASSAY_DATA = dir;
   try {
     return run(dir);
   } finally {
-    if (before === undefined) delete process.env.HOODTERM_DATA;
-    else process.env.HOODTERM_DATA = before;
+    if (before === undefined) delete process.env.ASSAY_DATA;
+    else process.env.ASSAY_DATA = before;
     rmSync(dir, { recursive: true, force: true });
   }
 }

@@ -1,4 +1,4 @@
-# Deploying hoodterm to a VPS
+# Deploying assay to a VPS
 
 Everything here assumes one plain Ubuntu 24.04 box you rent, one DNS name, and Caddy in front for
 TLS. There is no cluster, no orchestrator and no CI: this is one process behind one proxy, and the
@@ -46,9 +46,9 @@ also the fallback route to the board's controls, so it carries more than usual.
 From a checkout on your laptop, copy the repository up and run one script:
 
 ```sh
-rsync -a --exclude node_modules --exclude dist --exclude data ./ root@board.example.com:/opt/hoodterm/app/
+rsync -a --exclude node_modules --exclude dist --exclude data ./ root@board.example.com:/opt/assay/app/
 ssh root@board.example.com
-cd /opt/hoodterm/app
+cd /opt/assay/app
 BOARD_DOMAIN=board.example.com ACME_EMAIL=you@example.com ./deploy/bootstrap.sh
 ```
 
@@ -62,17 +62,17 @@ It will:
 2. turn on unattended **security** upgrades, with automatic reboot **off** (a reboot mid-session
    abandons open positions; `/var/run/reboot-required` tells you when one is pending)
 3. enable `ufw` — 22, 80, 443 in, everything else denied, SSH allowed *before* the enable
-4. create the system user `hoodterm` and the directories
-   `/opt/hoodterm/app`, `/etc/hoodterm` (0750), `/var/lib/hoodterm` (0750), `/var/backups/hoodterm` (0700)
+4. create the system user `assay` and the directories
+   `/opt/assay/app`, `/etc/assay` (0750), `/var/lib/assay` (0750), `/var/backups/assay` (0700)
 5. install Docker (or Node 22 + Caddy, with `MODE=systemd`)
-6. write `/etc/hoodterm/env.prod` **0600** from the example, with `PRIVATE_KEY` empty
+6. write `/etc/assay/env.prod` **0600** from the example, with `PRIVATE_KEY` empty
 7. generate a 32-character board password, hash it with `caddy hash-password`, write
-   `/etc/hoodterm/caddy.env` **0600**, and print the password once
+   `/etc/assay/caddy.env` **0600**, and print the password once
 8. build and start the stack, then wait for the board's healthcheck
 
 At the end it prints the URL, the credentials and the SSH-tunnel command. **Write the password
-down.** It is also in `/etc/hoodterm/board-credentials` (0600, root). Rotating it means deleting
-`/etc/hoodterm/caddy.env` and running the script again.
+down.** It is also in `/etc/assay/board-credentials` (0600, root). Rotating it means deleting
+`/etc/assay/caddy.env` and running the script again.
 
 Useful knobs: `MODE=systemd`, `ADMIN_IPS="203.0.113.7 198.51.100.0/24"`, `SKIP_FIREWALL=1`,
 `SKIP_START=1`, `REPO=` / `REF=` to clone instead of copy.
@@ -136,23 +136,23 @@ For a box without Docker. `MODE=systemd ./deploy/bootstrap.sh` does all of this:
 
 ```sh
 # node 22 and caddy from their own repositories, then:
-cd /opt/hoodterm/app
+cd /opt/assay/app
 npm ci && npm run typecheck && npm test && npm run build && npm prune --omit=dev
 
-install -o root -g root -m 0644 deploy/hoodterm.service /etc/systemd/system/hoodterm.service
+install -o root -g root -m 0644 deploy/assay.service /etc/systemd/system/assay.service
 install -o root -g root -m 0644 deploy/Caddyfile /etc/caddy/Caddyfile
 mkdir -p /etc/systemd/system/caddy.service.d
-printf '[Service]\nEnvironmentFile=/etc/hoodterm/caddy.env\n' > /etc/systemd/system/caddy.service.d/10-hoodterm.conf
+printf '[Service]\nEnvironmentFile=/etc/assay/caddy.env\n' > /etc/systemd/system/caddy.service.d/10-assay.conf
 
 systemctl daemon-reload
-systemctl enable --now hoodterm
+systemctl enable --now assay
 systemctl restart caddy
 ```
 
-Set `BOARD_UPSTREAM=127.0.0.1:4663` in `/etc/hoodterm/caddy.env` for this path — Caddy is on the
+Set `BOARD_UPSTREAM=127.0.0.1:4663` in `/etc/assay/caddy.env` for this path — Caddy is on the
 host, not on a container network.
 
-The unit runs as `hoodterm`, `NoNewPrivileges`, `ProtectSystem=strict` with `/var/lib/hoodterm` as
+The unit runs as `assay`, `NoNewPrivileges`, `ProtectSystem=strict` with `/var/lib/assay` as
 the only writable path, `PrivateTmp`, an empty capability bounding set, `SystemCallFilter=@system-service`,
 `Restart=on-failure`, and journald for logs. One knob is deliberately **not** set:
 `MemoryDenyWriteExecute`, because V8 writes and then executes its own JIT pages and node will not
@@ -199,7 +199,7 @@ everything else.
 
 ## PRIVATE_KEY on a machine you rent
 
-`/etc/hoodterm/env.prod` holds `PRIVATE_KEY` and it is a bearer token for money. On a VPS it sits
+`/etc/assay/env.prod` holds `PRIVATE_KEY` and it is a bearer token for money. On a VPS it sits
 on a disk you do not own, in a hypervisor you do not control, on hardware you share with strangers.
 Anyone with root on the box has it. So does anyone who can take a snapshot of the volume, anyone
 with your provider's console, and your provider. `chmod 600` stops the other unprivileged processes
@@ -226,15 +226,15 @@ stdin. That is a deliberate wall and it means a live board cannot be a fire-and-
 Under Docker, `compose.prod.yaml` holds stdin open (`stdin_open: true`, `tty: true`), so:
 
 ```sh
-# put the key in /etc/hoodterm/env.prod first, then change the command to include --live:
+# put the key in /etc/assay/env.prod first, then change the command to include --live:
 #   command: ["board", "--live", "--port", "4663", "--host", "0.0.0.0"]
 docker compose -f compose.prod.yaml up -d
-docker attach hoodterm-board          # read what it prints, then type: arm
+docker attach assay-board          # read what it prints, then type: arm
 # detach with ctrl-p ctrl-q — ctrl-c would stop the container
 ```
 
 Under systemd there is no stdin, so a `--live` unit would read EOF, abort, and exit 0 looking like
-a clean shutdown. `hoodterm.service` therefore runs dry. If you want live on a Docker-less box,
+a clean shutdown. `assay.service` therefore runs dry. If you want live on a Docker-less box,
 run it by hand in `tmux`.
 
 One thing to know either way: the session budget is per process. A container that crash-loops
@@ -337,9 +337,9 @@ docker compose -f compose.prod.yaml logs --since 1h --tail 200 board
 docker compose -f compose.prod.yaml logs caddy | grep '^{' | jq -c 'select(.status >= 400) | {ts, status, uri: .request.uri, ip: .request.remote_ip}'
 
 # systemd
-journalctl -u hoodterm -f
+journalctl -u assay -f
 journalctl -u caddy -f
-journalctl -u hoodterm --since '1 hour ago'
+journalctl -u assay --since '1 hour ago'
 ```
 
 Both are capped: `json-file` at 10 MB × 5 per container, journald by `SystemMaxUse` in
@@ -350,13 +350,13 @@ Both are capped: `json-file` at 10 MB × 5 per container, journald by `SystemMax
 ## Update
 
 ```sh
-sudo /opt/hoodterm/app/deploy/update.sh              # tip of the current branch
-sudo /opt/hoodterm/app/deploy/update.sh v0.2.0       # a tag, branch or commit
-sudo /opt/hoodterm/app/deploy/update.sh --rollback
+sudo /opt/assay/app/deploy/update.sh              # tip of the current branch
+sudo /opt/assay/app/deploy/update.sh v0.2.0       # a tag, branch or commit
+sudo /opt/assay/app/deploy/update.sh --rollback
 ```
 
-What it does, in order: takes a backup; tags the running image `hoodterm:prev` and records the
-current commit in `/var/lib/hoodterm/.last-good`; fetches; builds — which runs the typecheck and
+What it does, in order: takes a backup; tags the running image `assay:prev` and records the
+current commit in `/var/lib/assay/.last-good`; fetches; builds — which runs the typecheck and
 the whole test suite, so a broken tree fails here while the old container is still serving; swaps; waits
 for the healthcheck; and if the new one does not come up healthy within two minutes, rolls itself
 back.
@@ -364,7 +364,7 @@ back.
 By hand, if you prefer:
 
 ```sh
-cd /opt/hoodterm/app
+cd /opt/assay/app
 git fetch --all --tags && git reset --hard origin/master
 docker compose -f compose.prod.yaml build board     # fails here if the tests fail
 docker compose -f compose.prod.yaml up -d board
@@ -383,8 +383,8 @@ it does not lose the tokens, which are on chain and still yours; it loses the bo
 engine no longer knows it is holding them and will not manage or exit them.
 
 ```sh
-sudo /opt/hoodterm/app/deploy/backup.sh
-# -> /var/backups/hoodterm/hoodterm-20260909T001500Z.tar.gz  (0600 root)
+sudo /opt/assay/app/deploy/backup.sh
+# -> /var/backups/assay/assay-20260909T001500Z.tar.gz  (0600 root)
 ```
 
 The archive holds `positions.json`, `env.prod`, `caddy.env`, the git commit and a manifest. It is
@@ -393,13 +393,13 @@ The archive holds `positions.json`, `env.prod`, `caddy.env`, the git commit and 
 Hourly, from cron:
 
 ```sh
-echo '17 * * * * root /opt/hoodterm/app/deploy/backup.sh --quiet' > /etc/cron.d/hoodterm-backup
+echo '17 * * * * root /opt/assay/app/deploy/backup.sh --quiet' > /etc/cron.d/assay-backup
 ```
 
 Thirty days are kept (`KEEP=30`). Restoring:
 
 ```sh
-sudo /opt/hoodterm/app/deploy/backup.sh --restore /var/backups/hoodterm/hoodterm-20260909T001500Z.tar.gz
+sudo /opt/assay/app/deploy/backup.sh --restore /var/backups/assay/assay-20260909T001500Z.tar.gz
 ```
 
 That stops the board, puts the file back, and starts it again. Check the positions panel after.
@@ -413,12 +413,12 @@ certificates per registered domain per week.
 ## Roll back
 
 ```sh
-sudo /opt/hoodterm/app/deploy/update.sh --rollback
+sudo /opt/assay/app/deploy/update.sh --rollback
 ```
 
-Under Docker this retags `hoodterm:prev` back to `hoodterm:prod` and restarts the container, which
+Under Docker this retags `assay:prev` back to `assay:prod` and restarts the container, which
 takes about five seconds and does not need a rebuild. Under systemd it checks out the commit
-recorded in `/var/lib/hoodterm/.last-good` and rebuilds, which takes a couple of minutes.
+recorded in `/var/lib/assay/.last-good` and rebuilds, which takes a couple of minutes.
 
 To go back further than one version, check out the tag you want and run `update.sh` normally —
 the version you are leaving becomes the new `prev`.
@@ -459,7 +459,7 @@ from the `env_file` entry in `compose.prod.yaml`, or the hash was pasted into a 
 fine on `127.0.0.1:4663`.** `BOARD_HOSTS` does not include the public hostname. The board checks
 the `Host` header on every request to stop DNS rebinding, and Caddy — correctly — forwards the
 client's `Host` rather than rewriting it to `board:4663`. Add the name to `BOARD_HOSTS` in
-`/etc/hoodterm/env.prod` (comma-separated for several) and restart the board. Do not "fix" this at
+`/etc/assay/env.prod` (comma-separated for several) and restart the board. Do not "fix" this at
 the proxy with `header_up Host {upstream_hostport}`: that would make the board answer to any
 hostname pointed at it, which is the thing the check exists to prevent.
 
@@ -475,7 +475,7 @@ Remember a residential IP usually moves.
 **The board container restarts every minute.** Read `docker compose -f compose.prod.yaml logs
 board`. Two common causes: `/state` is not answering because the RPC is refusing every endpoint
 (the healthcheck fails and `restart: unless-stopped` keeps trying), or the container is being
-OOM-killed — `docker inspect hoodterm-board --format '{{.State.OOMKilled}}'`. The 512 MB limit is
+OOM-killed — `docker inspect assay-board --format '{{.State.OOMKilled}}'`. The 512 MB limit is
 comfortable for the board; if it is genuinely hitting it, the deployer index has grown and the
 limit in `compose.prod.yaml` needs raising, not removing.
 
@@ -485,7 +485,7 @@ the example.
 
 **Disk full.** Check `docker system df` before anything else — old images from repeated builds are
 usually the culprit, not logs, because the logs are capped. `docker image prune -a --filter
-'until=168h'`. Do not prune while `hoodterm:prev` is the only rollback you have.
+'until=168h'`. Do not prune while `assay:prev` is the only rollback you have.
 
 **A live session stopped firing and the logs say nothing.** The session budget is spent. It is per
 process; a restart resets the counter and a crash-loop resets it repeatedly. Check

@@ -1,14 +1,14 @@
-# hoodterm board as a systemd service, for a box without Docker.
+# assay board as a systemd service, for a box without Docker.
 #
-#   install -o root -g root -m 0644 deploy/hoodterm.service /etc/systemd/system/hoodterm.service
+#   install -o root -g root -m 0644 deploy/assay.service /etc/systemd/system/assay.service
 #   systemctl daemon-reload
-#   systemctl enable --now hoodterm
-#   journalctl -u hoodterm -f
+#   systemctl enable --now assay
+#   journalctl -u assay -f
 #
 # Assumes the layout deploy/bootstrap.sh creates:
-#   /opt/hoodterm/app        the checkout, already built (npm ci --omit=dev && npm run build)
-#   /etc/hoodterm/env.prod   0600 root:hoodterm, holds PRIVATE_KEY
-#   /var/lib/hoodterm        0750 hoodterm:hoodterm, holds positions.json
+#   /opt/assay/app        the checkout, already built (npm ci --omit=dev && npm run build)
+#   /etc/assay/env.prod   0600 root:assay, holds PRIVATE_KEY
+#   /var/lib/assay        0750 assay:assay, holds positions.json
 #
 # Dry run on purpose. `--live` is not on the ExecStart line and should not be added: the arm
 # prompt in src/engine/arm.ts reads `arm` from stdin, and stdin under systemd is /dev/null, so a
@@ -16,8 +16,8 @@
 # in the Docker path (docker attach) or in a tmux session you started by hand.
 
 [Unit]
-Description=hoodterm board — Robinhood Chain launch terminal
-Documentation=file:/opt/hoodterm/app/docs/DEPLOY.md
+Description=assay board — Robinhood Chain launch terminal
+Documentation=file:/opt/assay/app/docs/DEPLOY.md
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=300
@@ -25,16 +25,16 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-User=hoodterm
-Group=hoodterm
-WorkingDirectory=/opt/hoodterm/app
+User=assay
+Group=assay
+WorkingDirectory=/opt/assay/app
 
-EnvironmentFile=/etc/hoodterm/env.prod
+EnvironmentFile=/etc/assay/env.prod
 Environment=NODE_ENV=production
-Environment=HOODTERM_DATA=/var/lib/hoodterm
+Environment=ASSAY_DATA=/var/lib/assay
 
 # Loopback only. Caddy runs on this host and reaches it over 127.0.0.1; nothing else can.
-ExecStart=/usr/bin/node /opt/hoodterm/app/dist/cli/main.js board --port 4663 --host 127.0.0.1
+ExecStart=/usr/bin/node /opt/assay/app/dist/cli/main.js board --port 4663 --host 127.0.0.1
 
 Restart=on-failure
 RestartSec=5s
@@ -47,7 +47,7 @@ KillSignal=SIGINT
 StandardOutput=journal
 StandardError=journal
 StandardInput=null
-SyslogIdentifier=hoodterm
+SyslogIdentifier=assay
 
 # ---- hardening -------------------------------------------------------------------------------------
 # The process can hold a private key. Give it a filesystem it cannot write to, no capabilities,
@@ -84,9 +84,9 @@ UMask=0077
 
 # The only writable path. StateDirectory creates and chowns it on first start; ReadWritePaths is
 # the explicit statement of the same thing, and survives someone deleting StateDirectory.
-StateDirectory=hoodterm
+StateDirectory=assay
 StateDirectoryMode=0750
-ReadWritePaths=/var/lib/hoodterm
+ReadWritePaths=/var/lib/assay
 
 # ---- resources -------------------------------------------------------------------------------------
 MemoryMax=512M

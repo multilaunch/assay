@@ -1,6 +1,6 @@
 import { parseAbi } from "viem";
 
-/** Uniswap v4 pieces hoodterm needs to price and trade a graduated pons pool. */
+/** Uniswap v4 pieces assay needs to price and trade a graduated pons pool. */
 
 export const quoterAbi = parseAbi([
   "struct PoolKey { address currency0; address currency1; uint24 fee; int24 tickSpacing; address hooks; }",

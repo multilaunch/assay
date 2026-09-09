@@ -1,4 +1,4 @@
-# hoodterm in production, behind Caddy, on a VPS.
+# assay in production, behind Caddy, on a VPS.
 #
 #   cp deploy/env.prod.example  deploy/env.prod   && chmod 600 deploy/env.prod
 #   cp deploy/caddy.env.example deploy/caddy.env  && chmod 600 deploy/caddy.env
@@ -16,7 +16,7 @@
 #
 # See docs/DEPLOY.md.
 
-name: hoodterm
+name: assay
 
 x-logging: &logging
   driver: json-file
@@ -31,7 +31,7 @@ services:
       context: .
       # the image runs the typecheck and the whole test suite at build time
       target: runtime
-    image: hoodterm:prod
+    image: assay:prod
     command: ["board", "--port", "4663", "--host", "0.0.0.0"]
 
     # 0.0.0.0 above is the *container's* interface. What restricts it is that this port is
@@ -48,14 +48,14 @@ services:
         format: raw
     environment:
       NODE_ENV: production
-      HOODTERM_DATA: /data
+      ASSAY_DATA: /data
       # BOARD_HOSTS comes from deploy/env.prod and must contain the public hostname. The board
       # rejects any Host it does not know (its DNS-rebinding fence), and Caddy passes the client's
       # Host through unchanged, so without it every request through the proxy is a 403.
 
     # `board --live` prints the signer, its balance and every limit and waits for you to type
     # `arm` on stdin. A detached container with no stdin would read EOF and abort, so stdin is
-    # held open here: start the stack, then `docker attach hoodterm-board` and type `arm`.
+    # held open here: start the stack, then `docker attach assay-board` and type `arm`.
     # Detach again with ctrl-p ctrl-q — ctrl-c would stop the container.
     stdin_open: true
     tty: true
@@ -93,9 +93,9 @@ services:
         reservations:
           memory: 128M
 
-    container_name: hoodterm-board
+    container_name: assay-board
     networks:
-      - hoodterm
+      - assay
 
   # ---- TLS, certificates, and the only thing on a public port ------------------------------------
   caddy:
@@ -143,9 +143,9 @@ services:
           cpus: "0.5"
           memory: 256M
 
-    container_name: hoodterm-caddy
+    container_name: assay-caddy
     networks:
-      - hoodterm
+      - assay
 
 volumes:
   positions:
@@ -153,5 +153,5 @@ volumes:
   caddy_config:
 
 networks:
-  hoodterm:
+  assay:
     driver: bridge

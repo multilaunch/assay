@@ -223,9 +223,14 @@ a:hover{border-bottom-color:var(--hot)}
 .row-links{margin-top:var(--s3); display:flex; gap:var(--s4); font-size:11.5px; font-family:var(--mono)}
 
 /* ---- rail --------------------------------------------------------------- */
-.rail{border-left:1px solid var(--line-hard); background:var(--surface); display:flex; flex-direction:column; min-width:0; min-height:0}
-.sec{border-bottom:1px solid var(--line); padding:var(--s3) var(--s4)}
-.sec:last-child{flex:1; min-height:0; display:flex; flex-direction:column; border-bottom:0}
+/* The rail scrolls when it has to. Four sections fit a laptop; on a short window the log used to be
+   squeezed to nothing instead of the rail simply being longer than the screen. */
+.rail{border-left:1px solid var(--line-hard); background:var(--surface); display:flex; flex-direction:column;
+  min-width:0; min-height:0; overflow:auto; overscroll-behavior:contain}
+/* A section keeps its own height rather than being squeezed by the ones above it; only the last
+   one stretches, and only down to a floor, so the log is always a log and not a sliver. */
+.sec{border-bottom:1px solid var(--line); padding:var(--s3) var(--s4); flex:none}
+.sec:last-child{flex:1; min-height:118px; display:flex; flex-direction:column; border-bottom:0}
 .sec h2{margin:0 0 var(--s3); display:flex; align-items:center; gap:var(--s2); font-size:10px;
   font-weight:600; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-3)}
 .sec h2 .c{font-family:var(--mono); color:var(--ink-2)}
@@ -396,6 +401,12 @@ a:hover{border-bottom-color:var(--hot)}
       <h2 data-i18n="s_rules">rules</h2>
       <div id="rules"></div>
     </section>
+    <!-- Hidden until /stats answers: an older board binary has no such route, and an empty
+         frame would be worse than no frame. -->
+    <section class="sec" id="record" hidden>
+      <h2><span data-i18n="s_proof">track record</span> <span class="c" id="rec-n"></span></h2>
+      <div id="rec"></div>
+    </section>
     <section class="sec">
       <h2 data-i18n="s_log">log</h2>
       <div id="log" role="log" aria-live="polite"></div>
@@ -421,7 +432,18 @@ const I18N = {
     search:"symbol, name or address",
     c_score:"score", c_launch:"launch", c_buy:"opening buy", c_tax:"tax", c_exempt:"exempt",
     c_pair:"pair", c_curve:"curve", c_dev:"deployer", c_age:"age",
-    s_pos:"positions", s_rules:"rules", s_log:"log",
+    s_pos:"positions", s_rules:"rules", s_log:"log", s_proof:"track record",
+
+    pf_skip:"skip",
+    pf_proven:"95% floor {f} clears the {b} base rate. on this sample the verdict is worth something.",
+    pf_unproven:"not proven yet — {j} judged of about {n} needed.",
+    pf_notclear:"not proven — the 95% floor {f} does not clear the {b} base rate.",
+    pf_nobase:"nothing graduated in {j} judged, so there is no base rate to measure against yet.",
+    pf_priced:"launches priced", pf_untraded:"never traded at all",
+    pf_entered:"an outsider could enter", pf_doubled:"doubled",
+    pf_foot:"a launch is judged {h} h after it lands; {p} are still too young to count.",
+    pf_empty:"nothing judged yet",
+    pf_empty2:"`accuracy --backfill` scores launches that already happened.",
 
     st_paused:"paused", st_armed:"armed", st_running:"running",
     m_live:"live", m_dry:"dry run", m_readonly:"read only",
@@ -491,7 +513,18 @@ const I18N = {
     search:"тикер, название или адрес",
     c_score:"скор", c_launch:"запуск", c_buy:"закуп дева", c_tax:"налог", c_exempt:"без налога",
     c_pair:"пара", c_curve:"кривая", c_dev:"деплоер", c_age:"возраст",
-    s_pos:"позиции", s_rules:"правила", s_log:"лог",
+    s_pos:"позиции", s_rules:"правила", s_log:"лог", s_proof:"проверка скора",
+
+    pf_skip:"мимо",
+    pf_proven:"нижняя граница 95% — {f}, это выше базовых {b}. на этой выборке вердикт чего-то стоит.",
+    pf_unproven:"пока не доказано — {j} с исходом из примерно {n} нужных.",
+    pf_notclear:"не доказано — нижняя граница 95% {f} не перебивает базовые {b}.",
+    pf_nobase:"из {j} с известным исходом не доехал никто, сравнивать пока не с чем.",
+    pf_priced:"запусков с ценой", pf_untraded:"ни одной сделки",
+    pf_entered:"чужой мог войти", pf_doubled:"удвоились",
+    pf_foot:"исход считаем через {h} ч после запуска; {p} ещё слишком молоды.",
+    pf_empty:"судить пока нечего",
+    pf_empty2:"`accuracy --backfill` оценит уже прошедшие запуски.",
 
     st_paused:"пауза", st_armed:"заряжен", st_running:"идёт",
     m_live:"боевой", m_dry:"вхолостую", m_readonly:"только чтение",
@@ -570,7 +603,7 @@ const t = (key, vars) => {
 
 
 let LIVE = false, PAUSED = true, BOUNDS = {}, FILTER = "all", QUERY = "";
-let RULES = {}, POSITIONS = [], LINK = "net_connecting", FROZEN = false;
+let RULES = {}, POSITIONS = [], LINK = "net_connecting", FROZEN = false, STATS = null;
 let TAX_SECONDS = 3;
 let seen = 0, passing = 0;
 const rows = [];                       // newest first, for the age and decay ticks
@@ -827,6 +860,79 @@ function renderRules(rules) {
   }
 }
 
+/* ---- the record ----------------------------------------------------------
+   What the score has been worth, read out of this terminal's own journal. The
+   claim is not the rate — a rate is something anyone can produce by choosing a
+   kind window — it is that the 95% lower bound on the FIRE bucket clears the
+   base rate everything else ran at. When it does not, the panel says so in the
+   same place, with the sample it would take, rather than quietly showing the
+   flattering number. */
+const pctv = (x) => (Number(x) * 100).toFixed(2) + "%";
+const numv = (n) => Number(n).toLocaleString(LANG === "ru" ? "ru-RU" : "en-US");
+/* Values are numbers we formatted ourselves and the templates are our own dictionary, so this is
+   the one place on the page that interpolates markup. Nothing from the chain reaches it. */
+const fig = (v, cls) => `<b class="${cls || ""}">${esc(v)}</b>`;
+
+const VERDICT_KEY = { FIRE: "f_fire", WATCH: "f_watch", SKIP: "pf_skip", all: "f_all" };
+
+function renderStats(s) {
+  STATS = s;
+  const sec = $("#record");
+  if (!s) { sec.hidden = true; return; }
+  sec.hidden = false;
+
+  const box = $("#rec");
+  const overall = (s.buckets || []).find((b) => b.verdict === "all");
+  const judged = overall ? overall.judged : 0;
+  $("#rec-n").textContent = judged ? numv(judged) : "";
+
+  if (!s.total || !judged) {
+    box.innerHTML = `<div class="blank">${esc(t("pf_empty"))}</div><div class="pf-foot">${esc(t("pf_empty2"))}</div>`;
+    return;
+  }
+
+  const fire = s.buckets.find((b) => b.verdict === "FIRE");
+  const proven = !!fire && fire.judged > 0 && s.base > 0 && fire.floor > s.base;
+
+  const table = s.buckets.map((b) => `<div class="pf-r">
+      <span class="lbl k">${esc(t(VERDICT_KEY[b.verdict] || b.verdict))}</span>
+      <span class="n s">${esc(numv(b.graduated))} / ${esc(numv(b.judged))}</span>
+      <span class="n p${b.verdict === "FIRE" && proven ? " t-ok" : ""}">${b.judged ? esc(pctv(b.rate)) : "—"}</span>
+      <span class="n x">${b.verdict === "all" || b.lift == null ? "—" : esc(b.lift.toFixed(1) + "×")}</span>
+    </div>`).join("");
+
+  let claim;
+  if (proven) claim = t("pf_proven", { f: fig(pctv(fire.floor), "t-ok"), b: fig(pctv(s.base)) });
+  else if (!s.base) claim = t("pf_nobase", { j: fig(numv(judged)) });
+  else if (!fire || s.need == null || fire.judged < s.need) {
+    claim = t("pf_unproven", { j: fig(numv(fire ? fire.judged : 0), "t-warn"), n: fig(s.need == null ? "?" : numv(s.need)) });
+  } else claim = t("pf_notclear", { f: fig(pctv(fire.floor), "t-warn"), b: fig(pctv(s.base)) });
+
+  const p = s.priced || {};
+  const funnel = p.total
+    ? [["pf_priced", p.total], ["pf_untraded", p.neverTraded], ["pf_entered", p.withEntry], ["pf_doubled", p.doubled]]
+        .map(([k, v]) => `<div class="pf-f"><span class="k">${esc(t(k))}</span><span class="n v">${esc(numv(v))}</span></div>`).join("")
+    : "";
+
+  box.innerHTML = table
+    + `<div class="pf-claim">${claim}</div>`
+    + (funnel ? `<div class="pf-split">${funnel}</div>` : "")
+    + `<div class="pf-foot">${esc(t("pf_foot", { h: s.matureHours, p: numv(s.pending) }))}</div>`;
+}
+
+/* An older board has no /stats, and a journal can be missing or unreadable. None of that is a
+   reason for the rest of the page to stop, so the panel simply is not there. */
+async function loadStats() {
+  try {
+    const r = await fetch("/stats");
+    if (!r.ok) throw new Error(String(r.status));
+    const s = await r.json();
+    if (!s || typeof s !== "object" || !Array.isArray(s.buckets)) throw new Error("shape");
+    renderStats(s);
+    return true;
+  } catch { renderStats(null); return false; }
+}
+
 function setPaused(p) {
   PAUSED = p;
   const st = $("#state");
@@ -865,6 +971,9 @@ async function boot() {
   setPaused(s.paused);
   renderRules(s.rules);
   renderPositions(s.positions);
+  // Off the critical path: the journal is a big file and the feed should not wait on it. The
+  // server caches it for minutes at a time, so re-asking occasionally is nearly free.
+  void loadStats().then((ok) => { if (ok) setInterval(loadStats, 5 * 60 * 1000); });
   $("#k-spent").textContent = (Number(s.spent) / 1e18).toFixed(4);
   for (const e of s.recent) if (e.kind === "launch") addLaunch(e);
   drawSpark();
@@ -915,6 +1024,7 @@ function applyLang(lang) {
   $("#link").textContent = t(LINK);
   renderRules(RULES);
   renderPositions(POSITIONS);
+  renderStats(STATS);
   redrawRows();
   showEmpty();
   if (TOUR_AT >= 0) paintStep();

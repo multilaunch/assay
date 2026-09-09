@@ -19,7 +19,7 @@ import { registerFarmsCommand } from "./farms.js";
 import { registerRulesCommand } from "./rules.js";
 
 const program = new Command();
-program.name("hoodterm").description("Launch terminal for Robinhood Chain (pons v2). Local, open, non-custodial, dry run by default.").version("0.1.0");
+program.name("assay").description("Launch terminal for Robinhood Chain (pons v2). Local, open, non-custodial, dry run by default.").version("0.1.0");
 
 async function ethUsd(): Promise<number | null> {
   try {
@@ -125,7 +125,7 @@ program
     );
     const stSec = Number(await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "snipeTaxSeconds" }).catch(() => 3n));
 
-    log.info(`${c.bold("hoodterm")} ${c.grey(`hunt · pons v2 · chain ${CHAIN_ID} · ${ws ? "websocket" : "polling"}${px ? ` · ETH $${px}` : ""}`)}`);
+    log.info(`${c.bold("assay")} ${c.grey(`hunt · pons v2 · chain ${CHAIN_ID} · ${ws ? "websocket" : "polling"}${px ? ` · ETH $${px}` : ""}`)}`);
     log.info(c.grey("─".repeat(88)));
 
     let inFlight = 0;

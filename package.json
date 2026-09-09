@@ -1,11 +1,11 @@
 {
-  "name": "hoodterm",
+  "name": "@multilaunch/assay",
   "version": "0.1.0",
   "description": "Launch terminal for Robinhood Chain: live pons v2 launch feed, on-chain scoring with reasons, creator-fee forensics, tax-aware entry. Local, open, non-custodial, dry run by default.",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "hoodterm": "./bin/hoodterm.js"
+    "assay": "./bin/assay.js"
   },
   "engines": {
     "node": ">=20"

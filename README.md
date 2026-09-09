@@ -1,4 +1,4 @@
-# hoodterm
+# assay
 
 A launch terminal for Robinhood Chain. It reads every pons v2 launch straight off the chain, scores
 it, and prints the reason behind every point. Runs on your machine, holds your own key, and does
@@ -17,7 +17,7 @@ nothing but watch until you tell it otherwise.
 A pons v2 launch opens behind a 99% tax on buys that decays to zero over three seconds. The chain
 seals a block every 100 ms or so, orders transactions by arrival, and has no public mempool and no
 priority-fee auction. Win the race and you hand almost the whole buy to the creator's fee bucket, so
-speed buys you nothing here. The only variable left is *when*. hoodterm polls
+speed buys you nothing here. The only variable left is *when*. assay polls
 `currentSnipeTaxBps` for your own address and treats the wait as the trade.
 
 ## Has the score ever been right

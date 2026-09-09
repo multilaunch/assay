@@ -33,7 +33,7 @@ export function embedConfig(): EmbedConfig | null {
   };
 }
 
-const cachePath = (): string => resolve(process.env.HOODTERM_DATA ?? resolve(process.cwd(), "data"), "embeddings.json");
+const cachePath = (): string => resolve(process.env.ASSAY_DATA ?? resolve(process.cwd(), "data"), "embeddings.json");
 
 type Cache = { version: number; model: string; vectors: Record<string, number[]> };
 

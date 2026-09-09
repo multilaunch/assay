@@ -14,7 +14,7 @@ export const gate = new RpcGate(specs, {
   logsSpacingMs: envNum("RPC_LOGS_SPACING_MS", 400),
   retries: 6,
   timeoutMs: 15_000,
-  userAgent: "hoodterm/0.1",
+  userAgent: "assay/0.1",
 });
 
 export const client: PublicClient = createPublicClient({ chain: robinhoodChain, transport: gate.transport() });

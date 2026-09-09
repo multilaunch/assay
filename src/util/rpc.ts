@@ -77,7 +77,7 @@ export class RpcGate {
     this.logsSpacingMs = o.logsSpacingMs ?? 400;
     this.retries = o.retries ?? 6;
     this.timeoutMs = o.timeoutMs ?? 15_000;
-    this.headers = { "content-type": "application/json", "user-agent": o.userAgent ?? "hoodterm/0.1" };
+    this.headers = { "content-type": "application/json", "user-agent": o.userAgent ?? "assay/0.1" };
   }
 
   /** Endpoints able to serve `cap`, healthiest first. */

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Take a fresh Ubuntu 24.04 box to a running hoodterm deployment.
+# Take a fresh Ubuntu 24.04 box to a running assay deployment.
 #
 #   sudo BOARD_DOMAIN=board.example.com ACME_EMAIL=you@example.com ./deploy/bootstrap.sh
 #
@@ -14,14 +14,14 @@
 #   ADMIN_IPS      auto       space-separated source addresses allowed to POST to the board.
 #                             Defaults to the address of the SSH session running this, if there is
 #                             one, else to 192.0.2.1 — nobody — which leaves the board read-only.
-#   APP_DIR        /opt/hoodterm/app
+#   APP_DIR        /opt/assay/app
 #   REPO           ""         git URL to clone if this script is not already inside a checkout.
 #   REF            ""         branch/tag/commit to check out. Empty = leave the checkout alone.
 #   SKIP_FIREWALL  ""         set to 1 to leave ufw alone (e.g. the provider firewalls for you).
 #   SKIP_START     ""         set to 1 to configure everything but not start the stack.
 #
 # What it does NOT do: fund a wallet, write PRIVATE_KEY, or start a live session. It leaves the
-# board in dry run. Editing /etc/hoodterm/env.prod is a decision, and it is yours.
+# board in dry run. Editing /etc/assay/env.prod is a decision, and it is yours.
 
 set -euo pipefail
 
@@ -29,11 +29,11 @@ set -euo pipefail
 BOARD_DOMAIN="${BOARD_DOMAIN:-}"
 ACME_EMAIL="${ACME_EMAIL:-}"
 MODE="${MODE:-docker}"
-APP_DIR="${APP_DIR:-/opt/hoodterm/app}"
-ETC_DIR="${ETC_DIR:-/etc/hoodterm}"
-DATA_DIR="${DATA_DIR:-/var/lib/hoodterm}"
-BACKUP_DIR="${BACKUP_DIR:-/var/backups/hoodterm}"
-SERVICE_USER="${SERVICE_USER:-hoodterm}"
+APP_DIR="${APP_DIR:-/opt/assay/app}"
+ETC_DIR="${ETC_DIR:-/etc/assay}"
+DATA_DIR="${DATA_DIR:-/var/lib/assay}"
+BACKUP_DIR="${BACKUP_DIR:-/var/backups/assay}"
+SERVICE_USER="${SERVICE_USER:-assay}"
 BOARD_USER="${BOARD_USER:-ops}"
 REPO="${REPO:-}"
 REF="${REF:-}"
@@ -118,7 +118,7 @@ APT::Periodic::Unattended-Upgrade "1";
 APT::Periodic::Download-Upgradeable-Packages "1";
 APT::Periodic::AutocleanInterval "7";
 EOF
-cat > /etc/apt/apt.conf.d/51hoodterm-unattended <<'EOF'
+cat > /etc/apt/apt.conf.d/51assay-unattended <<'EOF'
 // Security updates only, applied automatically. Reboots are NOT automatic: a reboot in the
 // middle of a live session would abandon open positions, so that stays a decision you make.
 // /var/run/reboot-required tells you when one is pending.
@@ -192,7 +192,7 @@ elif [ -n "$REPO" ]; then
   git clone "${clone_args[@]}" "$REPO" "$APP_DIR"
   info "cloned ${REPO} into ${APP_DIR}"
 else
-  die "no source: run this from inside a hoodterm checkout, or set REPO=<git url>"
+  die "no source: run this from inside a assay checkout, or set REPO=<git url>"
 fi
 chown -R root:root "$APP_DIR"
 chmod -R go-w "$APP_DIR"
@@ -325,7 +325,7 @@ elif [ "$MODE" = "docker" ]; then
   docker compose -f "${APP_DIR}/compose.prod.yaml" --project-directory "$APP_DIR" up -d --build
   info "waiting for the board to report healthy"
   for _ in $(seq 1 40); do
-    state="$(docker inspect -f '{{.State.Health.Status}}' hoodterm-board 2>/dev/null || echo starting)"
+    state="$(docker inspect -f '{{.State.Health.Status}}' assay-board 2>/dev/null || echo starting)"
     [ "$state" = "healthy" ] && break
     sleep 3
   done
@@ -344,18 +344,18 @@ else
     npm prune --omit=dev
   )
   chown -R root:root "$APP_DIR"
-  install -o root -g root -m 0644 "${APP_DIR}/deploy/hoodterm.service" /etc/systemd/system/hoodterm.service
+  install -o root -g root -m 0644 "${APP_DIR}/deploy/assay.service" /etc/systemd/system/assay.service
   install -o root -g root -m 0644 "${APP_DIR}/deploy/Caddyfile" /etc/caddy/Caddyfile
   # caddy.service on Ubuntu does not read an env file by default
   install -d -o root -g root -m 0755 /etc/systemd/system/caddy.service.d
-  cat > /etc/systemd/system/caddy.service.d/10-hoodterm.conf <<EOF
+  cat > /etc/systemd/system/caddy.service.d/10-assay.conf <<EOF
 [Service]
 EnvironmentFile=${ETC_DIR}/caddy.env
 EOF
   systemctl daemon-reload
-  systemctl enable --now hoodterm
+  systemctl enable --now assay
   systemctl restart caddy
-  systemctl --no-pager --lines=0 status hoodterm caddy || true
+  systemctl --no-pager --lines=0 status assay caddy || true
 fi
 
 # ---- done ---------------------------------------------------------------------------------------

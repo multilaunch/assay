@@ -1,4 +1,4 @@
-# hoodterm board, behind Caddy, on a public VPS.
+# assay board, behind Caddy, on a public VPS.
 #
 # Values come from deploy/caddy.env (see deploy/caddy.env.example):
 #   BOARD_DOMAIN          board.example.com

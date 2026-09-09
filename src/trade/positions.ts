@@ -47,7 +47,7 @@ export interface ExitRules {
   maxHoldMin: number;
 }
 
-const FILE = () => resolve(process.env.HOODTERM_DATA ?? resolve(process.cwd(), "data"), "positions.json");
+const FILE = () => resolve(process.env.ASSAY_DATA ?? resolve(process.cwd(), "data"), "positions.json");
 
 function load(): Position[] {
   const f = FILE();

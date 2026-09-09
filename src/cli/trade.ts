@@ -103,7 +103,7 @@ export function registerTradeCommands(program: Command): void {
       const live = o.live === true;
       if (live && !(await confirmLive(rules))) return;
 
-      log.info(`${c.bold("hoodterm")} ${c.grey(`snipe · ${live ? "LIVE" : "dry run"} · ${eth(rules.entryQuote)} ETH per entry · budget ${eth(rules.sessionBudget)} · max open ${rules.maxOpenPositions} · min score ${rules.minScore} · tax ceiling ${rules.maxOpeningTaxBps / 100}%`)}`);
+      log.info(`${c.bold("assay")} ${c.grey(`snipe · ${live ? "LIVE" : "dry run"} · ${eth(rules.entryQuote)} ETH per entry · budget ${eth(rules.sessionBudget)} · max open ${rules.maxOpenPositions} · min score ${rules.minScore} · tax ceiling ${rules.maxOpeningTaxBps / 100}%`)}`);
       log.info(c.grey(`TP +${rules.exits.takeProfitPct}%  SL −${rules.exits.stopLossPct}%  trail ${rules.exits.trailingPct}%  hold ${rules.exits.maxHoldMin} min${telegramEnabled() ? "  ·  telegram on" : ""}`));
       log.info(c.grey("─".repeat(88)));
 
@@ -132,7 +132,7 @@ export function registerTradeCommands(program: Command): void {
 
       const { startBoard } = await import("../board/server.js");
       const b = startBoard({ port: o.port, live, rules, host: o.host });
-      log.info(`${c.bold("hoodterm")} ${c.grey("board")}  ${b.url}  ${live ? c.badge(" LIVE ") : c.grey("dry run")}  ${c.grey("feed only until you press start")}`);
+      log.info(`${c.bold("assay")} ${c.grey("board")}  ${b.url}  ${live ? c.badge(" LIVE ") : c.grey("dry run")}  ${c.grey("feed only until you press start")}`);
       log.info(c.grey(b.host === "0.0.0.0"
         ? "bound to 0.0.0.0 (a container); publish it on 127.0.0.1 so only this machine can reach it"
         : "loopback only; the page has no route that buys on demand, and --live is a launch flag"));

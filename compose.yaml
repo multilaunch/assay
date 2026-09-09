@@ -1,4 +1,4 @@
-# hoodterm in Docker.
+# assay in Docker.
 #
 #   docker compose run --rm doctor            one-shot: is the chain there, does our math match it
 #   docker compose run --rm hunt              live feed in the terminal
@@ -9,14 +9,14 @@
 # Nothing here is live. Every service is read-only or dry run; going live is an explicit
 # `--live` you add yourself, and it needs PRIVATE_KEY in .env.
 
-name: hoodterm
+name: assay
 
 x-base: &base
   build:
     context: .
     # the image runs the test suite and the typecheck at build time, so a broken tree never ships
     target: runtime
-  image: hoodterm:local
+  image: assay:local
   env_file:
     - path: .env
       required: false

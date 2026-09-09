@@ -13,9 +13,9 @@
 set -euo pipefail
 
 MODE="${MODE:-auto}"
-APP_DIR="${APP_DIR:-/opt/hoodterm/app}"
+APP_DIR="${APP_DIR:-/opt/assay/app}"
 COMPOSE_FILE="${COMPOSE_FILE:-${APP_DIR}/compose.prod.yaml}"
-STATE_FILE="${STATE_FILE:-/var/lib/hoodterm/.last-good}"
+STATE_FILE="${STATE_FILE:-/var/lib/assay/.last-good}"
 HEALTH_TRIES="${HEALTH_TRIES:-40}"
 
 step() { printf '\n\033[1m==>\033[0m %s\n' "$*"; }
@@ -43,7 +43,7 @@ wait_healthy() {
   local i state
   for i in $(seq 1 "$HEALTH_TRIES"); do
     if [ "$MODE" = docker ]; then
-      state="$(docker inspect -f '{{.State.Health.Status}}' hoodterm-board 2>/dev/null || echo missing)"
+      state="$(docker inspect -f '{{.State.Health.Status}}' assay-board 2>/dev/null || echo missing)"
     else
       state="$(curl -fsS -o /dev/null -w ok http://127.0.0.1:4663/state 2>/dev/null || echo unhealthy)"
       [ "$state" = ok ] && state=healthy
@@ -63,14 +63,14 @@ if [ -n "$rollback" ]; then
   . "$STATE_FILE"
   info "previous commit ${LAST_GOOD_COMMIT:-unknown}"
   if [ "$MODE" = docker ]; then
-    docker image inspect hoodterm:prev >/dev/null 2>&1 || die "no hoodterm:prev image to roll back to"
-    docker tag hoodterm:prev hoodterm:prod
+    docker image inspect assay:prev >/dev/null 2>&1 || die "no assay:prev image to roll back to"
+    docker tag assay:prev assay:prod
     dc up -d --no-build board
   else
     [ -n "${LAST_GOOD_COMMIT:-}" ] || die "no commit recorded"
     git -C "$APP_DIR" checkout --force "$LAST_GOOD_COMMIT"
     ( cd "$APP_DIR" && npm ci --no-audit --no-fund && npm run build && npm prune --omit=dev )
-    systemctl restart hoodterm
+    systemctl restart assay
   fi
   wait_healthy || die "rollback did not come up either — read the logs"
   step "rolled back"
@@ -88,9 +88,9 @@ fi
 # ---- record where we are ---------------------------------------------------------------------------
 current_commit=""
 [ -d "${APP_DIR}/.git" ] && current_commit="$(git -C "$APP_DIR" rev-parse HEAD)"
-if [ "$MODE" = docker ] && docker image inspect hoodterm:prod >/dev/null 2>&1; then
-  docker tag hoodterm:prod hoodterm:prev
-  info "tagged the running image hoodterm:prev"
+if [ "$MODE" = docker ] && docker image inspect assay:prod >/dev/null 2>&1; then
+  docker tag assay:prod assay:prev
+  info "tagged the running image assay:prev"
 fi
 install -d -m 0750 "$(dirname "$STATE_FILE")"
 printf 'LAST_GOOD_COMMIT=%s\n' "${current_commit:-}" > "$STATE_FILE"
@@ -124,7 +124,7 @@ else
   ( cd "$APP_DIR" && npm ci --no-audit --no-fund && npm run typecheck && npm test && npm run build && npm prune --omit=dev ) \
     || die "build or tests failed — the running service was not restarted"
   chown -R root:root "$APP_DIR"
-  systemctl restart hoodterm
+  systemctl restart assay
 fi
 
 step "verify"

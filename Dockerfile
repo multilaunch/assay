@@ -41,7 +41,7 @@ COPY --chown=node:node docs ./docs
 
 # positions.json lives here; mount a volume over it to keep a ledger between runs
 RUN mkdir -p /data && chown node:node /data
-ENV HOODTERM_DATA=/data
+ENV ASSAY_DATA=/data
 
 # never run the thing that can hold a private key as root
 USER node

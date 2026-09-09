@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Back up the only state that cannot be rebuilt from the repository.
 #
-#   sudo ./deploy/backup.sh                    one backup, into /var/backups/hoodterm
+#   sudo ./deploy/backup.sh                    one backup, into /var/backups/assay
 #   sudo ./deploy/backup.sh --restore <file>   put a positions.json back
 #
 # Runs from cron safely (it is quiet unless something is wrong):
-#   echo '17 * * * * root /opt/hoodterm/app/deploy/backup.sh --quiet' > /etc/cron.d/hoodterm-backup
+#   echo '17 * * * * root /opt/assay/app/deploy/backup.sh --quiet' > /etc/cron.d/assay-backup
 #
 # What is backed up:
 #   positions.json   the ledger. Losing it means the engine forgets what it is holding, so on the
@@ -22,13 +22,13 @@
 set -euo pipefail
 
 MODE="${MODE:-auto}"
-APP_DIR="${APP_DIR:-/opt/hoodterm/app}"
-ETC_DIR="${ETC_DIR:-/etc/hoodterm}"
-DATA_DIR="${DATA_DIR:-/var/lib/hoodterm}"
-BACKUP_DIR="${BACKUP_DIR:-/var/backups/hoodterm}"
+APP_DIR="${APP_DIR:-/opt/assay/app}"
+ETC_DIR="${ETC_DIR:-/etc/assay}"
+DATA_DIR="${DATA_DIR:-/var/lib/assay}"
+BACKUP_DIR="${BACKUP_DIR:-/var/backups/assay}"
 KEEP="${KEEP:-30}"
 COMPOSE_FILE="${COMPOSE_FILE:-${APP_DIR}/compose.prod.yaml}"
-VOLUME="${VOLUME:-hoodterm_positions}"
+VOLUME="${VOLUME:-assay_positions}"
 
 quiet=""
 restore=""
@@ -76,9 +76,9 @@ if [ -n "$restore" ]; then
       sh -c 'cp /in/positions.json /data/positions.json && chown 1000:1000 /data/positions.json'
     docker compose -f "$COMPOSE_FILE" --project-directory "$APP_DIR" start board
   else
-    systemctl stop hoodterm
-    install -o hoodterm -g hoodterm -m 0640 "$src" "${DATA_DIR}/positions.json"
-    systemctl start hoodterm
+    systemctl stop assay
+    install -o assay -g assay -m 0640 "$src" "${DATA_DIR}/positions.json"
+    systemctl start assay
   fi
   say "restored. The engine re-reads the ledger on start; check the board's positions panel."
   exit 0
@@ -89,8 +89,8 @@ install -d -o root -g root -m 0700 "$BACKUP_DIR"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-install -d -m 0700 "${work}/hoodterm-${stamp}"
-out="${work}/hoodterm-${stamp}"
+install -d -m 0700 "${work}/assay-${stamp}"
+out="${work}/assay-${stamp}"
 
 if [ "$MODE" = docker ]; then
   # Read the ledger out of the named volume without stopping the board. positions.json is
@@ -110,12 +110,12 @@ if [ -d "${APP_DIR}/.git" ]; then
 fi
 printf 'mode=%s\nhost=%s\nat=%s\n' "$MODE" "$(hostname)" "$stamp" > "${out}/MANIFEST"
 
-archive="${BACKUP_DIR}/hoodterm-${stamp}.tar.gz"
-tar -czf "$archive" -C "$work" "hoodterm-${stamp}"
+archive="${BACKUP_DIR}/assay-${stamp}.tar.gz"
+tar -czf "$archive" -C "$work" "assay-${stamp}"
 chmod 0600 "$archive"
 say "wrote ${archive} ($(du -h "$archive" | cut -f1))"
 
 # ---- prune --------------------------------------------------------------------------------------
 # -mtime is days; KEEP is the number of days to hold.
-find "$BACKUP_DIR" -maxdepth 1 -name 'hoodterm-*.tar.gz' -mtime "+${KEEP}" -print -delete \
+find "$BACKUP_DIR" -maxdepth 1 -name 'assay-*.tar.gz' -mtime "+${KEEP}" -print -delete \
   | while read -r old; do say "pruned ${old}"; done

@@ -1,7 +1,7 @@
 # Ground truth read from Robinhood Chain
 
 Everything the tool assumes about the protocol was read from the chain, not from documentation.
-`hoodterm doctor` repeats these reads on every start and refuses to run the engine when they disagree.
+`assay doctor` repeats these reads on every start and refuses to run the engine when they disagree.
 
 ## Factory `0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e` — 2026-09-07, block 57 488 214
 

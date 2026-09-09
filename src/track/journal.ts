@@ -54,7 +54,7 @@ export interface Entry {
   trades?: number;
 }
 
-const dir = () => process.env.HOODTERM_DATA ?? resolve(process.cwd(), "data");
+const dir = () => process.env.ASSAY_DATA ?? resolve(process.cwd(), "data");
 export const journalPath = (): string => resolve(dir(), "journal.jsonl");
 
 /**
@@ -62,7 +62,7 @@ export const journalPath = (): string => resolve(dir(), "journal.jsonl");
  *
  * Terminal output ends up in screenshots and pasted into chats, and an absolute path carries the
  * name of whoever ran it. Relative when it sits under the working directory, which is the normal
- * case; absolute only when HOODTERM_DATA points somewhere else and the short form would be a lie.
+ * case; absolute only when ASSAY_DATA points somewhere else and the short form would be a lie.
  */
 export function journalLabel(): string {
   const rel = relative(process.cwd(), journalPath());
