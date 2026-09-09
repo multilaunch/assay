@@ -36,7 +36,6 @@ export async function curveState(curve: Address, recipient: Address = DEAD): Pro
   };
 }
 
-/** Poll the opening tax for one recipient until it is at or under the ceiling, or give up. */
 export async function waitForOpeningTax(curve: Address, recipient: Address, maxBps: number, maxWaitMs: number, everyMs = 150): Promise<{ ok: boolean; taxBps: number; waitedMs: number }> {
   const t0 = Date.now();
   for (;;) {

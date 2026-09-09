@@ -109,7 +109,6 @@ function amountFromReceipt(logs: readonly { address: string; topics: readonly He
   return null;
 }
 
-/** A simulated `buy()` on the live curve: the number the contract itself would return, right now. */
 export async function simulateBuy(curve: Address, quoteIn: bigint, from: Address = DEAD): Promise<bigint | null> {
   try {
     const res = await fast.call({ to: curve, data: encodeFunctionData({ abi: curveAbi, functionName: "buy", args: [quoteIn, 0n, from] }), value: quoteIn, account: from });

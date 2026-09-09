@@ -112,11 +112,6 @@ export function decide(intel: LaunchIntel, score: Score, rules: EngineRules, ctx
   return { fire: why.length === 0, why };
 }
 
-/**
- * What one entry against this pair actually costs, in the pair asset's own units. `entryQuote` is
- * wei, so it is only the right answer for an 18-decimal asset; `decide` refuses anything else that
- * has no explicit size here, and the two must stay in step.
- */
 export function entryQuoteFor(rules: EngineRules, pair: Pick<PairInfo, "address" | "decimals">): bigint {
   return rules.entryQuoteByPair.get(pair.address.toLowerCase()) ?? rules.entryQuote;
 }

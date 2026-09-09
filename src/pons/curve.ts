@@ -15,7 +15,6 @@ import { BPS, LAUNCH_SUPPLY } from "../chain/config.js";
  * cross-checks a modelled quote against an `eth_call` simulation of `buy` on a live curve.
  */
 
-// ---- PonsV2BondingCurveMath ------------------------------------------------------------------
 
 export function amountOut(amountIn: bigint, reserveIn: bigint, reserveOut: bigint, feeBps = 0n): bigint {
   if (amountIn === 0n || reserveIn === 0n || reserveOut === 0n || feeBps >= BPS) return 0n;
@@ -32,7 +31,6 @@ export function amountIn(amountOutWanted: bigint, reserveIn: bigint, reserveOut:
 
 const mulDivCeil = (a: bigint, b: bigint, d: bigint): bigint => (a * b + d - 1n) / d;
 
-// ---- state -----------------------------------------------------------------------------------
 
 export interface CurveState {
   /** getReserves(): phantom + tracked − fee balances, and trackedTokens. */
@@ -127,15 +125,12 @@ export function clampSlippageBps(bps: number): number {
  */
 export const minOutWithSlippage = (quoted: bigint, slippageBps: number): bigint => (quoted * (BPS - BigInt(clampSlippageBps(slippageBps)))) / BPS;
 
-// ---- read-only helpers -----------------------------------------------------------------------
 
-/** Marginal price of one whole token, in quote units (display only). */
 export function spotPrice(s: Pick<CurveState, "quoteReserve" | "tokenReserve">, quoteDecimals: number): number {
   if (s.tokenReserve === 0n) return 0;
   return (Number(s.quoteReserve) / 10 ** quoteDecimals) / (Number(s.tokenReserve) / 1e18);
 }
 
-/** Fully diluted value of the launch supply at the marginal price, in quote units. */
 export function fdvInQuote(s: Pick<CurveState, "quoteReserve" | "tokenReserve">, quoteDecimals: number): number {
   return spotPrice(s, quoteDecimals) * Number(LAUNCH_SUPPLY / 10n ** 18n);
 }
@@ -147,5 +142,4 @@ export function progress(s: Pick<CurveState, "realQuoteReserve" | "graduationThr
   return p > 1 ? 1 : p < 0 ? 0 : p;
 }
 
-/** Share of the launch supply, as a percentage number. */
 export const supplyPct = (tokens: bigint): number => Number((tokens * 1_000_000n) / LAUNCH_SUPPLY) / 10_000;

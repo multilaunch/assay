@@ -101,13 +101,8 @@ export async function enrichLaunch(ev: LaunchEvent, recipient: Address = DEAD, o
   return best;
 }
 
-/** Everything the rules need is present. */
 export const isComplete = (i: LaunchIntel): boolean => !!i.tx && !!i.curve && !!i.meta;
 
-/**
- * Fold a later read into an earlier one. Anything immutable keeps the first value that arrived;
- * the curve is the exception, because it moves, so the newest successful read wins.
- */
 export function mergeIntel(first: LaunchIntel, next: LaunchIntel): LaunchIntel {
   return {
     ev: first.ev,
@@ -314,7 +309,6 @@ export function socialsOf(meta: TokenMeta | null): { x: boolean; web: boolean; t
   return { x, web, tg, any: x || web || tg || !!s?.discord?.trim() || !!s?.farcaster?.trim() };
 }
 
-/** Resolve a pons logo reference to something a browser can load. */
 export function logoUrl(logo: string): string {
   if (!logo) return "";
   if (logo.startsWith("ipfs://")) return `https://www.ponsfamily.com/api/ipfs/content/${logo.slice(7)}?variant=card`;

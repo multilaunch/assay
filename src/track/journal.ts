@@ -34,7 +34,7 @@ export interface Entry {
   /**
    * How the row got here. A live row was scored the moment the launch landed; a backfilled one was
    * reconstructed afterwards from the chain. They are not the same evidence, so they are countable
-   * apart. Absent means live, which is what every row written before backfill existed was.
+   * apart. No source means live: every row written before backfill existed.
    */
   source?: "live" | "backfill";
   /** filled in by resolve() */
@@ -81,10 +81,6 @@ export async function all(): Promise<Entry[]> {
   return out;
 }
 
-/**
- * Rewrites the file with outcomes merged in, keyed by token. Later entries win, which also
- * collapses the duplicate a re-run would otherwise leave behind.
- */
 export function rewrite(entries: Entry[]): void {
   const f = journalPath();
   mkdirSync(dirname(f), { recursive: true });

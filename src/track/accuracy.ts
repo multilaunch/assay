@@ -62,7 +62,7 @@ export interface Bucket {
 
 export interface Report {
   buckets: Bucket[];
-  /** the rate across everything we judged, which is what any single bucket has to beat */
+  /** the rate across everything we judged; the number a bucket has to beat */
   base: number;
   total: number;
   pending: number;
@@ -118,7 +118,7 @@ export const lift = (b: Bucket, base: number): number | null => (base > 0 && b.j
 /**
  * Wilson lower bound at 95%. With 3 graduations out of 12 the point estimate is 25%, which is not
  * a fact about anything; this is the rate the sample actually supports. Quoting the point estimate
- * off a small sample is how a scoring tool ends up lying by accident.
+ * off a small sample will make a scoring tool lie by accident.
  */
 export function wilsonLower(successes: number, n: number, z = 1.96): number {
   if (n === 0) return 0;
@@ -133,17 +133,17 @@ export function wilsonLower(successes: number, n: number, z = 1.96): number {
  * The smallest sample in which a bucket running at `mult` times the base rate would actually be
  * distinguishable from the base rate — the point where its 95% floor clears it.
  *
- * This is not a nicety. Graduation on this chain is rare: 308 of 25 789 launches over 400 000
- * blocks in early September 2026, a base of 1.2%. At that rate a bucket of thirty with no
- * graduations in it is the single most likely outcome whether the score works or not, so a fixed
- * threshold either calls noise a result or calls a result noise depending on the day. Derive it.
+ * Graduation on this chain is rare: 308 of 25 789 launches over 400 000 blocks in early September
+ * 2026, a base of 1.2%. At that rate a bucket of thirty with no graduations in it is the most likely
+ * outcome whether the score works or not, so a fixed threshold either calls noise a result or calls
+ * a result noise depending on the day. Derive it.
  */
 export function sampleNeeded(base: number, mult = 2, z = 1.96): number {
   if (base <= 0 || base >= 1 || mult <= 1) return Infinity;
   const p = Math.min(0.999, base * mult);
-  // Fractional successes on purpose. Rounding n·p to a whole graduation is what makes a sample of
-  // fourteen look decisive at a 1.2% base: half an expected graduation becomes one, the observed
-  // rate jumps to 7%, and the bound clears a bar it has no business clearing.
+  // Fractional successes. Rounding n·p to a whole graduation makes a sample of fourteen look
+  // decisive at a 1.2% base: half an expected graduation becomes one, the observed rate jumps to 7%,
+  // and the bound clears a bar it has no business clearing.
   for (let n = 10; n <= 500_000; n = Math.ceil(n * 1.05)) {
     if (wilsonLower(n * p, n, z) > base) return n;
   }
@@ -157,12 +157,6 @@ export function sampleNeeded(base: number, mult = 2, z = 1.96): number {
  */
 export const THIN = 30;
 
-/**
- * What `THIN` should have been, given what the sample says the base rate is.
- *
- * A base of zero across a real sample is not "everything is significant", it is "there is nothing
- * to compare against yet", so no bucket clears the bar until at least one launch graduates.
- */
 export function thinFor(base: number, judged: number): number {
   if (judged === 0) return THIN;
   if (base <= 0) return Infinity;

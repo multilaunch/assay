@@ -20,7 +20,6 @@ export async function sendTelegram(text: string): Promise<boolean> {
 
 export const telegramEnabled = (): boolean => !!process.env.TELEGRAM_BOT_TOKEN?.trim() && !!process.env.TELEGRAM_CHAT_ID?.trim();
 
-/** Only the two events worth a phone buzz: an entry and an exit. One line, numbers first. */
 export async function notify(e: EngineEvent): Promise<void> {
   if (!telegramEnabled()) return;
   if (e.kind === "fire") {

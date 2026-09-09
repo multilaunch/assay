@@ -24,7 +24,6 @@ export function poolId(key: PoolKey): Hex {
   return keccak256(encodeAbiParameters(parseAbiParameters("address, address, uint24, int24, address"), [key.currency0, key.currency1, key.fee, key.tickSpacing, key.hooks]));
 }
 
-/** true when selling `token` means swapping currency0 → currency1. */
 export const sellIsZeroForOne = (key: PoolKey, token: Address): boolean => key.currency0.toLowerCase() === token.toLowerCase();
 
 export async function poolLiquidity(key: PoolKey): Promise<bigint | null> {

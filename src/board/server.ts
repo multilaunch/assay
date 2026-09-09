@@ -25,8 +25,8 @@ import { factoryAbi } from "../abi/pons.js";
  */
 
 /**
- * The page. `BOARD_HTML` points at a different file, which is how an alternative skin gets tried
- * against real launches without overwriting the one that ships.
+ * The page. `BOARD_HTML` points at a different file, so an alternative skin can be tried against
+ * real launches without overwriting the one that ships.
  */
 const HTML = () => {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -38,11 +38,8 @@ const HTML = () => {
 };
 
 /**
- * A board that can be read but not driven.
- *
- * Behind a proxy the four verbs can be fenced off by matching on the method, and that works right
- * up until someone edits the proxy config. Enforcing it here means a public dashboard is read-only
- * because the process it is talking to will not do anything else, whatever reaches it.
+ * A board that can be read but not driven. Fencing the four verbs off at the proxy works right up
+ * until someone edits the proxy config; enforcing it here survives that.
  */
 const readOnly = (): boolean => /^(1|true|yes)$/i.test(process.env.BOARD_READONLY ?? "");
 
@@ -52,7 +49,6 @@ const knownHosts = (): Set<string> => {
   return new Set(["127.0.0.1", "localhost", "::1", "0.0.0.0", ...extra]);
 };
 
-/** The hostname out of a Host or Origin header, port and brackets removed. `null` when unparseable. */
 function hostnameOf(header: string | undefined): string | null {
   if (!header) return null;
   try { return new URL(header.includes("://") ? header : `http://${header}`).hostname.replace(/^\[|\]$/g, "").toLowerCase(); }
@@ -62,7 +58,7 @@ function hostnameOf(header: string | undefined): string | null {
 /**
  * Reject anything that is not this board talking to itself.
  *
- * The Host check is what stops DNS rebinding: an attacker's page reaches us at their hostname, and
+ * The Host check stops DNS rebinding: an attacker's page reaches us at their hostname, and
  * that name is not one we answer to. On writes the Origin, when a browser sends one, has to be the
  * same host, and the body has to be JSON — a cross-site form can post but it cannot set that
  * content type, so a form never gets past this even before the Origin check runs.
@@ -90,8 +86,8 @@ const EDITABLE = {
 type EditableKey = keyof typeof EDITABLE;
 
 /**
- * A social link is whatever the launcher typed into the token's metadata, so it is not a URL until
- * we have checked. `javascript:` there would run in the board's own origin the moment someone clicks
+ * A social link is whatever the launcher typed into the token's metadata, so nothing is a URL until
+ * it parses as one. `javascript:` there would run in the board's own origin the moment someone clicks
  * the little x next to a launch, and the board can arm a live engine — so anything that is not plain
  * http(s) never reaches the page.
  */
@@ -147,7 +143,7 @@ export interface BoardOptions {
   live: boolean;
   rules: EngineRules;
   /**
-   * Interface to bind. Defaults to loopback, which is what you want on a laptop.
+   * Interface to bind. Loopback by default, which is right on a laptop.
    *
    * In a container loopback means the *container's* loopback, so Docker's port forwarding cannot
    * reach it and the page looks dead from the host. There the bind has to be 0.0.0.0 and the

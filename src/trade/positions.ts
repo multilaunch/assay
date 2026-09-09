@@ -100,13 +100,6 @@ export function updatePosition(id: string, patch: Partial<Position>): Position |
   return next;
 }
 
-/**
- * Close a position with one exit appended to whatever is on disk at this moment.
- *
- * A sell takes a receipt's worth of seconds and the mark loop keeps writing to the record for the
- * whole of it, so the caller's copy of `exits` is stale by the time the sell lands; appending to
- * that copy silently drops any exit recorded meanwhile.
- */
 export function closeWithExit(id: string, exit: Exit, lastQuote: string): Position | null {
   const all = load();
   const i = all.findIndex((p) => p.id === id);

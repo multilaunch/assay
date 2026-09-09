@@ -64,7 +64,6 @@ export function watchLaunches(onLaunch: (ev: LaunchEvent) => void, opts: { pollM
     onLaunch(ev);
   };
 
-  // ---- polling ---------------------------------------------------------------------------------
   const pollMs = opts.pollMs ?? envNum("POLL_MS", 300);
   let polling = false;
   let cursor = 0n;
@@ -95,7 +94,6 @@ export function watchLaunches(onLaunch: (ev: LaunchEvent) => void, opts: { pollM
   const startPolling = () => { if (polling) return; polling = true; void tick(); };
   const stopPolling = () => { polling = false; if (timer) clearTimeout(timer); };
 
-  // ---- websocket -------------------------------------------------------------------------------
   let unwatch: (() => void) | null = null;
   const subscribe = () => {
     if (!ws || stopped) return;
@@ -172,12 +170,10 @@ export async function searchLaunchEvent(token: Address, windowBlocks = 2_000_000
   return { ev: null, chunks, failedChunks };
 }
 
-/** The log on its own, for callers that have no use for the refusal count. */
 export async function findLaunchEvent(token: Address, windowBlocks = 2_000_000n, chunk = 100_000n): Promise<LaunchEvent | null> {
   return (await searchLaunchEvent(token, windowBlocks, chunk)).ev;
 }
 
-/** The most recent launches, newest last. Used by `scan` when no address is given and by the deployer index. */
 export async function recentLaunches(blocks = 3_000n): Promise<LaunchEvent[]> {
   const head = await client.getBlockNumber();
   const logs = await client.getLogs({ address: PONS.factory, event: EVENT, fromBlock: head - blocks, toBlock: head });

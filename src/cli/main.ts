@@ -19,7 +19,6 @@ import { registerAccuracyCommands } from "./accuracy.js";
 const program = new Command();
 program.name("hoodterm").description("Launch terminal for Robinhood Chain (pons v2). Local, open, non-custodial, dry run by default.").version("0.1.0");
 
-/** ETH/USD for display only; the tool never depends on it. */
 async function ethUsd(): Promise<number | null> {
   try {
     const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd", { signal: AbortSignal.timeout(4000) });
@@ -28,7 +27,6 @@ async function ethUsd(): Promise<number | null> {
   } catch { return null; }
 }
 
-// ---- doctor ---------------------------------------------------------------------------------------
 
 program
   .command("doctor")
@@ -102,7 +100,6 @@ program
     if (failed) { console.log(c.red(`\n${failed} check${failed > 1 ? "s" : ""} failed`)); process.exitCode = 1; }
   });
 
-// ---- hunt -----------------------------------------------------------------------------------------
 
 program
   .command("hunt")
@@ -179,7 +176,6 @@ program
     if (o.for && o.for > 0) setTimeout(bye, o.for * 1000);
   });
 
-// ---- scan -----------------------------------------------------------------------------------------
 
 program
   .command("scan [token]")

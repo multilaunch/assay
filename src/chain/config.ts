@@ -1,9 +1,5 @@
 import { defineChain, type Address } from "viem";
 
-/**
- * Robinhood Chain mainnet. Arbitrum Orbit stack, chain id 4663, ETH gas, ~100 ms blocks,
- * sequencer orders by arrival, no public mempool, no priority-fee auction.
- */
 export const CHAIN_ID = 4663;
 
 export const robinhoodChain = defineChain({

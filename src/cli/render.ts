@@ -52,14 +52,12 @@ export function renderCard(intel: LaunchIntel, score: Score, o: CardOpts = {}): 
   return lines.join("\n");
 }
 
-/** The compact one-liner for follow-ups and --fire-only scans. */
 export function renderLine(intel: LaunchIntel, score: Score, note = ""): string {
   const sym = intel.meta?.symbol ? `$${intel.meta.symbol}` : short(intel.ev.token);
   const p = intel.curve ? `${(progress(intel.curve) * 100).toFixed(0)}%` : "?";
   return `${c.grey(hhmmss())}  ${verdictColor(score.verdict)} ${String(score.total).padStart(3)}  ${c.cyan(sym.padEnd(12))} curve ${p.padStart(4)}  ${c.grey(note)}`;
 }
 
-/** Everything the card knows, as one JSON object per launch (for `--json`). */
 export function toJson(intel: LaunchIntel, score: Score, o: CardOpts = {}): Record<string, unknown> {
   const { ev, meta, record, curve, pair, tx } = intel;
   return {

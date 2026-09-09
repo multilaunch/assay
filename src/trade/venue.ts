@@ -73,7 +73,6 @@ export async function buyAnywhere(token: Address, quoteIn: bigint, slippageBps: 
   return { amountOut: r.quoted, venue: "pool", hash: r.hash, dryRun: opts.dryRun };
 }
 
-/** Sell `tokensIn` of `token` wherever it currently trades. */
 export async function sellAnywhere(token: Address, tokensIn: bigint, slippageBps: number, opts: { dryRun: boolean }): Promise<TradeOutcome> {
   const v = await resolveVenue(token);
   if (v.venue === "swept") throw new Error("nothing trades right now: the launch is between the curve and the pool");
@@ -87,7 +86,6 @@ export async function sellAnywhere(token: Address, tokensIn: bigint, slippageBps
   return { amountOut: r.quoted, venue: "pool", hash: r.hash, dryRun: opts.dryRun };
 }
 
-/** The curve address the factory recorded for this token. */
 export async function curveOf(token: Address): Promise<Address> {
   const rec = await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "getLaunchedToken", args: [token] });
   if (!rec.exists) throw new Error("the factory has no record of that token");

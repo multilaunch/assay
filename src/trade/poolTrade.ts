@@ -58,7 +58,6 @@ export function encodeV4Swap(key: PoolKey, currencyIn: Address, amountIn: bigint
   };
 }
 
-/** Kept for readers who only care about the sell path. */
 export const encodeV4Sell = encodeV4Swap;
 
 export interface PoolSwapResult { quoted: bigint; minOut: bigint; hash?: Hex | undefined; dryRun: boolean; venue: "pool" }
@@ -97,11 +96,9 @@ export async function swapInPool(token: Address, record: Rec, currencyIn: Addres
   return { quoted, minOut, hash, dryRun: false, venue: "pool" };
 }
 
-/** Sell the launch token into the pool for whatever the launch is paired with. */
 export const sellIntoPool = (token: Address, record: Rec, amountIn: bigint, slippageBps: number, opts: { dryRun: boolean }): Promise<PoolSwapResult> =>
   swapInPool(token, record, token, amountIn, slippageBps, opts);
 
-/** Buy the launch token out of the pool with the pair asset. */
 export const buyFromPool = (token: Address, record: Rec, amountIn: bigint, slippageBps: number, opts: { dryRun: boolean }): Promise<PoolSwapResult> =>
   swapInPool(token, record, record.pairToken, amountIn, slippageBps, opts);
 
@@ -128,5 +125,4 @@ async function ensurePermit2(currency: Address, owner: PrivateKeyAccount, need: 
   }
 }
 
-/** True when the pons pool for this launch pairs against native ETH. */
 export const poolIsNative = (record: Pick<LaunchRecord, "pairToken">): boolean => isNative(record.pairToken);

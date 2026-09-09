@@ -48,7 +48,7 @@ export async function feeLedger(token: Address, windowBlocks = 400_000n, chunk =
   let failedChunks = 0;
 
   // A refused range used to be swallowed into an empty array, and "credited 0 across 0 credits" is the
-  // headline number of this whole command. Counting the refusals is what lets the printer say the
+  // headline number of this whole command. Counting the refusals lets the printer say the
   // difference between "nobody has been paid" and "the logs endpoint would not tell us".
   const refused = () => { failedChunks++; return []; };
 
@@ -93,7 +93,6 @@ export interface DeployerLaunch { token: Address; curve: Address; block: bigint;
  */
 export type DeployerLaunches = DeployerLaunch[] & { chunks: number; failedChunks: number };
 
-/** Every launch by one deployer in the window, with the phase each one reached. */
 export async function deployerLaunches(deployer: Address, windowBlocks = 400_000n, chunk = 20_000n): Promise<DeployerLaunches> {
   const LAUNCHED = factoryAbi.find((x) => x.type === "event" && x.name === "TokenLaunched")!;
   const head = await client.getBlockNumber();

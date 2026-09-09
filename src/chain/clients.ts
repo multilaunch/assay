@@ -17,10 +17,8 @@ export const gate = new RpcGate(specs, {
   userAgent: "hoodterm/0.1",
 });
 
-/** General reads, retries generously. */
 export const client: PublicClient = createPublicClient({ chain: robinhoodChain, transport: gate.transport() });
 
-/** Same gate; a separate object so hot-path code can be told apart in stack traces and swapped later. */
 export const fast: PublicClient = createPublicClient({ chain: robinhoodChain, transport: gate.transport() });
 
 const wsUrl = envStr("RPC_WS_URL", DEFAULT_WS);

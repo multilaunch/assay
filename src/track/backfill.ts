@@ -97,8 +97,8 @@ async function blockClock(head: bigint, span = 10_000n): Promise<{ secs: number;
  * The deployer's record as it stood at `block`, not as it stands now.
  *
  * The whole backfill turns on this one function. A token that graduated *after* the launch being
- * scored is not evidence the scorer could have had, and counting it is how a reconstruction quietly
- * becomes a report on hindsight. A token with no graduation recorded has not graduated at all.
+ * scored was not evidence the scorer could have had; count it and the reconstruction turns into a
+ * report on hindsight. A token with no graduation recorded has not graduated at all.
  */
 export function recordAsOf(priorTokens: readonly Address[], graduatedAt: ReadonlyMap<string, bigint>, block: bigint): DeployerRecord {
   let graduated = 0;

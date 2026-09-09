@@ -33,7 +33,6 @@ export const usd = (n: number): string => (n >= 1000 ? `$${compact(n)}` : `$${n.
 export const padR = (s: string, w: number): string => (s.length >= w ? s : s + " ".repeat(w - s.length));
 export const padL = (s: string, w: number): string => (s.length >= w ? s : " ".repeat(w - s.length) + s);
 
-/** ▓▓▓░░░░ progress bar, `width` cells. */
 export function bar(p: number, width = 20): string {
   const n = Math.max(0, Math.min(width, Math.round(p * width)));
   return "▓".repeat(n) + "░".repeat(width - n);
