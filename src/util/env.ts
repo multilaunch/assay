@@ -32,8 +32,3 @@ export function envNum(key: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-export function envBool(key: string, fallback: boolean): boolean {
-  const v = process.env[key]?.trim().toLowerCase();
-  if (v === undefined || v === "") return fallback;
-  return v === "1" || v === "true" || v === "yes" || v === "on";
-}

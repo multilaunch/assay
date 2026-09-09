@@ -125,4 +125,3 @@ async function ensurePermit2(currency: Address, owner: PrivateKeyAccount, need: 
   }
 }
 
-export const poolIsNative = (record: Pick<LaunchRecord, "pairToken">): boolean => isNative(record.pairToken);

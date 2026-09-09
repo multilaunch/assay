@@ -10,6 +10,8 @@ import { allPositions, openPositions, pnlPct } from "../trade/positions.js";
 import { EXPLORER, PONS } from "../chain/config.js";
 import { client } from "../chain/clients.js";
 import { factoryAbi } from "../abi/pons.js";
+import { MATURE_MS, lift, report, thinFor, wilsonLower } from "../track/accuracy.js";
+import { all } from "../track/journal.js";
 
 /**
  * The engine behind a page on loopback.
@@ -138,6 +140,107 @@ function positionsPayload(): Record<string, unknown>[] {
   }));
 }
 
+/**
+ * The evidence, for the page.
+ *
+ * Everything the terminal knows about whether its own score has ever been right lives in the
+ * journal, and until now only the CLI could see it. The page shows a feed like every other scanner
+ * shows a feed; what it did not show was the one thing a stranger cannot check anywhere else.
+ *
+ * The floor is the claim. A rate on its own is a number anyone can produce by picking a lucky
+ * window, so every rate here travels with the sample it came from and with the Wilson lower bound
+ * that sample actually supports — and the panel only says the score works when that bound clears
+ * the base rate.
+ */
+interface StatsBucket {
+  verdict: string;
+  judged: number;
+  graduated: number;
+  rate: number;
+  pending: number;
+  /** the 95% lower bound on `rate`; the rate this sample actually supports */
+  floor: number;
+  /** rate ÷ base, or null when the bucket is empty */
+  lift: number | null;
+}
+
+interface Stats {
+  total: number;
+  judged: number;
+  pending: number;
+  base: number;
+  /** judged launches a 2x lift would need before it could be told apart from luck; null when undefinable */
+  need: number | null;
+  matureHours: number;
+  from: number | null;
+  to: number | null;
+  buckets: StatsBucket[];
+  /**
+   * What holding would have been worth, which the graduation rate alone flatters. Rows with no
+   * trades at all were never a trade anyone could have taken; rows with a peak had an entry.
+   */
+  priced: { total: number; neverTraded: number; withEntry: number; doubled: number };
+  updatedAt: number;
+}
+
+/** A payload the page can render without special-casing: a fresh install has an empty journal. */
+const emptyStats = (): Stats => ({
+  total: 0, judged: 0, pending: 0, base: 0, need: null, matureHours: MATURE_MS / 3_600_000,
+  from: null, to: null, buckets: [],
+  priced: { total: 0, neverTraded: 0, withEntry: 0, doubled: 0 },
+  updatedAt: Date.now(),
+});
+
+async function computeStats(): Promise<Stats> {
+  const rows = await all();
+  if (rows.length === 0) return emptyStats();
+  const rep = await report(rows);
+  const overall = rep.buckets.find((b) => b.verdict === "all");
+  const need = thinFor(rep.base, overall?.judged ?? 0);
+  const priced = rows.filter((e) => e.trades !== undefined);
+  return {
+    total: rep.total,
+    judged: rep.total - rep.pending,
+    pending: rep.pending,
+    base: rep.base,
+    need: Number.isFinite(need) ? Math.ceil(need) : null,
+    matureHours: MATURE_MS / 3_600_000,
+    from: rep.from,
+    to: rep.to,
+    buckets: rep.buckets.map((b) => ({
+      verdict: b.verdict, judged: b.judged, graduated: b.graduated, rate: b.rate, pending: b.pending,
+      floor: wilsonLower(b.graduated, b.judged), lift: lift(b, rep.base),
+    })),
+    priced: {
+      total: priced.length,
+      neverTraded: priced.filter((e) => e.trades === 0).length,
+      withEntry: priced.filter((e) => e.peakX !== undefined).length,
+      doubled: priced.filter((e) => (e.peakX ?? 0) >= 2).length,
+    },
+    updatedAt: Date.now(),
+  };
+}
+
+/**
+ * The journal is tens of thousands of lines and it only changes when a launch is scored or an
+ * outcome is resolved, so reading it per request — let alone on the event stream — would be a
+ * self-inflicted stall. Read it once, hold the answer for a few minutes, and let one reader in at
+ * a time so a page refresh storm cannot start ten parallel scans of the same file.
+ */
+const STATS_TTL_MS = 5 * 60 * 1000;
+let statsAt = 0;
+let statsBody: Stats = emptyStats();
+let statsRun: Promise<Stats> | null = null;
+
+function stats(now = Date.now()): Promise<Stats> {
+  if (statsAt && now - statsAt < STATS_TTL_MS) return Promise.resolve(statsBody);
+  if (statsRun) return statsRun;
+  statsRun = computeStats()
+    .catch(() => emptyStats())   // an unreadable journal is not a reason for the board to fail
+    .then((s) => { statsBody = s; statsAt = Date.now(); statsRun = null; return s; });
+  return statsRun;
+}
+
 export interface BoardOptions {
   port: number;
   live: boolean;
@@ -164,6 +267,9 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "snipeTaxSeconds" }),
     client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "snipeTaxStartBps" }),
   ]).then(([sec, bps]) => { taxSeconds = Number(sec); taxStartBps = Number(bps); }).catch(() => undefined);
+
+  // Warm the journal read now rather than making the first visitor wait on it.
+  void stats().catch(() => undefined);
 
   const push = (data: Record<string, unknown>) => {
     if (data.kind === "launch" || data.kind === "fire" || data.kind === "exit") {
@@ -215,6 +321,13 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
         rules: Object.fromEntries(Object.keys(EDITABLE).map((k) => [k, engine.rules[k as EditableKey]])),
         bounds: EDITABLE, recent, positions: positionsPayload(),
       });
+      return;
+    }
+
+    // GET only, and behind `guard` like everything else. Nothing here writes, so there is no verb
+    // to fence off; a POST simply falls through to the 404 at the bottom.
+    if (req.method === "GET" && path === "/stats") {
+      void stats().then((s) => json(res, 200, s)).catch(() => json(res, 200, emptyStats()));
       return;
     }
 

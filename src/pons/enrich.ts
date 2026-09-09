@@ -309,8 +309,3 @@ export function socialsOf(meta: TokenMeta | null): { x: boolean; web: boolean; t
   return { x, web, tg, any: x || web || tg || !!s?.discord?.trim() || !!s?.farcaster?.trim() };
 }
 
-export function logoUrl(logo: string): string {
-  if (!logo) return "";
-  if (logo.startsWith("ipfs://")) return `https://www.ponsfamily.com/api/ipfs/content/${logo.slice(7)}?variant=card`;
-  return logo;
-}

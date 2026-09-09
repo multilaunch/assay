@@ -240,6 +240,28 @@ a:hover{border-bottom-color:var(--hot)}
 .rule label{flex:1; font-size:11.5px; color:var(--ink-2)}
 .rule input{width:62px; text-align:right}
 
+/* ---- the record ----------------------------------------------------------
+   A live feed is the one thing every scanner already has. Whether the score on
+   the left of it has ever been right is the one thing none of them will tell
+   you, so it sits in the rail at the same density as everything else. Nothing
+   is dressed up: no rate appears without the sample it came from, and the only
+   colour is on the bound that carries the claim. */
+.pf-r{display:flex; align-items:baseline; gap:var(--s2); line-height:1.7}
+.pf-r .k{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.pf-r .s{flex:none; font-size:10.5px; color:var(--ink-3)}
+.pf-r .p{flex:none; width:52px; text-align:right; font-size:11.5px}
+.pf-r .x{flex:none; width:32px; text-align:right; font-size:10.5px; color:var(--ink-3)}
+.pf-claim{
+  margin-top:var(--s2); padding-top:var(--s2); border-top:1px solid var(--line);
+  font-size:11.5px; line-height:1.6; color:var(--ink-2);
+}
+.pf-claim b{font-family:var(--mono); font-variant-numeric:tabular-nums slashed-zero; font-weight:500; color:var(--ink)}
+.pf-split{margin-top:var(--s2); padding-top:var(--s2); border-top:1px solid var(--line)}
+.pf-f{display:flex; align-items:baseline; gap:var(--s2); line-height:1.7; font-size:11.5px}
+.pf-f .k{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-2)}
+.pf-f .v{flex:none}
+.pf-foot{margin-top:var(--s2); font-size:10.5px; line-height:1.5; color:var(--ink-3)}
+
 #log{flex:1; min-height:70px; overflow:auto; font-family:var(--mono); font-size:10.5px; line-height:1.7; color:var(--ink-3)}
 #log div{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 #log time{color:var(--ink-3); margin-right:7px}

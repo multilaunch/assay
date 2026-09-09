@@ -92,8 +92,6 @@ export async function curveOf(token: Address): Promise<Address> {
   return rec.curve;
 }
 
-export interface Mark { quote: bigint; venue: Venue }
-
 /**
  * Three different answers that all used to be `null`. "Swept" is a fact about the launch and worth
  * telling the user; "unreadable" is a fact about our RPC and must not be dressed up as one.

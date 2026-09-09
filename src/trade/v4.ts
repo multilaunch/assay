@@ -26,10 +26,6 @@ export function poolId(key: PoolKey): Hex {
 
 export const sellIsZeroForOne = (key: PoolKey, token: Address): boolean => key.currency0.toLowerCase() === token.toLowerCase();
 
-export async function poolLiquidity(key: PoolKey): Promise<bigint | null> {
-  try { return await client.readContract({ address: UNI.stateView, abi: stateViewAbi, functionName: "getLiquidity", args: [poolId(key)] }); } catch { return null; }
-}
-
 export async function poolExists(key: PoolKey): Promise<boolean> {
   try {
     const slot0 = await client.readContract({ address: UNI.stateView, abi: stateViewAbi, functionName: "getSlot0", args: [poolId(key)] });

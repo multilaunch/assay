@@ -60,4 +60,3 @@ export async function confirmLive(rules: EngineRules): Promise<boolean> {
   return true;
 }
 
-export const fmtEth = formatEther;
