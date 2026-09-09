@@ -11,6 +11,7 @@ import { clampSlippageBps, progress } from "../pons/curve.js";
 import { deployerLaunches, feeLedger } from "../pons/fees.js";
 import { curveActivity, enrichLaunch, pairInfo } from "../pons/enrich.js";
 import { findLaunchEvent, searchLaunchEvent } from "../pons/detect.js";
+import { render } from "../score/notes.js";
 import { allPositions, openPositions, pnlPct } from "../trade/positions.js";
 import { curveState } from "../trade/state.js";
 import { buyAnywhere, readMark, resolveVenue, sellAnywhere } from "../trade/venue.js";
@@ -55,7 +56,7 @@ function printEvent(e: EngineEvent, live: boolean): void {
     case "launch": {
       const s = sym(e.intel.meta?.symbol, e.intel.ev.token);
       if (e.fire) return; // the draw line says it better
-      log.info(`${t}  ${c.grey("pass ")} ${padR(s, 12)} ${padL(String(e.score.total), 3)}  ${c.grey(e.why.join("; "))}`);
+      log.info(`${t}  ${c.grey("pass ")} ${padR(s, 12)} ${padL(String(e.score.total), 3)}  ${c.grey(e.why.map(render).join("; "))}`);
       return;
     }
     case "draw": log.info(`${t}  ${c.cyan("draw ")} ${padR(e.symbol, 12)}      ${c.grey("waiting for the opening tax to fall")}`); return;

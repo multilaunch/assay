@@ -6,6 +6,11 @@ import type { CurveState } from "../src/pons/curve.js";
 import { decodeLaunchCall, type LaunchIntel, type LaunchTx, type TokenMeta } from "../src/pons/enrich.js";
 import { scoreLaunch } from "../src/score/score.js";
 
+/** Reasons are codes now, so tests name the rule instead of quoting its English. */
+const has = (ns: readonly { code: string }[], code: string): boolean => ns.some((n) => n.code === code);
+const codes = (ns: readonly { code: string }[]): string => ns.map((n) => n.code).join(", ");
+
+
 const A = (n: number): Address => `0x${n.toString(16).padStart(40, "0")}` as Address;
 const SUPPLY = 1_000_000_000n * 10n ** 18n;
 
@@ -32,15 +37,15 @@ test("a builder-shaped launch is a FIRE and every point has a reason", () => {
   const s = scoreLaunch(intel(), { deployer: { prior: 0, graduated: 0 } });
   assert.equal(s.verdict, "FIRE");
   assert.ok(s.total >= 75, String(s.total));
-  assert.ok(s.reasons.some((r) => r.includes("1–6% band")));
-  assert.ok(s.reasons.every((r) => /^[+-]\d+ /.test(r)));
+  assert.ok(has(s.reasons, "dev_band"));
+  assert.ok(s.reasons.every((r) => typeof r.points === "number" && r.code.length > 0));
 });
 
 test("a serial deployer with no socials and no opening buy is a SKIP", () => {
   const s = scoreLaunch(intel({ meta: meta({ description: "", socials: { twitter: "", telegram: "", discord: "", website: "", farcaster: "" } }), tx: tx(0) }), { deployer: { prior: 40, graduated: 0 } });
   assert.equal(s.verdict, "SKIP");
-  assert.ok(s.reasons.some((r) => r.includes("serial deployer")));
-  assert.ok(s.reasons.some((r) => r.includes("no socials")));
+  assert.ok(has(s.reasons, "dep_serial"));
+  assert.ok(has(s.reasons, "no_socials"));
 });
 
 test("four exempt wallets is a declared bundle and costs 20", () => {
@@ -65,11 +70,11 @@ test("a launch farm twin is punished; a third twin is punished hard", () => {
 
 test("fees to a third party is a small plus and a flag; a non-ETH pair is only a flag", () => {
   const s = scoreLaunch(intel({ record: { ...intel().record!, creatorFeeRecipient: A(77) } }));
-  assert.ok(s.reasons.some((r) => r.includes("third party")));
-  assert.ok(s.flags.some((f) => f.includes("fee recipient")));
+  assert.ok(has(s.reasons, "fees_third_party"));
+  assert.ok(has(s.flags, "flag_fee_recipient"));
   const usd = scoreLaunch(intel({ pair: { address: A(5), symbol: "USDG", decimals: 6, native: false } }));
   assert.equal(usd.total, scoreLaunch(intel()).total);
-  assert.ok(usd.flags.some((f) => f.includes("USDG")));
+  assert.ok(has(usd.flags, "flag_pair_not_eth"));
 });
 
 test("follow-up activity: distinct buyers help, all-early buys hurt", () => {
@@ -83,7 +88,7 @@ test("follow-up activity: distinct buyers help, all-early buys hurt", () => {
 test("an unreadable launch still scores without throwing", () => {
   const s = scoreLaunch(intel({ meta: null, record: null, curve: null, tx: null, errors: ["call 0: timeout"] }));
   assert.ok(s.total >= 0 && s.total <= 100);
-  assert.ok(s.flags.some((f) => f.includes("failed")));
+  assert.ok(has(s.flags, "flag_reads_failed"));
 });
 
 test("a launch whose transaction could not be read never outscores one that was read", () => {
@@ -93,7 +98,7 @@ test("a launch whose transaction could not be read never outscores one that was 
   const unreadable = scoreLaunch(intel({ tx: null }), { deployer: { prior: 0, graduated: 0 } });
   assert.ok(unreadable.total < readable.total, `${unreadable.total} should be under ${readable.total}`);
   assert.notEqual(unreadable.verdict, "FIRE");
-  assert.ok(unreadable.reasons.some((r) => r.includes("unreadable")));
+  assert.ok(has(unreadable.reasons, "tx_unreadable"));
 
   // and the worst readable launch still has to be able to beat nothing-known, or the penalty is too big
   const bad = scoreLaunch(intel({ tx: tx(40, 6) }), { deployer: { prior: 0, graduated: 0 } });
@@ -120,8 +125,9 @@ test("a launchTokenFor launch with ten exempt wallets is not read as the cleanes
   const call = decodeLaunchCall(encodeFunctionData({ abi: factoryAbi, functionName: "launchTokenFor", args: [params, 0n, A(0), A(2), ten] }));
 
   const s = scoreLaunch(intel({ tx: tx(3, 0, { via: call.via, exemptions: call.exemptions }) }), { deployer: { prior: 0, graduated: 0 } });
-  assert.ok(s.reasons.some((r) => r.includes("10 wallets exempt")), s.reasons.join(" | "));
-  assert.ok(!s.reasons.some((r) => r.includes("no wallets exempt")));
+  assert.ok(has(s.reasons, "exempt_many"), codes(s.reasons));
+  assert.equal(s.reasons.find((r) => r.code === "exempt_many")!.vars!.n, 10);
+  assert.ok(!has(s.reasons, "exempt_none"));
   assert.notEqual(s.verdict, "FIRE");
 });
 
@@ -129,8 +135,8 @@ test("an entrypoint the decoder does not recognise costs points instead of earni
   const clean = scoreLaunch(intel(), { deployer: { prior: 0, graduated: 0 } });
   const opaque = scoreLaunch(intel({ tx: tx(3, 0, { via: "unknown" }) }), { deployer: { prior: 0, graduated: 0 } });
   assert.ok(opaque.total < clean.total, `${opaque.total} should be under ${clean.total}`);
-  assert.ok(opaque.reasons.some((r) => r.includes("unrecognised launch entrypoint")));
-  assert.ok(!opaque.reasons.some((r) => r.includes("no wallets exempt")), "an unread list is not an empty one");
+  assert.ok(has(opaque.reasons, "entrypoint_unknown"));
+  assert.ok(!has(opaque.reasons, "exempt_none"), "an unread list is not an empty one");
 
   // and a bundle we can actually see is still worse than one we could not read, or the penalty is too big
   const seen = scoreLaunch(intel({ tx: tx(3, 4) }), { deployer: { prior: 0, graduated: 0 } });

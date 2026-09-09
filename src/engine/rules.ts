@@ -1,6 +1,7 @@
 import { parseEther } from "viem";
 import { clampSlippageBps } from "../pons/curve.js";
 import { devSharePct, socialsOf, type LaunchIntel, type PairInfo } from "../pons/enrich.js";
+import { note, type Note } from "../score/notes.js";
 import type { Score } from "../score/score.js";
 import type { ExitRules } from "../trade/positions.js";
 import { envNum } from "../util/env.js";
@@ -63,7 +64,7 @@ export function rulesFromEnv(over: Partial<EngineRules> = {}): EngineRules {
   };
 }
 
-export interface Decision { fire: boolean; why: string[] }
+export interface Decision { fire: boolean; why: Note[] }
 
 /**
  * Pure filter over one launch. Every refusal names the rule that refused it, so the log explains
@@ -74,40 +75,40 @@ export interface Decision { fire: boolean; why: string[] }
  */
 export function decide(intel: LaunchIntel, score: Score, rules: EngineRules, ctx: { openCount: number; farmTwins: number; spent: bigint }): Decision {
   // A launch the RPC would not let us read is not a launch that failed the rules. Say which it is.
-  if (!intel.meta && !intel.record && !intel.curve) return { fire: false, why: [`unreadable: ${intel.errors[0] ?? "no data"}`] };
+  if (!intel.meta && !intel.record && !intel.curve) return { fire: false, why: [note("no_data", { detail: intel.errors[0] ?? "no data" })] };
 
-  const why: string[] = [];
-  if (ctx.openCount >= rules.maxOpenPositions) why.push(`open positions ${ctx.openCount} ≥ ${rules.maxOpenPositions}`);
-  if (ctx.spent + entryQuoteFor(rules, intel.pair) > rules.sessionBudget) why.push(`session budget reached (${ctx.spent} of ${rules.sessionBudget} wei spent)`);
-  if (ctx.farmTwins > rules.maxFarmTwins) why.push(`launch farm: ${ctx.farmTwins} twins in 30 min > ${rules.maxFarmTwins}`);
-  if (rules.ethPairsOnly && !intel.pair.native) why.push(`pair is ${intel.pair.symbol}, not ETH`);
+  const why: Note[] = [];
+  if (ctx.openCount >= rules.maxOpenPositions) why.push(note("gate_open_positions", { have: ctx.openCount, max: rules.maxOpenPositions }));
+  if (ctx.spent + entryQuoteFor(rules, intel.pair) > rules.sessionBudget) why.push(note("gate_budget", { spent: ctx.spent.toString(), budget: rules.sessionBudget.toString() }));
+  if (ctx.farmTwins > rules.maxFarmTwins) why.push(note("gate_farm", { twins: ctx.farmTwins, max: rules.maxFarmTwins }));
+  if (rules.ethPairsOnly && !intel.pair.native) why.push(note("gate_pair_not_eth", { symbol: intel.pair.symbol }));
   // --allow-pairs opens the feed but not the arithmetic: entryQuote and sessionBudget are parseEther,
   // so 0.01 "ETH" against a 6-decimal stable is ten billion units of it. Size that pair by hand or stay out.
   if (!rules.ethPairsOnly && intel.pair.decimals !== 18 && !rules.entryQuoteByPair.has(intel.pair.address.toLowerCase()))
-    why.push(`pair ${intel.pair.symbol} has ${intel.pair.decimals} decimals and no entry size of its own`);
-  if (score.total < rules.minScore) why.push(`score ${score.total} < ${rules.minScore}`);
+    why.push(note("gate_pair_decimals", { symbol: intel.pair.symbol, decimals: intel.pair.decimals }));
+  if (score.total < rules.minScore) why.push(note("gate_score", { score: score.total, min: rules.minScore }));
 
   // Missing calldata is a refusal, not a pass: the two rules below cannot run without it.
-  if (!intel.tx) why.push("launch transaction unreadable: opening buy and exempt wallets unknown");
+  if (!intel.tx) why.push(note("gate_tx_unreadable"));
   else {
     const dev = devSharePct(intel.tx);
-    if (dev > rules.maxDevSharePct) why.push(`opening buy ${dev.toFixed(2)}% > ${rules.maxDevSharePct}%`);
-    if (intel.tx.exemptions.length > rules.maxExemptWallets) why.push(`${intel.tx.exemptions.length} exempt wallets > ${rules.maxExemptWallets}`);
+    if (dev > rules.maxDevSharePct) why.push(note("gate_dev", { pct: dev.toFixed(2), max: rules.maxDevSharePct }));
+    if (intel.tx.exemptions.length > rules.maxExemptWallets) why.push(note("gate_exempt", { n: intel.tx.exemptions.length, max: rules.maxExemptWallets }));
   }
 
-  if (!intel.record) why.push("no factory record: creator tax unknown");
-  else if (Number(intel.record.creatorTaxBps) > rules.maxCreatorTaxBps) why.push(`creator tax ${Number(intel.record.creatorTaxBps) / 100}% > ${rules.maxCreatorTaxBps / 100}%`);
+  if (!intel.record) why.push(note("gate_no_record"));
+  else if (Number(intel.record.creatorTaxBps) > rules.maxCreatorTaxBps) why.push(note("gate_tax", { pct: Number(intel.record.creatorTaxBps) / 100, max: rules.maxCreatorTaxBps / 100 }));
 
-  if (rules.requireSocials && !socialsOf(intel.meta).any) why.push("no socials");
+  if (rules.requireSocials && !socialsOf(intel.meta).any) why.push(note("gate_no_socials"));
 
   if (rules.keyword) {
     const hay = `${intel.meta?.name ?? ""} ${intel.meta?.symbol ?? ""} ${intel.meta?.description ?? ""}`;
-    if (!rules.keyword.test(hay)) why.push(`keyword ${rules.keyword} not found`);
+    if (!rules.keyword.test(hay)) why.push(note("gate_keyword", { pattern: String(rules.keyword) }));
   }
-  if (rules.deployers.size && !rules.deployers.has(intel.ev.deployer.toLowerCase())) why.push("deployer not on the allow-list");
+  if (rules.deployers.size && !rules.deployers.has(intel.ev.deployer.toLowerCase())) why.push(note("gate_deployer"));
 
-  if (!intel.curve) why.push("curve unreadable");
-  else if (intel.curve.graduated || intel.curve.readyToGraduate) why.push("curve already closed");
+  if (!intel.curve) why.push(note("gate_curve_unreadable"));
+  else if (intel.curve.graduated || intel.curve.readyToGraduate) why.push(note("gate_curve_closed"));
 
   return { fire: why.length === 0, why };
 }

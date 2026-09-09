@@ -12,10 +12,11 @@ import { curveState, waitForOpeningTax } from "../trade/state.js";
 import { readMark, resolveVenue } from "../trade/venue.js";
 import { sellIntoPool } from "../trade/poolTrade.js";
 import { getAccount } from "../trade/wallet.js";
+import { note, type Note } from "../score/notes.js";
 import { decide, entryQuoteFor, type EngineRules } from "./rules.js";
 
 export type EngineEvent =
-  | { kind: "launch"; at: number; intel: LaunchIntel; score: Score; fire: boolean; why: string[]; farmTwins: number; farmKey: string | null; deployer: { prior: number; graduated: number } | null; readMs: number }
+  | { kind: "launch"; at: number; intel: LaunchIntel; score: Score; fire: boolean; why: Note[]; farmTwins: number; farmKey: string | null; deployer: { prior: number; graduated: number } | null; readMs: number }
   | { kind: "draw"; at: number; token: Address; symbol: string }
   | { kind: "fire"; at: number; token: Address; symbol: string; quoteIn: bigint; tokens: bigint; taxBps: number; waitedMs: number; hash?: string | undefined; live: boolean; positionId: string }
   | { kind: "hold"; at: number; token: Address; symbol: string; taxBps: number; waitedMs: number }
@@ -125,7 +126,7 @@ export function startEngine(opts: EngineOptions): Engine {
       const deployer = index.lookup(ev.deployer, ev.token);
       const score = scoreLaunch(intel, { deployer, farmTwins: twins });
       const d = decide(intel, score, rules, { openCount: openPositions().length + busy.size, farmTwins: twins, spent: spend.total() });
-      if (d.fire && paused) d.why.push(live ? "not armed" : "dry run not started");
+      if (d.fire && paused) d.why.push(note(live ? "gate_not_armed" : "gate_dry_run"));
 
       const symbol = intel.meta?.symbol ? `$${intel.meta.symbol}` : ev.token.slice(0, 10);
       // Written before any decision, so the record is of what the score said and not of what we did

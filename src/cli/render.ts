@@ -2,6 +2,7 @@ import { EXPLORER } from "../chain/config.js";
 import { fdvInQuote, progress } from "../pons/curve.js";
 import { devSharePct, socialsOf, type LaunchIntel } from "../pons/enrich.js";
 import type { DeployerRecord } from "../pons/deployers.js";
+import { render, renderReason } from "../score/notes.js";
 import type { Score } from "../score/score.js";
 import { amount, bar, compact, pct, short, usd } from "../util/fmt.js";
 import { c, hhmmss, link } from "../util/log.js";
@@ -46,8 +47,8 @@ export function renderCard(intel: LaunchIntel, score: Score, o: CardOpts = {}): 
     lines.push(`   curve ${bar(p)} ${(p * 100).toFixed(1)}%  ${real}/${thr} ${pair.symbol}   fdv ${compact(fdvQ, 2)} ${pair.symbol}${fdvUsd ? ` ${c.grey(fdvUsd)}` : ""}   opening tax now ${pct(curve.openingTaxBps)}`);
   }
 
-  lines.push(`   ${c.grey(score.reasons.join(" · "))}`);
-  if (score.flags.length) lines.push(`   ${c.yellow("!")} ${c.grey(score.flags.join(" · "))}`);
+  lines.push(`   ${c.grey(score.reasons.map(renderReason).join(" · "))}`);
+  if (score.flags.length) lines.push(`   ${c.yellow("!")} ${c.grey(score.flags.map(render).join(" · "))}`);
   lines.push(`   ${c.grey("open:")} ${link("pons", EXPLORER.pons(ev.token))} · ${link("explorer", EXPLORER.token(ev.token))} · ${link("tx", EXPLORER.tx(ev.txHash))}${o.readMs !== undefined ? c.grey(`   read in ${o.readMs} ms`) : ""}`);
   return lines.join("\n");
 }
@@ -68,6 +69,6 @@ export function toJson(intel: LaunchIntel, score: Score, o: CardOpts = {}): Reco
     devBuy: tx?.devBuy.toString() ?? null, devSharePct: tx ? devSharePct(tx) : null, exemptions: tx?.exemptions ?? null, via: tx?.via ?? null,
     curve: curve ? { progress: progress(curve), realQuote: curve.realQuoteReserve.toString(), threshold: curve.graduationThreshold.toString(), openingTaxBps: Number(curve.openingTaxBps), feeBps: Number(curve.feeBps), launchedAt: curve.launchedAt } : null,
     deployerRecord: o.deployer ?? null, farmTwins: o.farmTwins ?? 0,
-    score: score.total, verdict: score.verdict, reasons: score.reasons, flags: score.flags, errors: intel.errors,
+    score: score.total, verdict: score.verdict, reasons: score.reasons.map(renderReason), flags: score.flags.map(render), errors: intel.errors,
   };
 }

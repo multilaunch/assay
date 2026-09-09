@@ -9,6 +9,11 @@ import { exitReason, pnlPct } from "../src/trade/positions.js";
 import { poolId, poolKeyFor, sellIsZeroForOne } from "../src/trade/v4.js";
 import { PONS, ZERO } from "../src/chain/config.js";
 
+/** Reasons are codes now, so tests name the rule instead of quoting its English. */
+const has = (ns: readonly { code: string }[], code: string): boolean => ns.some((n) => n.code === code);
+const codes = (ns: readonly { code: string }[]): string => ns.map((n) => n.code).join(", ");
+
+
 const A = (n: number): Address => `0x${n.toString(16).padStart(40, "0")}` as Address;
 const SUPPLY = 1_000_000_000n * 10n ** 18n;
 
@@ -46,39 +51,39 @@ const ctx = { openCount: 0, farmTwins: 0, spent: 0n };
 
 test("a clean ETH launch above the score fires", () => {
   const d = decide(intel(), GOOD, rules(), ctx);
-  assert.equal(d.fire, true, d.why.join("; "));
+  assert.equal(d.fire, true, codes(d.why));
 });
 
 test("every gate refuses by name", () => {
   const cases: [string, ReturnType<typeof decide>][] = [
-    ["score", decide(intel(), { ...GOOD, total: 10 }, rules(), ctx)],
-    ["pair is", decide(intel({ pair: { address: A(5), symbol: "USDG", decimals: 6, native: false } }), GOOD, rules(), ctx)],
-    ["opening buy", decide(intel({ tx: tx(30) }), GOOD, rules(), ctx)],
-    ["exempt wallets", decide(intel({ tx: tx(3, 6) }), GOOD, rules(), ctx)],
-    ["creator tax", decide(intel({ record: { ...intel().record!, creatorTaxBps: 900n } }), GOOD, rules(), ctx)],
-    ["no socials", decide(intel({ meta: meta({ socials: { twitter: "", telegram: "", discord: "", website: "", farcaster: "" } }) }), GOOD, rules(), ctx)],
-    ["open positions", decide(intel(), GOOD, rules(), { ...ctx, openCount: 3 })],
-    ["session budget", decide(intel(), GOOD, rules(), { ...ctx, spent: parseEther("0.05") })],
-    ["launch farm", decide(intel(), GOOD, rules(), { ...ctx, farmTwins: 4 })],
-    ["curve already closed", decide(intel({ curve: curve({ readyToGraduate: true }) }), GOOD, rules(), ctx)],
+    ["gate_score", decide(intel(), { ...GOOD, total: 10 }, rules(), ctx)],
+    ["gate_pair_not_eth", decide(intel({ pair: { address: A(5), symbol: "USDG", decimals: 6, native: false } }), GOOD, rules(), ctx)],
+    ["gate_dev", decide(intel({ tx: tx(30) }), GOOD, rules(), ctx)],
+    ["gate_exempt", decide(intel({ tx: tx(3, 6) }), GOOD, rules(), ctx)],
+    ["gate_tax", decide(intel({ record: { ...intel().record!, creatorTaxBps: 900n } }), GOOD, rules(), ctx)],
+    ["gate_no_socials", decide(intel({ meta: meta({ socials: { twitter: "", telegram: "", discord: "", website: "", farcaster: "" } }) }), GOOD, rules(), ctx)],
+    ["gate_open_positions", decide(intel(), GOOD, rules(), { ...ctx, openCount: 3 })],
+    ["gate_budget", decide(intel(), GOOD, rules(), { ...ctx, spent: parseEther("0.05") })],
+    ["gate_farm", decide(intel(), GOOD, rules(), { ...ctx, farmTwins: 4 })],
+    ["gate_curve_closed", decide(intel({ curve: curve({ readyToGraduate: true }) }), GOOD, rules(), ctx)],
   ];
   for (const [needle, d] of cases) {
     assert.equal(d.fire, false, `expected a refusal mentioning "${needle}"`);
-    assert.ok(d.why.some((w) => w.includes(needle)), `"${needle}" not in: ${d.why.join("; ")}`);
+    assert.ok(has(d.why, needle), `"${needle}" not in: ${codes(d.why)}`);
   }
 });
 
 test("an unreadable launch transaction is a refusal, not a silent pass", () => {
   const d = decide(intel({ tx: null }), GOOD, rules(), ctx);
   assert.equal(d.fire, false);
-  assert.ok(d.why.some((w) => w.includes("unreadable")));
+  assert.ok(has(d.why, "gate_tx_unreadable"));
 });
 
 test("a launch nothing could be read about says so instead of listing rules", () => {
   const d = decide(intel({ meta: null, record: null, curve: null, tx: null, errors: ["timeout"] }), GOOD, rules(), ctx);
   assert.equal(d.fire, false);
   assert.equal(d.why.length, 1);
-  assert.ok(d.why[0]!.startsWith("unreadable:"));
+  assert.equal(d.why[0]!.code, "no_data");
 });
 
 test("--keyword and --deployer narrow the feed", () => {

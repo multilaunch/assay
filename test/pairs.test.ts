@@ -6,6 +6,11 @@ import { decide, entryQuoteFor, rulesFromEnv, type EngineRules } from "../src/en
 import type { CurveState } from "../src/pons/curve.js";
 import type { LaunchIntel, PairInfo } from "../src/pons/enrich.js";
 
+/** Reasons are codes now, so tests name the rule instead of quoting its English. */
+const has = (ns: readonly { code: string }[], code: string): boolean => ns.some((n) => n.code === code);
+const codes = (ns: readonly { code: string }[]): string => ns.map((n) => n.code).join(", ");
+
+
 const A = (n: number): Address => `0x${n.toString(16).padStart(40, "0")}` as Address;
 const SUPPLY = 1_000_000_000n * 10n ** 18n;
 const USDG: PairInfo = { address: A(5), symbol: "USDG", decimals: 6, native: false };
@@ -37,7 +42,8 @@ test("--allow-pairs still refuses a pair whose decimals are not 18", () => {
   // entryQuote is parseEther, so 0.01 against a 6-decimal stable is ten billion units of it
   const d = decide(intel(USDG), GOOD, rules(), ctx);
   assert.equal(d.fire, false);
-  assert.ok(d.why.some((w) => w.includes("USDG has 6 decimals")), d.why.join("; "));
+  assert.ok(has(d.why, "gate_pair_decimals"), codes(d.why));
+  assert.equal(d.why.find((w) => w.code === "gate_pair_decimals")!.vars!.symbol, "USDG");
 });
 
 test("an explicit size for that pair lifts the refusal and is what gets spent", () => {
