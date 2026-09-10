@@ -52,6 +52,16 @@ const HTML = () => {
 const readOnly = (): boolean => /^(1|true|yes)$/i.test(process.env.BOARD_READONLY ?? "");
 
 /**
+ * Token pictures in the feed. Off by default, and the reason is weight rather than taste.
+ *
+ * Measured on live launches: the images average 348 KB for something the page draws at 24 pixels,
+ * so fifteen visible rows cost about 5 MB against 51 KB for the gzipped page itself. Nothing in the
+ * runtime can resize them — that wants an image decoder, which is a native dependency for an icon.
+ * The route stays, and so does everything protecting it; the feed simply does not ask.
+ */
+const iconsOn = (): boolean => /^(1|true|yes)$/i.test(process.env.BOARD_ICONS ?? "");
+
+/**
  * The stored password hash, or "" when the operator never set one.
  *
  * Empty means the controls are unreachable from the page at all. That is the right default: a board
@@ -415,7 +425,7 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
         // `recent` is the replay buffer, and it holds entries and exits alongside launches. Anyone
         // may see what the chain did; only the operator may see what this wallet did about it.
         recent: admin ? recent : recent.filter((e) => e.kind === "launch"),
-        admin, canSignIn: adminHash() !== "",
+        admin, canSignIn: adminHash() !== "", icons: iconsOn(),
         ...(admin
           ? {
               spent: engine.spent().toString(),

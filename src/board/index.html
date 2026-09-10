@@ -1171,7 +1171,7 @@ const t = (key, vars) => {
 
 
 let LIVE = false, PAUSED = true, BOUNDS = {}, FILTER = "all", QUERY = "";
-let RULES = {}, POSITIONS = [], LINK = "net_connecting", FROZEN = false, STATS = null;
+let RULES = {}, POSITIONS = [], LINK = "net_connecting", FROZEN = false, STATS = null, ICONS = false;
 let TAX_SECONDS = 3;
 /* Who is reading. The server decides this, not the page: /state simply leaves the operator's
    half out for everyone else, so ADMIN is a description of what arrived and never a permission. */
@@ -1772,7 +1772,8 @@ function launchRow(e) {
   tr.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(); } });
   tr._e = e;
   tr._ico = tr.querySelector(".ico");
-  ICO.observe(tr._ico);
+  // The letter block is always drawn; the picture is only asked for when the board serves them.
+  if (ICONS) ICO.observe(tr._ico);
   tr._detach = () => { if (open) { open._kill(); open.remove(); open = null; tr.setAttribute("aria-expanded", "false"); OPEN_ROWS.delete(tr); } };
   return tr;
 }
@@ -2814,7 +2815,7 @@ function teardown() {
 async function boot() {
   teardown();
   const s = await fetch("/state").then((r) => r.json());
-  LIVE = s.live; BOUNDS = s.bounds || {}; FROZEN = s.readOnly === true;
+  LIVE = s.live; BOUNDS = s.bounds || {}; FROZEN = s.readOnly === true; ICONS = s.icons === true;
   ADMIN = s.admin === true; CAN_SIGNIN = s.canSignIn === true;
   applyAudience();
   if (s.taxSeconds) TAX_SECONDS = s.taxSeconds;
