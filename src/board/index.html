@@ -423,6 +423,27 @@ tr.detail td{position:relative}
 .mini-flag.tap{cursor:pointer}
 .mini-flag.tap:hover{border-color:var(--hot); color:var(--ink)}
 
+/* ---- price on the curve ---------------------------------------------------
+   The curve's own trade log, folded into candles. Up and down are the two risk
+   colours the rest of the page already uses and there is no third; the volume
+   strip under the price is ink, not a hue. Most launches never fill a chart at
+   all, so the states where there is nothing to draw are written out rather than
+   drawn as an empty box. */
+.chart{margin-top:var(--s3); border-top:1px solid var(--line); padding-top:var(--s3)}
+.ch-hd{display:flex; gap:var(--s3); align-items:baseline; flex-wrap:wrap;
+  font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-bottom:var(--s2)}
+/* A tap must scrub the readout without stealing the page's scroll from a thumb. */
+.chart canvas{display:block; width:100%; max-width:720px; height:168px; touch-action:manipulation}
+.ch-msg{font-family:var(--mono); font-size:11.5px; line-height:1.6; color:var(--ink-3); max-width:74ch}
+.ch-out{margin-top:var(--s2); display:flex; gap:var(--s3); flex-wrap:wrap; min-height:1.6em;
+  font-family:var(--mono); font-variant-numeric:tabular-nums slashed-zero; font-size:11px; color:var(--ink)}
+.ch-out .k{color:var(--ink-3)}
+.chart .said{margin-top:var(--s2); font-size:11.5px; line-height:1.6; color:var(--ink-3); max-width:74ch}
+.ch-notes{max-width:74ch}
+/* Same reason as the buy control above: the table is wider than a phone and scrolls sideways
+   inside its pane, and the chart must be readable with the columns at rest. */
+@media(max-width:560px){.chart{max-width:300px} .chart canvas{height:140px}}
+
 /* ---- the filter panel ------------------------------------------------------
    Same card as the two above it, same hairlines, same spacing steps. It narrows
    what is on screen and nothing else: the numbers in the rail gate what the
@@ -739,6 +760,17 @@ const I18N = {
     h_truncated:"the transfer log is longer than this reads; older holders are missing.",
     h_tag_curve:"bonding curve", h_tag_creator:"creator",
     h_why:"this is who holds it now. the opening buy above is only the launch transaction.",
+    ch_title:"price on the curve", ch_unit:"{pair} per token", ch_bucket:"{b} candles",
+    ch_load:"reading the curve's trade log…",
+    ch_fail:"could not read the price just now.",
+    ch_thin:"barely traded — {n} prints on the curve. there is no chart in that yet.",
+    ch_thin_none:"nothing has traded on the curve yet.",
+    ch_grad:"this one has left the curve. the rest happened in its uniswap pool, and that is not read here.",
+    ch_partial:"{n} log ranges were refused, so this picture is partial.",
+    ch_truncated:"the trade log is longer than this reads; the early part is missing.",
+    ch_o:"o", ch_h:"h", ch_l:"l", ch_c:"c", ch_vol:"vol",
+    ch_trades:"{n} trades", ch_trade1:"1 trade",
+    ch_aria:"price on the curve, as candles. left and right move between them.",
     fm_title:"the same launch, again",
     fm_lede:"these launches match each other exactly on every field below. one operator, several wallets.",
     fm_buy:"opening buy", fm_tax:"creator tax", fm_links:"links", fm_exempt:"exempt wallets", fm_pair:"pair",
@@ -930,6 +962,17 @@ const I18N = {
     h_truncated:"журнал переводов длиннее, чем читается; старые холдеры не попали.",
     h_tag_curve:"кривая", h_tag_creator:"создатель",
     h_why:"это те, кто держит сейчас. закуп дева выше — только момент запуска.",
+    ch_title:"цена на кривой", ch_unit:"{pair} за токен", ch_bucket:"свечи по {b}",
+    ch_load:"читаю журнал сделок кривой…",
+    ch_fail:"не удалось прочитать цену.",
+    ch_thin:"почти не торговался — сделок на кривой: {n}. графику пока не из чего сложить.",
+    ch_thin_none:"на кривой ещё не было ни одной сделки.",
+    ch_grad:"этот уже ушёл с кривой. дальше всё было в его пуле uniswap, а его мы тут не читаем.",
+    ch_partial:"диапазонов журнала не отдали: {n} — так что картина неполная.",
+    ch_truncated:"журнал сделок длиннее, чем читается; начало не попало.",
+    ch_o:"откр", ch_h:"макс", ch_l:"мин", ch_c:"закр", ch_vol:"объём",
+    ch_trades:"сделок: {n}", ch_trade1:"одна сделка",
+    ch_aria:"цена на кривой, свечи. влево и вправо — переход между ними.",
     fm_title:"тот же запуск, снова",
     fm_lede:"эти запуски совпадают друг с другом точь-в-точь по каждому полю ниже. один оператор, несколько кошельков.",
     fm_buy:"закуп дева", fm_tax:"налог создателя", fm_links:"соцсети", fm_exempt:"без налога", fm_pair:"пара",
@@ -1284,6 +1327,266 @@ async function loadHolders(box, token) {
   paintHolders(box, data);
 }
 
+/* ---- price on the curve ----------------------------------------------------
+   /candles folds the curve's own trade log into OHLC. Three things it cannot
+   show, and each of them is a sentence rather than a stump of a chart:
+
+     · under three prints there is no shape to draw. Of forty consecutive
+       launches only seventeen reached eight trades, so this is the usual case;
+     · a graduated launch stopped trading on the curve and moved to a Uniswap
+       pool, whose swaps are a different event on a different address;
+     · a refused or truncated log range means the picture has holes in it.
+
+   Asked for only when a row is actually opened, like the holders block, and
+   re-asked every 20 s while it stays open so a live launch keeps moving. */
+const CANDLES = new Map();   // token → the last payload that read, for an instant repaint on reopen
+const CHARTS = new Set();    // the charts on screen right now, so a language switch can redraw them
+const CH_EVERY = 20_000;
+const CH_GUT = 50;           // right-hand gutter, where the price labels live
+const CH_PADL = 1;
+
+const hhmm = (ms) => new Date(ms).toTimeString().slice(0, 5);
+
+/* Prices here are around 1e-8 and two of them have to be comparable at a glance, so they are
+   carried into a prefix rather than printed as a run of zeroes: 24.92n, 126.4n, 1.503µ. */
+const CH_SI = [[1, ""], [1e-3, "m"], [1e-6, "µ"], [1e-9, "n"], [1e-12, "p"], [1e-15, "f"]];
+function fmtPrice(v) {
+  if (!Number.isFinite(v) || v === 0) return "0";
+  const a = Math.abs(v);
+  let unit = CH_SI[CH_SI.length - 1];
+  for (const u of CH_SI) if (a >= u[0]) { unit = u; break; }
+  const x = v / unit[0], ax = Math.abs(x);
+  return x.toFixed(ax >= 100 ? 1 : ax >= 10 ? 2 : 3) + unit[1];
+}
+
+/* Volume arrives in the pair's own raw units, and the pair is 18 decimals wherever this board
+   quotes one, which is the same assumption fmtUnits already makes further down. */
+function fmtVol(v) {
+  const x = Number(v) / 1e18;
+  if (!Number.isFinite(x) || x === 0) return "0";
+  if (x >= 1000) return Math.round(x).toLocaleString(LANG === "ru" ? "ru-RU" : "en-US");
+  return x >= 1 ? x.toFixed(2) : x.toPrecision(2);
+}
+
+const fmtBucket = (s) => s < 60 ? s + t("u_s") : s < 3600 ? Math.round(s / 60) + t("u_m") : Math.round(s / 3600) + t("u_h");
+
+const chDrawable = (d) => !!d && d.trades >= 3 && d.candles.length > 0;
+
+/* Same conventions as the ribbon's sparkline: device pixels off devicePixelRatio, colours read
+   off the custom properties rather than hard-coded, and the whole thing redrawn on a resize. */
+function chDraw(c) {
+  const cv = c.cv, cx = c.cx, d = c.data;
+  if (!chDrawable(d)) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (!w || !h) return;
+  const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
+  if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cx.clearRect(0, 0, w, h);
+
+  const css = getComputedStyle(document.documentElement);
+  const line = css.getPropertyValue("--line").trim() || "rgba(255,255,255,.09)";
+  const hard = css.getPropertyValue("--line-hard").trim() || "rgba(255,255,255,.17)";
+  const dim = css.getPropertyValue("--n-500").trim() || "#8a8f96";
+  const up = css.getPropertyValue("--ok").trim() || "#6fce97";
+  const dn = css.getPropertyValue("--crit").trim() || "#f0645a";
+
+  const cs = d.candles;
+  const axisH = 14, volH = 24, gap = 8, padT = 8;
+  const left = CH_PADL, right = Math.max(left + 10, w - CH_GUT);
+  const plotW = right - left;
+  const priceT = padT, priceH = Math.max(24, h - padT - axisH - volH - gap);
+  const volT = priceT + priceH + gap;
+
+  let lo = Infinity, hi = -Infinity, vmax = 0;
+  for (const k of cs) { if (k.l < lo) lo = k.l; if (k.h > hi) hi = k.h; if (k.vol > vmax) vmax = k.vol; }
+  // a launch that printed one price all day still needs a band to sit in
+  if (!(hi > lo)) { const mid = hi || 1; hi = mid * 1.005; lo = mid * 0.995; }
+  const pad = (hi - lo) * 0.08;
+  lo -= pad; hi += pad;
+  const y = (p) => priceT + priceH - ((p - lo) / (hi - lo)) * priceH;
+
+  const step = plotW / cs.length;
+  const bw = Math.max(1, Math.min(18, step * 0.62));
+  const at = (i) => left + step * (i + 0.5);
+
+  cx.font = "10px " + (css.getPropertyValue("--mono").trim() || "monospace");
+  cx.textBaseline = "middle";
+  cx.lineWidth = 1;
+
+  // three price levels: the bottom of the band, the middle, the top
+  for (const f of [0, 0.5, 1]) {
+    const p = lo + (hi - lo) * f, yy = y(p);
+    cx.strokeStyle = line;
+    cx.beginPath(); cx.moveTo(left, Math.round(yy) + 0.5); cx.lineTo(right, Math.round(yy) + 0.5); cx.stroke();
+    cx.fillStyle = dim; cx.textAlign = "left";
+    cx.fillText(fmtPrice(p), right + 6, yy);
+  }
+
+  // the volume strip, in ink. It carries shape, not a scale of its own.
+  cx.fillStyle = dim;
+  for (let i = 0; i < cs.length; i++) {
+    const bh = vmax > 0 ? Math.max(1, (cs[i].vol / vmax) * volH) : 1;
+    cx.fillRect(at(i) - bw / 2, volT + volH - bh, bw, bh);
+  }
+  cx.strokeStyle = line;
+  cx.beginPath(); cx.moveTo(left, volT + volH + 0.5); cx.lineTo(right, volT + volH + 0.5); cx.stroke();
+
+  // whichever candle the readout is talking about
+  if (c.sel >= 0 && c.sel < cs.length) {
+    const x = Math.round(at(c.sel)) + 0.5;
+    cx.strokeStyle = hard;
+    cx.beginPath(); cx.moveTo(x, priceT); cx.lineTo(x, volT + volH); cx.stroke();
+  }
+
+  for (let i = 0; i < cs.length; i++) {
+    const k = cs[i], col = k.c >= k.o ? up : dn, x = at(i);
+    cx.strokeStyle = col; cx.fillStyle = col;
+    cx.beginPath(); cx.moveTo(Math.round(x) + 0.5, y(k.h)); cx.lineTo(Math.round(x) + 0.5, y(k.l)); cx.stroke();
+    const top = Math.min(y(k.o), y(k.c));
+    cx.fillRect(Math.round(x - bw / 2), Math.round(top), Math.max(1, Math.round(bw)), Math.max(1, Math.round(Math.abs(y(k.c) - y(k.o)))));
+  }
+
+  // the clock, at both ends and in the middle when there is room for a third
+  cx.fillStyle = dim;
+  const ay = h - axisH / 2, span = d.bucketSec * 1000;
+  cx.textAlign = "left"; cx.fillText(hhmm(cs[0].t), left, ay);
+  if (cs.length > 1) {
+    cx.textAlign = "right"; cx.fillText(hhmm(cs[cs.length - 1].t + span), right, ay);
+    if (plotW > 320) {
+      const mid = cs[Math.floor(cs.length / 2)];
+      cx.textAlign = "center"; cx.fillText(hhmm(mid.t), left + plotW / 2, ay);
+    }
+  }
+}
+
+/* One candle spelled out. Whatever the pointer is over, or the arrow keys landed on, or — with
+   neither — the newest one, because a blank line under a chart reads as a chart that is broken. */
+function chOut(c) {
+  const el = c.box.querySelector(".ch-out");
+  const cs = chDrawable(c.data) ? c.data.candles : [];
+  if (!cs.length) { el.hidden = true; el.textContent = ""; return; }
+  const k = cs[c.sel >= 0 && c.sel < cs.length ? c.sel : cs.length - 1];
+  const bit = (key, v) => `<span><span class="k">${esc(key)}</span> ${esc(v)}</span>`;
+  el.hidden = false;
+  el.innerHTML =
+    `<span>${esc(hhmm(k.t))}</span>`
+    + bit(t("ch_o"), fmtPrice(k.o)) + bit(t("ch_h"), fmtPrice(k.h))
+    + bit(t("ch_l"), fmtPrice(k.l)) + bit(t("ch_c"), fmtPrice(k.c))
+    + `<span>${esc(k.n === 1 ? t("ch_trade1") : t("ch_trades", { n: k.n }))}</span>`
+    + bit(t("ch_vol"), `${fmtVol(k.vol)} ${c.pair}`);
+}
+
+function chPaint(c) {
+  const d = c.data, drawable = chDrawable(d);
+  c.box.querySelector(".ch-hd").innerHTML =
+    `<span class="lbl">${esc(t("ch_title"))}</span>`
+    + `<span>${esc(t("ch_unit", { pair: c.pair }))}</span>`
+    + (drawable ? `<span>${esc(t("ch_bucket", { b: fmtBucket(d.bucketSec) }))}</span>` : "");
+
+  let msg = "";
+  if (!d) msg = c.state === "fail" ? t("ch_fail") : t("ch_load");
+  else if (!drawable) msg = d.trades ? t("ch_thin", { n: d.trades }) : t("ch_thin_none");
+  const m = c.box.querySelector(".ch-msg");
+  m.hidden = !msg; m.textContent = msg;
+
+  c.cv.hidden = !drawable;
+  if (drawable) { c.cv.setAttribute("aria-label", t("ch_aria")); chDraw(c); }
+  chOut(c);
+
+  const said = [];
+  if (d && d.graduated) said.push(["said", t("ch_grad")]);
+  if (d && d.failedChunks) said.push(["note", t("ch_partial", { n: d.failedChunks })]);
+  if (d && d.truncated) said.push(["note", t("ch_truncated")]);
+  c.box.querySelector(".ch-notes").innerHTML = said.map(([cls, s]) => `<div class="${cls}">${esc(s)}</div>`).join("");
+}
+
+function chSel(c, i) {
+  if (c.sel === i) return;
+  c.sel = i;
+  chDraw(c); chOut(c);
+}
+
+async function chLoad(c) {
+  let data = null, ok = false;
+  try {
+    const r = await fetch("/candles?token=" + encodeURIComponent(c.token));
+    if (r.ok) { data = await r.json(); ok = !!data && Array.isArray(data.candles); }
+  } catch { /* chPaint says so */ }
+  if (c.dead) return;
+  if (ok) {
+    CANDLES.set(c.token, data);
+    c.data = data;
+    c.state = "ok";
+    if (c.sel >= data.candles.length) c.sel = -1;
+  } else if (!c.data) c.state = "fail";   // a failed refresh leaves the chart that is already up
+  chPaint(c);
+}
+
+function chartBox(e) {
+  const box = document.createElement("div");
+  box.className = "chart";
+  box.innerHTML = `
+    <div class="ch-hd"></div>
+    <div class="ch-msg"></div>
+    <canvas tabindex="0" role="img"></canvas>
+    <div class="ch-out" role="status"></div>
+    <div class="ch-notes"></div>`;
+
+  const cv = box.querySelector("canvas");
+  const c = {
+    box, cv, cx: cv.getContext("2d"),
+    token: e.token, pair: e.pair || "",
+    data: CANDLES.get(e.token) || null,
+    state: CANDLES.has(e.token) ? "ok" : "load",
+    sel: -1, dead: false, timer: null, ro: null,
+  };
+
+  // which candle a given x is over. Same geometry as the draw, read off the live box.
+  const idxAt = (clientX) => {
+    if (!chDrawable(c.data)) return -1;
+    const r = cv.getBoundingClientRect();
+    const plotW = Math.max(10, r.width - CH_GUT - CH_PADL);
+    const i = Math.floor((clientX - r.left - CH_PADL) / (plotW / c.data.candles.length));
+    return Math.max(0, Math.min(c.data.candles.length - 1, i));
+  };
+
+  cv.addEventListener("pointermove", (ev) => { if (ev.pointerType === "mouse") chSel(c, idxAt(ev.clientX)); });
+  cv.addEventListener("pointerleave", (ev) => { if (ev.pointerType === "mouse") chSel(c, -1); });
+  // a tap is the touch reader's hover, and it takes the focus so the arrows work from there
+  cv.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); cv.focus(); chSel(c, idxAt(ev.clientX)); });
+  cv.addEventListener("keydown", (ev) => {
+    if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+    if (!chDrawable(c.data)) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const n = c.data.candles.length, from = c.sel < 0 ? n - 1 : c.sel;
+    chSel(c, Math.max(0, Math.min(n - 1, from + (ev.key === "ArrowRight" ? 1 : -1))));
+  });
+
+  // The canvas is inside a panel that opens, closes and reflows under a table; a window resize
+  // is not the only thing that changes its width.
+  c.ro = new ResizeObserver(() => chDraw(c));
+  c.ro.observe(cv);
+  c.timer = setInterval(() => void chLoad(c), CH_EVERY);
+
+  // Nothing here may outlive the row: the panel is removed on close, on filter and on a language
+  // switch, and each of those goes through the detail row's own kill.
+  c.kill = () => {
+    if (c.dead) return;
+    c.dead = true;
+    clearInterval(c.timer); c.timer = null;
+    c.ro.disconnect(); c.ro = null;
+    CHARTS.delete(c);
+  };
+
+  CHARTS.add(c);
+  box._chart = c;
+  chPaint(c);
+  void chLoad(c);
+  return box;
+}
+
 /* The zero address is not a third party, it is nobody. Printing forty zeroes next to the words
    "third party" says the fees go somewhere they do not go. */
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
@@ -1334,6 +1637,11 @@ function detailRow(e, close) {
   tr.querySelector("td").prepend(x);
 
   if (e.pairNative && (e.progress == null || e.progress < 1)) tr.querySelector("td").append(buyBox(e));
+
+  const chart = chartBox(e);
+  tr.querySelector("td").append(chart);
+  // A timer and an observer are running behind that canvas; closing the panel has to stop them.
+  tr._kill = () => chart._chart.kill();
 
   const hold = document.createElement("div");
   hold.className = "hold";
@@ -1421,6 +1729,7 @@ function launchRow(e) {
   let open = null;
   const collapse = () => {
     if (!open) return;
+    open._kill();
     open.remove();
     open = null;
     tr.setAttribute("aria-expanded", "false");
@@ -1435,6 +1744,7 @@ function launchRow(e) {
     OPEN_ROWS.add(tr);
   };
   tr._collapse = collapse;
+  tr._expand = () => { if (!open) toggle(); };
   tr.addEventListener("click", (ev) => {
     const badge = ev.target.closest?.("[data-farm]");
     if (badge) { ev.stopPropagation(); openFarm(badge.dataset.farm, badge); return; }
@@ -1448,7 +1758,7 @@ function launchRow(e) {
   tr._e = e;
   tr._ico = tr.querySelector(".ico");
   ICO.observe(tr._ico);
-  tr._detach = () => { if (open) { open.remove(); open = null; tr.setAttribute("aria-expanded", "false"); OPEN_ROWS.delete(tr); } };
+  tr._detach = () => { if (open) { open._kill(); open.remove(); open = null; tr.setAttribute("aria-expanded", "false"); OPEN_ROWS.delete(tr); } };
   return tr;
 }
 
@@ -2563,13 +2873,20 @@ function applyLang(lang) {
   for (const box of document.querySelectorAll(".hold")) {
     if (HOLDERS.has(box.dataset.token)) paintHolders(box, HOLDERS.get(box.dataset.token));
   }
+  // The chart is text too — the axis, the bucket, the readout under it — so it is drawn again
+  // rather than left in the language it was opened in.
+  for (const c of [...CHARTS]) chPaint(c);
 }
 
 /* The rows carry their event, so the cheapest correct redraw is to build them again.
    It costs a few milliseconds on a switch nobody makes twice a minute. */
+/* Rebuilding every row is the cheapest correct way to change language, but it throws away whatever
+   the reader had open — and a chart or a holder list vanishing because somebody pressed RU is not a
+   language switch, it is a loss of place. So the open ones are noted and opened again. */
 function redrawRows() {
   const body = $("#feed");
   const events = rows.map((tr) => tr._e);
+  const wasOpen = new Set([...OPEN_ROWS].map((tr) => tr._e.token));
   for (const tr of rows) killRow(tr);
   rows.length = 0;
   for (const e of events.reverse()) {
@@ -2578,6 +2895,7 @@ function redrawRows() {
     body.prepend(tr);
     rows.unshift(tr);
   }
+  for (const tr of rows) if (wasOpen.has(tr._e.token) && !tr.hidden) tr._expand();
 }
 
 for (const b of document.querySelectorAll(".langs button")) {
