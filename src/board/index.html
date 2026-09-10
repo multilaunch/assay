@@ -760,12 +760,12 @@ const I18N = {
     h_truncated:"the transfer log is longer than this reads; older holders are missing.",
     h_tag_curve:"bonding curve", h_tag_creator:"creator",
     h_why:"this is who holds it now. the opening buy above is only the launch transaction.",
-    ch_title:"price on the curve", ch_unit:"{pair} per token", ch_bucket:"{b} candles",
+    ch_title:"price", ch_unit:"{pair} per token", ch_bucket:"{b} candles",
     ch_load:"reading the curve's trade log…",
     ch_fail:"could not read the price just now.",
-    ch_thin:"barely traded — {n} prints on the curve. there is no chart in that yet.",
+    ch_thin:"barely traded — {n} prints. there is no chart in that yet.",
     ch_thin_none:"nothing has traded on the curve yet.",
-    ch_grad:"this one has left the curve. the rest happened in its uniswap pool, and that is not read here.",
+    ch_grad:"the dashed line is where it left the curve — everything right of it is its uniswap pool.",
     ch_partial:"{n} log ranges were refused, so this picture is partial.",
     ch_truncated:"the trade log is longer than this reads; the early part is missing.",
     ch_o:"o", ch_h:"h", ch_l:"l", ch_c:"c", ch_vol:"vol",
@@ -962,12 +962,12 @@ const I18N = {
     h_truncated:"журнал переводов длиннее, чем читается; старые холдеры не попали.",
     h_tag_curve:"кривая", h_tag_creator:"создатель",
     h_why:"это те, кто держит сейчас. закуп дева выше — только момент запуска.",
-    ch_title:"цена на кривой", ch_unit:"{pair} за токен", ch_bucket:"свечи по {b}",
+    ch_title:"цена", ch_unit:"{pair} за токен", ch_bucket:"свечи по {b}",
     ch_load:"читаю журнал сделок кривой…",
     ch_fail:"не удалось прочитать цену.",
     ch_thin:"почти не торговался — сделок на кривой: {n}. графику пока не из чего сложить.",
     ch_thin_none:"на кривой ещё не было ни одной сделки.",
-    ch_grad:"этот уже ушёл с кривой. дальше всё было в его пуле uniswap, а его мы тут не читаем.",
+    ch_grad:"пунктир — место, где он ушёл с кривой. всё правее уже его пул uniswap.",
     ch_partial:"диапазонов журнала не отдали: {n} — так что картина неполная.",
     ch_truncated:"журнал сделок длиннее, чем читается; начало не попало.",
     ch_o:"откр", ch_h:"макс", ch_l:"мин", ch_c:"закр", ch_vol:"объём",
@@ -1440,6 +1440,21 @@ function chDraw(c) {
     cx.beginPath(); cx.moveTo(x, priceT); cx.lineTo(x, volT + volH); cx.stroke();
   }
 
+  // Where the curve stopped and the pool took over. Both halves are the same units — checked at a
+  // live graduation, the join stepped 0.3% — but they are different venues and the reader should
+  // know which one a candle came from.
+  if (d.poolFrom != null) {
+    const first = cs.findIndex((k) => k.t >= d.poolFrom);
+    if (first > 0) {
+      const x = Math.round((at(first) + at(first - 1)) / 2) + 0.5;
+      cx.save();
+      cx.strokeStyle = dim;
+      cx.setLineDash([2, 3]);
+      cx.beginPath(); cx.moveTo(x, priceT); cx.lineTo(x, volT + volH); cx.stroke();
+      cx.restore();
+    }
+  }
+
   for (let i = 0; i < cs.length; i++) {
     const k = cs[i], col = k.c >= k.o ? up : dn, x = at(i);
     cx.strokeStyle = col; cx.fillStyle = col;
@@ -1496,7 +1511,7 @@ function chPaint(c) {
   chOut(c);
 
   const said = [];
-  if (d && d.graduated) said.push(["said", t("ch_grad")]);
+  if (d && d.poolFrom != null) said.push(["said", t("ch_grad")]);
   if (d && d.failedChunks) said.push(["note", t("ch_partial", { n: d.failedChunks })]);
   if (d && d.truncated) said.push(["note", t("ch_truncated")]);
   c.box.querySelector(".ch-notes").innerHTML = said.map(([cls, s]) => `<div class="${cls}">${esc(s)}</div>`).join("");

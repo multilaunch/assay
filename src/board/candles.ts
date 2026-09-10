@@ -2,8 +2,11 @@ import { parseEventLogs, type Address } from "viem";
 import { curveAbi, factoryAbi } from "../abi/pons.js";
 import { blockClock } from "../chain/clock.js";
 import { client } from "../chain/clients.js";
-import { PONS } from "../chain/config.js";
+import { poolManagerAbi } from "../abi/uniswap.js";
+import { PONS, UNI } from "../chain/config.js";
 import { searchLaunchEvent } from "../pons/detect.js";
+import { pairInfo } from "../pons/enrich.js";
+import { poolId, poolKeyFor } from "../trade/v4.js";
 
 /**
  * Price over time, folded out of the curve's own trade log.
@@ -13,9 +16,11 @@ import { searchLaunchEvent } from "../pons/detect.js";
  * `(quoteOut + fee + tax) / tokensIn`. Netting the legs off matters — inside the opening window the
  * tax is 99%, and the amount a sniper *paid* is a hundred times the price the curve was at.
  *
- * What this cannot show, and says so rather than drawing a stump: a launch that has graduated stops
- * trading on the curve entirely and moves to a Uniswap v4 pool, whose swaps are a different event
- * on a different address. The chart ends where the curve does.
+ * A graduated launch stops trading on the curve entirely and continues in a Uniswap v4 pool, whose
+ * swaps come from the PoolManager singleton keyed by pool id. Both halves are drawn on one axis,
+ * which is only honest because they are in the same units — checked against a live graduation, the
+ * last curve print was 2.0291e-8 ETH per token and the first pool swap 2.0875e-8, three per cent
+ * apart. Had they differed by orders of magnitude the join would have been a lie.
  *
  * Most launches will not fill one. Of forty consecutive launches, seventeen had eight trades or
  * more; the rest are a couple of prints and an empty box is the honest way to draw that.
@@ -23,6 +28,23 @@ import { searchLaunchEvent } from "../pons/detect.js";
 
 const BUY = curveAbi.find((x) => x.type === "event" && x.name === "CurveBuy")!;
 const SELL = curveAbi.find((x) => x.type === "event" && x.name === "CurveSell")!;
+const SWAP = poolManagerAbi.find((x) => x.type === "event" && x.name === "Swap")!;
+
+/**
+ * Pair units per whole token, out of a v4 swap's `sqrtPriceX96`.
+ *
+ * The raw square root gives currency1 per currency0 in the smallest units of each. Which of the two
+ * our token is depends on how the addresses sorted, and the answer has to be flipped when it landed
+ * second — quoting the reciprocal would draw a chart that looks plausible and is upside down.
+ */
+export function priceFromSqrt(sqrtPriceX96: bigint, tokenIsCurrency1: boolean, tokenDecimals: number, pairDecimals: number): number {
+  const sp = Number(sqrtPriceX96) / 2 ** 96;
+  const ratio = sp * sp; // currency1 per currency0, raw
+  if (!Number.isFinite(ratio) || ratio <= 0) return 0;
+  return tokenIsCurrency1
+    ? (1 / ratio) * 10 ** (tokenDecimals - pairDecimals)
+    : ratio * 10 ** (tokenDecimals - pairDecimals);
+}
 
 const CHUNK = 20_000n;
 const MAX_LOGS = 30_000;
@@ -49,8 +71,10 @@ export interface Candles {
   bucketSec: number;
   candles: Candle[];
   trades: number;
-  /** the curve is closed, so the chart stops here and the rest happened in the pool */
+  /** the curve is closed and the rest of the chart comes from the pool */
   graduated: boolean;
+  /** unix ms of the first pool swap, or null when the launch never left the curve */
+  poolFrom: number | null;
   failedChunks: number;
   truncated: boolean;
 }
@@ -128,6 +152,39 @@ export async function candlesFor(token: Address, bucketSec?: number): Promise<Ca
     if (points.length > MAX_LOGS) { truncated = true; break; }
   }
 
+  // Every pons token is the same contract with three addresses baked in — 3248 bytes of which 60
+  // differ — so its decimals are the template's and do not need reading per launch.
+  const TOKEN_DECIMALS = 18;
+  const graduated = rec.phase === 2 || rec.phase === 3;
+  let poolFrom: number | null = null;
+
+  if (graduated) {
+    const pair = await pairInfo(rec.pairToken).catch(() => null);
+    const key = poolKeyFor(token, rec);
+    const id = poolId(key);
+    const tokenIsC1 = key.currency1.toLowerCase() === token.toLowerCase();
+    const start = points.length ? points[points.length - 1]!.t : null;
+    for (let lo = from; lo <= head; lo += CHUNK) {
+      const hi = lo + CHUNK - 1n > head ? head : lo + CHUNK - 1n;
+      let logs;
+      try { logs = await client.getLogs({ address: UNI.poolManager, event: SWAP, args: { id }, fromBlock: lo, toBlock: hi }); }
+      catch { failedChunks++; continue; }
+      for (const l of logs) {
+        if (l.blockNumber === null) continue;
+        const a = l.args as { sqrtPriceX96?: bigint; amount0?: bigint; amount1?: bigint };
+        if (a.sqrtPriceX96 === undefined) continue;
+        const p = priceFromSqrt(a.sqrtPriceX96, tokenIsC1, TOKEN_DECIMALS, pair?.decimals ?? 18);
+        if (p <= 0) continue;
+        const t = Math.round(clock.at(l.blockNumber));
+        const quote = tokenIsC1 ? a.amount0 : a.amount1;
+        points.push({ t, p, vol: quote === undefined ? 0 : Math.abs(Number(quote)) });
+        if (poolFrom === null || t < poolFrom) poolFrom = t;
+      }
+      if (points.length > MAX_LOGS) { truncated = true; break; }
+    }
+    if (start !== null && poolFrom !== null && poolFrom < start) poolFrom = start;
+  }
+
   points.sort((a, b) => a.t - b.t);
   const spanSec = points.length > 1 ? (points[points.length - 1]!.t - points[0]!.t) / 1000 : 60;
   const bucket = bucketSec && bucketSec > 0 ? bucketSec : pickBucketSec(Math.max(spanSec, 30));
@@ -138,7 +195,9 @@ export async function candlesFor(token: Address, bucketSec?: number): Promise<Ca
     bucketSec: bucket,
     candles: toCandles(points, bucket * 1000),
     trades: points.length,
-    graduated: rec.phase === 2 || rec.phase === 3,
+    graduated,
+    /** where the curve stopped and the pool took over, so the chart can mark the seam */
+    poolFrom,
     failedChunks,
     truncated,
   };

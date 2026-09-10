@@ -17,6 +17,14 @@ export const universalRouterAbi = parseAbi([
   "function execute(bytes commands, bytes[] inputs, uint256 deadline) payable",
 ]);
 
+/**
+ * v4 emits every swap from the PoolManager singleton, not from a per-pool contract, so a pool is
+ * identified by its id in the first topic rather than by the address the log came from.
+ */
+export const poolManagerAbi = parseAbi([
+  "event Swap(bytes32 indexed id, address indexed sender, int128 amount0, int128 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee)",
+]);
+
 export const permit2Abi = parseAbi([
   "function approve(address token, address spender, uint160 amount, uint48 expiration)",
   "function allowance(address user, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)",

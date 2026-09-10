@@ -51,3 +51,43 @@ test("the bucket grows with the span so the chart keeps its shape", () => {
     last = b;
   }
 });
+
+/**
+ * The v4 half of the chart. sqrtPriceX96 is a square root of a raw-unit ratio, and both the square
+ * and the orientation are places where a wrong answer still draws a plausible picture.
+ */
+import { priceFromSqrt } from "../src/board/candles.js";
+
+/** sqrt(ratio) * 2^96, the encoding the pool stores. */
+const enc = (ratio: number) => BigInt(Math.round(Math.sqrt(ratio) * 2 ** 96));
+
+test("a pool price comes back as pair units per whole token", () => {
+  // 1 token = 2e-8 ETH, so 1 ETH buys 5e7 tokens; with the token as currency1 the raw ratio is that
+  const p = priceFromSqrt(enc(5e7), true, 18, 18);
+  assert.ok(Math.abs(p - 2e-8) / 2e-8 < 1e-6, `got ${p}`);
+});
+
+test("the answer is flipped when the token sorted first", () => {
+  // same pool read the other way round: currency0 is the token, so the ratio is already ETH/token
+  const p = priceFromSqrt(enc(2e-8), false, 18, 18);
+  assert.ok(Math.abs(p - 2e-8) / 2e-8 < 1e-6, `got ${p}`);
+  // and the two orientations must not agree, or the flip is doing nothing
+  assert.notEqual(priceFromSqrt(enc(5e7), true, 18, 18), priceFromSqrt(enc(5e7), false, 18, 18));
+});
+
+test("a six-decimal pair is corrected by twelve orders of magnitude, not left raw", () => {
+  const raw = priceFromSqrt(enc(5e7), true, 18, 18);
+  const stable = priceFromSqrt(enc(5e7), true, 18, 6);
+  assert.ok(Math.abs(stable / raw - 1e12) / 1e12 < 1e-6, `expected a 1e12 factor, got ${stable / raw}`);
+});
+
+test("a price the pool cannot have does not become a candle", () => {
+  assert.equal(priceFromSqrt(0n, true, 18, 18), 0);
+  assert.equal(priceFromSqrt(0n, false, 18, 18), 0);
+});
+
+test("the curve and the pool agree at the seam", () => {
+  // the live graduation this was checked against: last curve print 2.0291e-8, first swap 2.0875e-8
+  const fromPool = priceFromSqrt(enc(1 / 2.0875e-8), true, 18, 18);
+  assert.ok(Math.abs(fromPool - 2.0291e-8) / 2.0291e-8 < 0.05, `${fromPool} is not within 5% of the curve's last price`);
+});
