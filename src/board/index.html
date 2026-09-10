@@ -399,6 +399,19 @@ a:hover{border-bottom-color:var(--hot)}
 #farm .who-row a{color:var(--ink-3)}
 #farm .caveat{margin:0 0 var(--s3); font-size:11px; line-height:1.5; color:var(--ink-3)}
 #farm .foot{display:flex; justify-content:flex-end}
+.hold{margin-top:var(--s3); border-top:1px solid var(--line); padding-top:var(--s3)}
+.hold .hd{display:flex; gap:var(--s3); align-items:baseline; font-family:var(--mono); font-size:11px;
+  color:var(--ink-3); margin-bottom:var(--s2); flex-wrap:wrap}
+.hold .hd b{color:var(--ink); font-weight:500}
+.hold .bar{display:flex; height:4px; margin-bottom:var(--s2); background:var(--surface-3)}
+.hold .bar i{display:block; height:100%}
+.hold .bar .b-curve{background:var(--ink-3)}
+.hold .bar .b-creator{background:var(--warn)}
+.hold .bar .b-rest{background:var(--ink-2)}
+.hold table{width:100%; border-collapse:collapse; font-family:var(--mono); font-size:11.5px}
+.hold td{padding:3px 0; border-bottom:1px solid var(--line); color:var(--ink-2)}
+.hold td.r{text-align:right; color:var(--ink); white-space:nowrap}
+.hold .tagged{color:var(--ink-3)}
 .mini-flag.tap{cursor:pointer}
 .mini-flag.tap:hover{border-color:var(--hot); color:var(--ink)}
 
@@ -710,6 +723,13 @@ const clock = (ms) => new Date(ms).toTimeString().slice(0, 8);
    half-translated interface is worse than an untranslated one. */
 const I18N = {
   en: {
+    h_title:"holders now", h_load:"reading the transfer log…", h_fail:"could not read the holders just now.",
+    h_curve:"still in the curve", h_creator:"creator", h_float:"float", h_top:"biggest holds {p}% of the float",
+    h_wallets:"wallets: {n}", h_none:"nobody holds it yet",
+    h_partial:"{n} log ranges were refused, so these are a floor.",
+    h_truncated:"the transfer log is longer than this reads; older holders are missing.",
+    h_tag_curve:"bonding curve", h_tag_creator:"creator",
+    h_why:"this is who holds it now. the opening buy above is only the launch transaction.",
     fm_title:"the same launch, again",
     fm_lede:"these launches match each other exactly on every field below. one operator, several wallets.",
     fm_buy:"opening buy", fm_tax:"creator tax", fm_links:"links", fm_exempt:"exempt wallets", fm_pair:"pair",
@@ -893,6 +913,13 @@ const I18N = {
     t9p:"Start reads and scores and, in a dry run, takes paper entries. In live mode this button says arm — press it and the next launch that passes every rule is bought with real ETH. Positions appear on the right, and you can close any of them by hand.",
   },
   ru: {
+    h_title:"держат сейчас", h_load:"читаю журнал переводов…", h_fail:"не удалось прочитать холдеров.",
+    h_curve:"ещё в кривой", h_creator:"создатель", h_float:"в обращении", h_top:"крупнейший держит {p}% обращения",
+    h_wallets:"кошельков: {n}", h_none:"пока никто не держит",
+    h_partial:"{n} диапазонов журнала не отдали, так что это нижняя оценка.",
+    h_truncated:"журнал переводов длиннее, чем читается; старые холдеры не попали.",
+    h_tag_curve:"кривая", h_tag_creator:"создатель",
+    h_why:"это те, кто держит сейчас. закуп дева выше — только момент запуска.",
     fm_title:"тот же запуск, снова",
     fm_lede:"эти запуски совпадают друг с другом точь-в-точь по каждому полю ниже. один оператор, несколько кошельков.",
     fm_buy:"закуп дева", fm_tax:"налог создателя", fm_links:"соцсети", fm_exempt:"без налога", fm_pair:"пара",
@@ -962,7 +989,7 @@ const I18N = {
 
     help:"гайд", gh:"исходники на GitHub", ribbon:"запусков / сек · 90с",
     k_seen:"всего", k_rate:"в минуту", k_pass:"проходят", k_open:"в позиции", k_spent:"потрачено",
-    f_all:"все", f_fire:"огонь", f_watch:"наблюдать", f_pass:"проходят фильтр",
+    f_all:"все", f_fire:"огонь", f_watch:"под вопросом", f_pass:"проходят фильтр",
     search:"тикер, название или адрес",
 
     fx_open:"фильтры", fx_title:"фильтры",
@@ -1201,6 +1228,52 @@ const reasonBit = (r) => {
   return `<b>${esc((r.points >= 0 ? "+" : "") + r.points)}</b> ${esc(noteText(r))}`;
 };
 
+/* Who holds it now, as opposed to who bought at launch — the two differ more than they should.
+   Asked for only when a row is actually opened: the answer is folded out of the token's whole
+   transfer log, which is several getLogs, and doing that for every row on screen would be rude. */
+const HOLDERS = new Map();
+
+/* A holder who exists must not print as 0.00% — that reads as a bug rather than as a small bag. */
+const pctOf = (v) => { const n = v ?? 0; return n > 0 && n < 0.01 ? "<0.01%" : `${n.toFixed(2)}%`; };
+
+function paintHolders(box, h) {
+  if (!h) { box.innerHTML = `<div class="hd">${esc(t("h_fail"))}</div>`; return; }
+  if (!h.count) { box.innerHTML = `<div class="hd">${esc(t("h_none"))}</div>`; return; }
+  const rest = Math.max(0, h.floatPct - h.creatorPct);
+  const rows = h.holders.map((x) => {
+    const tag = x.tag === "curve" ? t("h_tag_curve") : x.tag === "creator" ? t("h_tag_creator") : "";
+    return `<tr><td>${esc(x.address)}${tag ? ` <span class="tagged">${esc(tag)}</span>` : ""}</td><td class="r">${esc(pctOf(x.pct))}</td></tr>`;
+  }).join("");
+  box.innerHTML = `
+    <div class="hd">
+      <span>${esc(t("h_curve"))} <b>${esc(pctOf(h.curvePct))}</b></span>
+      <span>${esc(t("h_creator"))} <b>${esc(pctOf(h.creatorPct))}</b></span>
+      <span>${esc(t("h_float"))} <b>${esc(pctOf(h.floatPct))}</b> · ${esc(t("h_wallets", { n: h.floatWallets }))}</span>
+      <span>${esc(t("h_top", { p: h.topOfFloatPct.toFixed(1) }))}</span>
+    </div>
+    <div class="bar">
+      <i class="b-curve" style="width:${h.curvePct}%"></i>
+      <i class="b-creator" style="width:${h.creatorPct}%"></i>
+      <i class="b-rest" style="width:${rest}%"></i>
+    </div>
+    <table>${rows}</table>
+    <div class="hd" style="margin-top:var(--s2)">${esc(t("h_why"))}</div>
+    ${h.failedChunks ? `<div class="note">${esc(t("h_partial", { n: h.failedChunks }))}</div>` : ""}
+    ${h.truncated ? `<div class="note">${esc(t("h_truncated"))}</div>` : ""}`;
+}
+
+async function loadHolders(box, token) {
+  if (HOLDERS.has(token)) { paintHolders(box, HOLDERS.get(token)); return; }
+  box.innerHTML = `<div class="hd">${esc(t("h_load"))}</div>`;
+  let data = null;
+  try {
+    const r = await fetch("/holders?token=" + encodeURIComponent(token));
+    if (r.ok) data = await r.json();
+  } catch { /* paintHolders says so */ }
+  HOLDERS.set(token, data);
+  paintHolders(box, data);
+}
+
 function detailRow(e) {
   const tr = document.createElement("tr");
   tr.className = "detail";
@@ -1231,6 +1304,13 @@ function detailRow(e) {
      approve first and a graduated launch trades through the router, so the quote route refuses
      both — offering the control there would be offering bytes that fail in the wallet. */
   if (e.pairNative && (e.progress == null || e.progress < 1)) tr.querySelector("td").append(buyBox(e));
+
+  const hold = document.createElement("div");
+  hold.className = "hold";
+  hold.dataset.token = e.token;
+  tr.querySelector("td").append(hold);
+  void loadHolders(hold, e.token);
+
   return tr;
 }
 
@@ -2432,6 +2512,9 @@ function applyLang(lang) {
   showEmpty();
   if (TOUR_AT >= 0) paintStep();
   paintFarm();
+  for (const box of document.querySelectorAll(".hold")) {
+    if (HOLDERS.has(box.dataset.token)) paintHolders(box, HOLDERS.get(box.dataset.token));
+  }
 }
 
 /* The rows carry their event, so the cheapest correct redraw is to build them again.
