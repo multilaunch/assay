@@ -27,7 +27,8 @@ export function registerIndexCommand(program: Command): void {
     .option("--to <block>", "stop at this block instead of following")
     .option("--once", "catch up and exit")
     .option("--chunk <blocks>", "widest block range to request", "10000")
-    .action(async (o: { from?: string; to?: string; once?: boolean; chunk: string }) => {
+    .option("--keep <blocks>", "discard anything further behind the head than this (0 keeps everything)", "0")
+    .action(async (o: { from?: string; to?: string; once?: boolean; chunk: string; keep: string }) => {
       const ctl = new AbortController();
       let stopping = false;
       process.on("SIGINT", () => {
@@ -45,6 +46,7 @@ export function registerIndexCommand(program: Command): void {
           ...(o.to ? { to: BigInt(o.to) } : {}),
           follow: !o.once && !o.to,
           chunk: BigInt(o.chunk),
+          keep: Number(o.keep),
           onProgress: (pr) => {
             if (Date.now() - lastLine < 1000) return;
             lastLine = Date.now();

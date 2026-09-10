@@ -106,7 +106,10 @@ services:
       context: .
       target: runtime
     image: assay:prod
-    command: ["index", "run"]
+    # --keep bounds the file. Four million blocks is about four and a half days of this chain and
+    # roughly 450 MB; the board's own window is 400 000, so this is ten times what it reads. Drop
+    # it and the file grows about three gigabytes a month, which is how a rented box fills up.
+    command: ["index", "run", "--keep", "4000000"]
 
     env_file:
       - path: ./deploy/env.prod

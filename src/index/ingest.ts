@@ -2,7 +2,7 @@ import { parseEventLogs, type Address, type Log } from "viem";
 import { curveAbi, factoryAbi } from "../abi/pons.js";
 import { client } from "../chain/clients.js";
 import { PONS } from "../chain/config.js";
-import { db, meta } from "./db.js";
+import { db, meta, prune } from "./db.js";
 
 /**
  * One pass along the chain, writing down what it says, so nothing has to ask twice.
@@ -64,6 +64,8 @@ export interface IngestOptions {
   idleMs?: number;
   /** widest block range to ask for. Halved on refusal, restored when the endpoint recovers. */
   chunk?: bigint;
+  /** keep only this many blocks behind the cursor. Omitted or zero keeps everything. */
+  keep?: number;
   onProgress?: (p: Progress) => void;
   onError?: (where: string, err: unknown) => void;
 }
@@ -264,6 +266,12 @@ export async function ingest(opts: IngestOptions = {}, signal?: AbortSignal): Pr
     meta.set("cursor", String(hi));
     p.block = Number(hi);
     p.stalled = 0;
+
+    // trimming once per range rather than once per block: a delete that finds nothing is a
+    // cheap index seek, and one that finds something has a whole range's worth to remove
+    if (opts.keep && opts.keep > 0) {
+      try { prune(opts.keep); } catch (e) { opts.onError?.("prune", e); }
+    }
 
     // steer the next range by what this one weighed, so the ceiling is approached and not hit
     const width = hi - lo + 1n;

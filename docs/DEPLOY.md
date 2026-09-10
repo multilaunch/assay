@@ -177,8 +177,11 @@ docker compose -f compose.prod.yaml exec index assay index stats   # what it hol
 docker compose -f compose.prod.yaml stop index                     # the board keeps working
 ```
 
-Size to expect: about **45 MB per 400 000 blocks**, which is roughly half a day of this chain, so
-budget a few gigabytes a year and prune by deleting the file when it stops being worth its disk.
+Size to expect: about **45 MB per 400 000 blocks**, which is roughly half a day of this chain —
+three gigabytes a month if nothing stops it. So both the container and the unit pass
+`--keep 4000000`: anything more than four million blocks behind the head is dropped as it goes,
+which settles at around 450 MB and is still ten times the window the board reads. Raise it if you
+want more history for `rules`; set it to `0` to keep everything and watch the disk.
 Holders are not in it — a chain-wide transfer log is seventeen events a block, about seven million
 rows for that same window, which is not worth half a gigabyte to speed up a panel that is opened
 for a handful of tokens.

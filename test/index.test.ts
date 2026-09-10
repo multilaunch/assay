@@ -12,7 +12,7 @@ import { join } from "node:path";
 // every module here reads ASSAY_DATA at call time, so the directory has to be set before the import
 const dir = mkdtempSync(join(tmpdir(), "assay-index-"));
 process.env.ASSAY_DATA = dir;
-const { db, closeDb, coverage, covers, meta, stats } = await import("../src/index/db.js");
+const { db, closeDb, coverage, covers, meta, prune, stats } = await import("../src/index/db.js");
 const { curvePoint } = await import("../src/index/ingest.js");
 const { timeOf, pointsFor, launchOf, launchesByDeployer } = await import("../src/index/read.js");
 
@@ -119,4 +119,31 @@ test("trades come back in chain order and dated from the seals", () => {
   assert.deepEqual(pts.map((x) => x.p), [3, 4, 5], "ordered by block then log index, and only this curve");
   assert.equal(pts[0]!.t, 1_020_000);
   assert.equal(pts[1]!.t, 1_050_000);
+});
+
+test("pruning moves the start of coverage, so a trimmed range reads as missing not as empty", () => {
+  seed();
+  const d = db();
+  const ins = d.prepare("INSERT INTO trades (curve, block, log_index, side, price, quote) VALUES (?, ?, ?, ?, ?, ?)");
+  for (const b of [1100, 1400, 1700, 1950]) ins.run("0xc", b, 0, 1, 1, 1);
+  d.prepare("INSERT INTO launches (token, curve, deployer, pair, block, log_index) VALUES (?, ?, ?, ?, ?, ?)").run("0xt", "0xc", "0xd", "0xp", 1100, 0);
+  d.prepare("INSERT INTO blocks (number, ts) VALUES (?, ?)").run(1000, 1_000_000);
+  d.prepare("INSERT INTO blocks (number, ts) VALUES (?, ?)").run(2000, 1_100_000);
+
+  // cursor is 2000, so keeping 500 blocks leaves everything from 1500 on
+  const r = prune(500);
+  assert.equal(r?.from, 1500);
+  assert.equal(stats().trades, 2, "1100 and 1400 are gone");
+  assert.equal(stats().launches, 0, "the launch went with them");
+  assert.equal(coverage().from, 1500, "and coverage says so");
+  assert.equal(pointsFor("0xc", 1000, 2000), null, "the old range is refused rather than half-answered");
+  assert.ok(pointsFor("0xc", 1500, 2000), "what survived still reads");
+});
+
+test("pruning shallower than what is held does nothing", () => {
+  seed();
+  db().prepare("INSERT INTO trades (curve, block, log_index, side, price, quote) VALUES (?, ?, ?, ?, ?, ?)").run("0xc", 1100, 0, 1, 1, 1);
+  assert.equal(prune(5000), null, "the depth is deeper than the index is old");
+  assert.equal(stats().trades, 1);
+  assert.equal(coverage().from, 1000);
 });

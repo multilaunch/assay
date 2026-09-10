@@ -36,7 +36,7 @@ Environment=NODE_ENV=production
 Environment=ASSAY_DATA=/var/lib/assay
 
 # Loopback only. Caddy runs on this host and reaches it over 127.0.0.1; nothing else can.
-ExecStart=/usr/bin/node /opt/assay/app/dist/cli/main.js index run
+ExecStart=/usr/bin/node /opt/assay/app/dist/cli/main.js index run --keep 4000000
 
 Restart=on-failure
 RestartSec=5s

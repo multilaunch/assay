@@ -151,6 +151,38 @@ export function covers(fromBlock: bigint, toBlock: bigint): boolean {
   return Number(fromBlock) >= from && Number(toBlock) <= cursor;
 }
 
+/**
+ * Drop everything older than `keep` blocks behind the cursor, and say so in the coverage.
+ *
+ * A follower left running writes about 45 MB per 400 000 blocks, which on this chain is half a day
+ * — three gigabytes a month, on a box somebody is renting, for a cache. So it has a depth. Moving
+ * `from` forward is the part that matters: a reader that asked for a range which has just been
+ * deleted must be told the index does not have it, not handed the half that survived.
+ */
+export function prune(keep: number): { removed: number; from: number } | null {
+  const { from, cursor } = coverage();
+  if (from === null || cursor === null) return null;
+  const floor = cursor - keep;
+  if (floor <= from) return null;
+
+  const d = db();
+  d.exec("BEGIN");
+  let removed = 0;
+  try {
+    for (const table of ["trades", "launches", "graduations", "blocks"]) {
+      const col = table === "blocks" ? "number" : "block";
+      const r = d.prepare(`DELETE FROM ${table} WHERE ${col} < ?`).run(floor);
+      removed += Number(r.changes ?? 0);
+    }
+    writeMeta(d, "from", String(floor));
+    d.exec("COMMIT");
+  } catch (e) {
+    d.exec("ROLLBACK");
+    throw e;
+  }
+  return { removed, from: floor };
+}
+
 export interface Stats {
   launches: number;
   graduations: number;
