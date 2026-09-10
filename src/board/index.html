@@ -201,6 +201,26 @@ tr.v-SKIP .sc{color:var(--ink-3)}
 .tick{font-family:var(--mono); font-weight:500; color:var(--ink)}
 .nm{color:var(--ink-3); margin-left:7px; font-size:12px}
 
+/* ---- the token's own picture ----------------------------------------------
+   Fetched through this board, never from the launcher's host: img-src is 'self'
+   and stays that way. These average a third of a megabyte and 400 rows fit in
+   the feed, so a row asks for its picture only once it is actually on screen.
+   The letters underneath are not a placeholder for a picture that is coming —
+   for about one launch in twelve they are the final state, so they are drawn
+   to look like a decision rather than a failure. */
+.ico{
+  position:relative; display:inline-block; vertical-align:middle; flex:none;
+  width:22px; height:22px; margin-right:9px; overflow:hidden;
+  border:1px solid var(--line-hard); background:var(--surface-3);
+}
+.ico b{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-weight:500; font-size:9.5px; letter-spacing:.02em;
+  text-transform:uppercase; color:var(--ink-3);
+}
+.ico img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:none}
+.ico img.on{display:block}
+
 .q{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:12px; padding:1px 5px}
 .q.ok{color:var(--ok)}
 .q.warn{color:var(--warn); background:var(--warn-w)}
@@ -382,6 +402,47 @@ a:hover{border-bottom-color:var(--hot)}
 .mini-flag.tap{cursor:pointer}
 .mini-flag.tap:hover{border-color:var(--hot); color:var(--ink)}
 
+/* ---- the filter panel ------------------------------------------------------
+   Same card as the two above it, same hairlines, same spacing steps. It narrows
+   what is on screen and nothing else: the numbers in the rail gate what the
+   engine may buy, and confusing the two would be the expensive mistake here, so
+   the panel says which it is in its first line. */
+#fx{
+  position:fixed; z-index:62; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:min(600px, calc(100vw - 24px)); max-height:calc(100vh - 48px); overflow:auto;
+  background:var(--surface-2); border:1px solid var(--line-hard); padding:var(--s4);
+}
+#fx h3{margin:0 0 var(--s2); font-size:13px; font-weight:600}
+#fx .lede{margin:0 0 var(--s3); font-size:11.5px; line-height:1.55; color:var(--ink-3); max-width:70ch}
+.fx-sec{border-top:1px solid var(--line); padding-top:var(--s2); margin-bottom:var(--s3)}
+.fx-sec>.lbl{display:block; margin-bottom:var(--s2)}
+.fx-note{margin:var(--s1) 0 0; font-size:10.5px; line-height:1.5; color:var(--ink-3)}
+.fx-line{display:flex; align-items:center; gap:var(--s2); margin-bottom:var(--s1)}
+.fx-line>label{width:66px; flex:none; font-size:11.5px; color:var(--ink-2)}
+.fx-line input[type=search]{flex:1; min-width:0; width:auto}
+.fx-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(244px,1fr)); gap:var(--s1) var(--s5)}
+.fx-row{display:flex; align-items:center; gap:var(--s2)}
+.fx-row>label{flex:1; min-width:0; font-size:11.5px; color:var(--ink-2);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.fx-row input[type=number]{width:60px; text-align:right}
+.fx-dash{flex:none; font-family:var(--mono); font-size:11px; color:var(--ink-3)}
+#fx .seg{width:max-content; max-width:100%; flex-wrap:wrap}
+.fx-set{display:flex; flex-wrap:wrap; gap:var(--s1) var(--s2); align-items:center}
+.fx-set button{padding:3px 10px; font-size:11.5px; color:var(--ink-3)}
+.fx-set button[aria-pressed="true"]{background:var(--hot); color:var(--hot-ink); border-color:var(--hot); font-weight:600}
+.fx-slot{display:flex; align-items:center; gap:var(--s2); padding:5px 0; border-bottom:1px solid var(--line)}
+.fx-slot .k{flex:none; width:56px; font-family:var(--mono); font-size:11px; color:var(--ink-2)}
+.fx-slot .s{flex:1; min-width:0; font-size:11px; color:var(--ink-3);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+#fx .fx-warn{margin:0 0 var(--s3); font-size:11px; line-height:1.55; color:var(--warn)}
+#fx .foot{display:flex; justify-content:flex-end; gap:var(--s2); border-top:1px solid var(--line); padding-top:var(--s3)}
+/* how many of them are on, on the control that opens them */
+.badge{
+  margin-left:8px; padding:0 4px; border:1px solid var(--line-hard); color:var(--ink-2);
+  font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:10px;
+}
+#filters[aria-expanded="true"]{border-color:var(--hot)}
+
 .langs{display:flex; border:1px solid var(--line-hard)}
 .langs button{border:0; padding:3px 8px; font-size:11px; color:var(--ink-3); font-family:var(--mono)}
 .langs button[aria-pressed="true"]{background:var(--hot); color:var(--hot-ink); font-weight:600}
@@ -488,6 +549,95 @@ a:hover{border-bottom-color:var(--hot)}
   <div class="foot"><button id="farm-close" data-i18n="fm_close">close</button></div>
 </div>
 
+<div id="fx" role="dialog" aria-modal="true" aria-labelledby="fx-h" hidden>
+  <h3 id="fx-h" data-i18n="fx_title">filters</h3>
+  <p class="lede" data-i18n="fx_lede">this narrows what is on screen. what the engine may buy is the rules in the rail, and nothing here touches them.</p>
+
+  <div class="fx-sec">
+    <span class="lbl" data-i18n="fx_words">keywords</span>
+    <div class="fx-line">
+      <label for="fx-inc" data-i18n="fx_inc">include</label>
+      <input type="search" id="fx-inc" data-i18n-ph="fx_ph_words" placeholder="comma separated" spellcheck="false">
+    </div>
+    <div class="fx-line">
+      <label for="fx-exc" data-i18n="fx_exc">exclude</label>
+      <input type="search" id="fx-exc" data-i18n-ph="fx_ph_words" placeholder="comma separated" spellcheck="false">
+    </div>
+    <p class="fx-note" data-i18n="fx_words_note">read against symbol, name, description and address</p>
+  </div>
+
+  <div class="fx-sec">
+    <span class="lbl" data-i18n="fx_range">min / max</span>
+    <div class="fx-grid">
+      <div class="fx-row"><label data-i18n="fx_n_score">score</label>
+        <input type="number" data-min="score" data-i18n-ph="fx_min" placeholder="min"><span class="fx-dash">–</span>
+        <input type="number" data-max="score" data-i18n-ph="fx_max" placeholder="max"></div>
+      <div class="fx-row"><label data-i18n="fx_n_dev">opening buy, %</label>
+        <input type="number" step="any" data-min="dev" data-i18n-ph="fx_min" placeholder="min"><span class="fx-dash">–</span>
+        <input type="number" step="any" data-max="dev" data-i18n-ph="fx_max" placeholder="max"></div>
+      <div class="fx-row"><label data-i18n="fx_n_tax">creator tax, %</label>
+        <input type="number" step="any" data-min="tax" data-i18n-ph="fx_min" placeholder="min"><span class="fx-dash">–</span>
+        <input type="number" step="any" data-max="tax" data-i18n-ph="fx_max" placeholder="max"></div>
+      <div class="fx-row"><label data-i18n="fx_n_exempt">exempt wallets</label>
+        <input type="number" data-min="exempt" data-i18n-ph="fx_min" placeholder="min"><span class="fx-dash">–</span>
+        <input type="number" data-max="exempt" data-i18n-ph="fx_max" placeholder="max"></div>
+      <div class="fx-row"><label data-i18n="fx_n_twins">farm twins</label>
+        <input type="number" data-min="twins" data-i18n-ph="fx_min" placeholder="min"><span class="fx-dash">–</span>
+        <input type="number" data-max="twins" data-i18n-ph="fx_max" placeholder="max"></div>
+      <div class="fx-row"><label data-i18n="fx_n_curve">curve, %</label>
+        <input type="number" step="any" data-min="curve" data-i18n-ph="fx_min" placeholder="min"><span class="fx-dash">–</span>
+        <input type="number" step="any" data-max="curve" data-i18n-ph="fx_max" placeholder="max"></div>
+      <div class="fx-row"><label data-i18n="fx_n_age">age, s</label>
+        <input type="number" data-min="age" data-i18n-ph="fx_min" placeholder="min"><span class="fx-dash">–</span>
+        <input type="number" data-max="age" data-i18n-ph="fx_max" placeholder="max"></div>
+      <div class="fx-row"><label data-i18n="fx_n_prior">deployer launches</label>
+        <input type="number" data-min="prior" data-i18n-ph="fx_min" placeholder="min"><span class="fx-dash">–</span>
+        <input type="number" data-max="prior" data-i18n-ph="fx_max" placeholder="max"></div>
+      <div class="fx-row"><label data-i18n="fx_n_grad">deployer graduated</label>
+        <input type="number" data-min="grad" data-i18n-ph="fx_min" placeholder="min"><span class="fx-dash">–</span>
+        <input type="number" data-max="grad" data-i18n-ph="fx_max" placeholder="max"></div>
+    </div>
+    <p class="fx-note" data-i18n="fx_range_note">an empty box is no bound at all. a value the chain would not give up never clears one.</p>
+  </div>
+
+  <div class="fx-sec">
+    <span class="lbl" data-i18n="fx_pair">pair</span>
+    <div class="seg" role="group" id="fx-pair">
+      <button type="button" data-pair="any" aria-pressed="true" data-i18n="fx_pair_any">any</button>
+      <button type="button" data-pair="eth" aria-pressed="false" data-i18n="fx_pair_eth">eth only</button>
+      <button type="button" data-pair="alt" aria-pressed="false" data-i18n="fx_pair_alt">non-eth</button>
+    </div>
+  </div>
+
+  <div class="fx-sec">
+    <span class="lbl" data-i18n="fx_soc">socials</span>
+    <div class="fx-set">
+      <button type="button" data-soc="x" aria-pressed="false" data-i18n="fx_soc_x">has x</button>
+      <button type="button" data-soc="web" aria-pressed="false" data-i18n="fx_soc_web">has website</button>
+      <button type="button" data-soc="tg" aria-pressed="false" data-i18n="fx_soc_tg">has telegram</button>
+      <button type="button" data-soc="none" aria-pressed="false" data-i18n="fx_soc_none">has none</button>
+    </div>
+  </div>
+
+  <div class="fx-sec">
+    <span class="lbl" data-i18n="fx_other">unreadable</span>
+    <div class="fx-set">
+      <button type="button" id="fx-unread" aria-pressed="false" data-i18n="fx_unread">hide launches whose transaction could not be read</button>
+    </div>
+  </div>
+
+  <div class="fx-sec">
+    <span class="lbl" data-i18n="fx_presets">presets</span>
+    <div id="fx-slots"></div>
+  </div>
+
+  <p class="fx-warn" id="fx-warn" role="status" hidden></p>
+  <div class="foot">
+    <button id="fx-clear" data-i18n="fx_clear">clear all</button>
+    <button id="fx-close" class="solid" data-i18n="fx_close">close</button>
+  </div>
+</div>
+
 <div class="shell">
   <main>
     <div class="bar">
@@ -497,6 +647,7 @@ a:hover{border-bottom-color:var(--hot)}
         <button data-f="WATCH" aria-pressed="false" data-i18n="f_watch">watch</button>
         <button data-f="passing" aria-pressed="false" data-i18n="f_pass">passes rules</button>
       </div>
+      <button id="filters" aria-haspopup="dialog" aria-expanded="false" aria-controls="fx"><span data-i18n="fx_open">filters</span><span class="badge n" id="fx-n" hidden></span></button>
       <input type="search" id="q" data-i18n-ph="search" placeholder="symbol, name or address" aria-label="Filter launches">
       <span class="spring"></span>
       <span class="tag" id="link">connecting</span>
@@ -630,6 +781,23 @@ const I18N = {
     k_seen:"seen", k_rate:"per min", k_pass:"passing", k_open:"open", k_spent:"spent",
     f_all:"all", f_fire:"fire", f_watch:"watch", f_pass:"passes rules",
     search:"symbol, name or address",
+
+    fx_open:"filters", fx_title:"filters",
+    fx_lede:"this narrows what is on screen. what the engine may buy is the rules in the rail, and nothing here touches them.",
+    fx_words:"keywords", fx_inc:"include", fx_exc:"exclude", fx_ph_words:"comma separated",
+    fx_words_note:"read against symbol, name, description and address",
+    fx_range:"min / max", fx_min:"min", fx_max:"max",
+    fx_range_note:"an empty box is no bound at all. a value the chain would not give up never clears one.",
+    fx_n_score:"score", fx_n_dev:"opening buy, %", fx_n_tax:"creator tax, %",
+    fx_n_exempt:"exempt wallets", fx_n_twins:"farm twins", fx_n_curve:"curve, %", fx_n_age:"age, s",
+    fx_n_prior:"deployer launches", fx_n_grad:"deployer graduated",
+    fx_pair:"pair", fx_pair_any:"any", fx_pair_eth:"eth only", fx_pair_alt:"non-eth",
+    fx_soc:"socials", fx_soc_x:"has x", fx_soc_web:"has website", fx_soc_tg:"has telegram", fx_soc_none:"has none",
+    fx_other:"unreadable", fx_unread:"hide launches whose transaction could not be read",
+    fx_presets:"presets", fx_slot:"slot {i}", fx_saved:"{n} set", fx_slot_empty:"empty",
+    fx_save:"save", fx_load:"restore", fx_wipe:"clear",
+    fx_clear:"clear all", fx_close:"close",
+    fx_warn:"min above max on {list} — nothing can match that.",
     c_score:"score", c_launch:"launch", c_buy:"opening buy", c_tax:"tax", c_exempt:"exempt",
     c_pair:"pair", c_curve:"curve", c_dev:"deployer", c_age:"age",
     s_pos:"positions", s_rules:"rules", s_log:"log", s_proof:"track record",
@@ -796,6 +964,23 @@ const I18N = {
     k_seen:"всего", k_rate:"в минуту", k_pass:"проходят", k_open:"в позиции", k_spent:"потрачено",
     f_all:"все", f_fire:"огонь", f_watch:"наблюдать", f_pass:"проходят фильтр",
     search:"тикер, название или адрес",
+
+    fx_open:"фильтры", fx_title:"фильтры",
+    fx_lede:"это сужает только то, что на экране. что движку можно покупать, решают правила справа — их отсюда ничего не трогает.",
+    fx_words:"слова", fx_inc:"искать", fx_exc:"убрать", fx_ph_words:"через запятую",
+    fx_words_note:"ищем в тикере, названии, описании и адресе",
+    fx_range:"мин / макс", fx_min:"мин", fx_max:"макс",
+    fx_range_note:"пустое поле — никакой границы. то, что с чейна не прочиталось, границу не проходит никогда.",
+    fx_n_score:"скор", fx_n_dev:"закуп дева, %", fx_n_tax:"налог создателя, %",
+    fx_n_exempt:"без налога", fx_n_twins:"близнецов", fx_n_curve:"кривая, %", fx_n_age:"возраст, с",
+    fx_n_prior:"запусков деплоера", fx_n_grad:"доехало до пула",
+    fx_pair:"пара", fx_pair_any:"любая", fx_pair_eth:"только eth", fx_pair_alt:"кроме eth",
+    fx_soc:"соцсети", fx_soc_x:"есть x", fx_soc_web:"есть сайт", fx_soc_tg:"есть телеграм", fx_soc_none:"нет ни одной",
+    fx_other:"не прочиталось", fx_unread:"прятать запуски, чью транзакцию не удалось прочитать",
+    fx_presets:"пресеты", fx_slot:"слот {i}", fx_saved:"условий: {n}", fx_slot_empty:"пусто",
+    fx_save:"сохранить", fx_load:"вернуть", fx_wipe:"стереть",
+    fx_clear:"сбросить всё", fx_close:"закрыть",
+    fx_warn:"минимум больше максимума: {list} — под это не попадёт ничего.",
     c_score:"скор", c_launch:"запуск", c_buy:"закуп дева", c_tax:"налог", c_exempt:"без налога",
     c_pair:"пара", c_curve:"кривая", c_dev:"деплоер", c_age:"возраст",
     s_pos:"позиции", s_rules:"правила", s_log:"лог", s_proof:"проверка скора",
@@ -981,16 +1166,24 @@ function drawSpark() {
     cx.fillRect((buckets.length - 1) * step, h - bh - 1, Math.max(1.5, step - 1), bh);
   }
 }
-setInterval(() => { buckets.shift(); buckets.push(0); drawSpark(); }, 1000);
+setInterval(() => {
+  buckets.shift(); buckets.push(0); drawSpark();
+  // Age is the one filter bound whose answer changes on its own, so it is re-asked once a second
+  // rather than only when someone touches a control.
+  if (FX.min.age != null || FX.max.age != null) applyFilter();
+}, 1000);
 addEventListener("resize", drawSpark);
 
 /* ---- rows --------------------------------------------------------------- */
+/* Three things narrow the feed and they compose: the verdict segment, the search box, and the
+   panel. None of them touches the engine's rules — those decide what gets bought, these decide
+   what gets drawn, and the panel says so in its first line. */
 function matches(e) {
   if (FILTER === "FIRE" && e.verdict !== "FIRE") return false;
   if (FILTER === "WATCH" && e.verdict !== "WATCH") return false;
   if (FILTER === "passing" && !e.fire) return false;
-  if (!QUERY) return true;
-  return `${e.symbol || ""} ${e.name || ""} ${e.token} ${e.deployer}`.toLowerCase().includes(QUERY);
+  if (QUERY && !`${e.symbol || ""} ${e.name || ""} ${e.token} ${e.deployer}`.toLowerCase().includes(QUERY)) return false;
+  return fxMatch(e);
 }
 
 /* Reasons, flags and refusals arrive as codes and numbers rather than as sentences, so the page
@@ -1041,6 +1234,58 @@ function detailRow(e) {
   return tr;
 }
 
+/* ---- the token's picture --------------------------------------------------
+   `/logo` is this board fetching the image and handing it over, so the reader
+   never talks to whatever host the launcher typed into the metadata. It answers
+   404 for the ones that have none.
+
+   Measured on live launches these run around 340 KB each and the feed holds 400
+   rows, so nothing is asked for until the row it belongs to is actually near the
+   viewport. A hidden row — filtered out, or scrolled a long way off — never
+   intersects, so it never costs a request. What a token answered is remembered
+   for the page's lifetime, so the row rebuild behind a language switch does not
+   re-ask for a picture that was already refused. */
+/* token → "ok", or the moment it answered with nothing. A refusal is remembered for as long as the
+   board itself remembers it, and no longer: half of them are an image host that was slow rather
+   than a launch with no picture, and the board will go and ask again after that. */
+const LOGO = new Map();
+const LOGO_TTL = 30 * 60_000;
+const icoSrc = (tok) => "/logo?token=" + encodeURIComponent(tok);
+
+function icoLoad(box) {
+  const tok = box.dataset.token;
+  if (!tok || box.dataset.done) return;
+  box.dataset.done = "1";
+  const was = LOGO.get(tok);
+  // asked recently, answered nothing. the letters are the answer.
+  if (typeof was === "number" && Date.now() - was < LOGO_TTL) return;
+  const img = document.createElement("img");
+  img.alt = "";
+  img.loading = "lazy";
+  img.decoding = "async";
+  img.addEventListener("load", () => { LOGO.set(tok, "ok"); img.classList.add("on"); }, { once: true });
+  img.addEventListener("error", () => { LOGO.set(tok, Date.now()); img.remove(); }, { once: true });
+  box.append(img);
+  img.src = icoSrc(tok);
+}
+
+/* The viewport is the root even though the feed scrolls inside a pane: an intersection is clipped
+   by every scrolling ancestor on the way up, so this is right in both layouts — the pane on a
+   desktop, the whole shell on a phone. */
+const ICO = new IntersectionObserver((entries) => {
+  for (const en of entries) {
+    if (!en.isIntersecting) continue;
+    ICO.unobserve(en.target);
+    icoLoad(en.target);
+  }
+}, { rootMargin: "220px 0px" });
+
+/* One or two characters, and never the "$" — a block reading "$A" is a block that lost its label. */
+function icoLetters(e) {
+  const s = (e.symbol || e.name || "").replace(/[^\p{L}\p{N}]/gu, "");
+  return s ? s.slice(0, 2) : "?";
+}
+
 function launchRow(e) {
   const tr = document.createElement("tr");
   tr.className = `row v-${e.verdict}`;
@@ -1051,7 +1296,7 @@ function launchRow(e) {
   tr.innerHTML = `
     <td class="mk"><i></i></td>
     <td class="r"><span class="sc">${e.score}</span></td>
-    <td class="who"><span class="tick">${esc(e.symbol ? "$" + e.symbol : e.token.slice(0, 10))}</span><span class="nm">${esc(e.name)}</span>${e.farmTwins ? `<span class="mini-flag${e.farmKey ? " tap" : ""}"${e.farmKey ? ` role="button" tabindex="0" data-farm="${esc(e.farmKey)}"` : ""}>${esc(t("row_farm", { n: e.farmTwins }))}</span>` : ""}${e.fire ? `<span class="mini-flag good">${esc(t("row_passes"))}</span>` : ""}</td>
+    <td class="who"><span class="ico" data-token="${esc(e.token)}"><b>${esc(icoLetters(e))}</b></span><span class="tick">${esc(e.symbol ? "$" + e.symbol : e.token.slice(0, 10))}</span><span class="nm">${esc(e.name)}</span>${e.farmTwins ? `<span class="mini-flag${e.farmKey ? " tap" : ""}"${e.farmKey ? ` role="button" tabindex="0" data-farm="${esc(e.farmKey)}"` : ""}>${esc(t("row_farm", { n: e.farmTwins }))}</span>` : ""}${e.fire ? `<span class="mini-flag good">${esc(t("row_passes"))}</span>` : ""}</td>
     <td class="r"><span class="q ${bBuy(e.devPct)}" title="${esc(why("buy", bBuy(e.devPct)))}">${e.devPct == null ? "?" : e.devPct.toFixed(2) + "%"}</span></td>
     <td class="r"><span class="q ${bTax(e.taxBps)}" title="${esc(why("tax", bTax(e.taxBps)))}">${e.taxBps == null ? "?" : e.taxBps / 100 + "%"}</span></td>
     <td class="r"><span class="q ${bEx(e.exempt ? e.exempt.length : null)}" title="${esc(why("ex", bEx(e.exempt ? e.exempt.length : null)))}">${e.exempt == null ? "?" : e.exempt.length}</span></td>
@@ -1078,8 +1323,19 @@ function launchRow(e) {
   });
   tr.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(); } });
   tr._e = e;
+  tr._ico = tr.querySelector(".ico");
+  ICO.observe(tr._ico);
   tr._detach = () => { if (open) { open.remove(); open = null; tr.setAttribute("aria-expanded", "false"); } };
   return tr;
+}
+
+/* Leaving the feed for good, as opposed to merely being filtered out of it: a row that is only
+   hidden keeps its place in the observer, because it will want its picture the moment it comes
+   back. One that is gone must not keep the observer holding on to it. */
+function killRow(tr) {
+  tr._detach();
+  if (tr._ico) ICO.unobserve(tr._ico);
+  tr.remove();
 }
 
 function addLaunch(e) {
@@ -1095,7 +1351,7 @@ function addLaunch(e) {
   if (!matches(e)) tr.hidden = true;
   body.prepend(tr);
   rows.unshift(tr);
-  while (rows.length > 400) { const old = rows.pop(); old._detach(); old.remove(); }
+  while (rows.length > 400) killRow(rows.pop());
   showEmpty();
 }
 
@@ -1146,6 +1402,224 @@ function applyFilter() {
   }
   showEmpty();
 }
+
+/* ---- the filter panel ------------------------------------------------------
+   Everything here reads a field the row already carries. Nothing is derived from
+   anything the page had to go and ask for, and nothing here reaches the engine:
+   the rules in the rail gate what gets bought, this gates what gets drawn. The
+   two are one keystroke apart on screen and worlds apart in consequence, which
+   is why the panel says which one it is before it says anything else. */
+const FX_NUM = [
+  ["score", "fx_n_score"], ["dev", "fx_n_dev"], ["tax", "fx_n_tax"], ["exempt", "fx_n_exempt"],
+  ["twins", "fx_n_twins"], ["curve", "fx_n_curve"], ["age", "fx_n_age"],
+  ["prior", "fx_n_prior"], ["grad", "fx_n_grad"],
+];
+const FX_SOC = ["x", "web", "tg", "none"];
+const FX_SLOTS = [1, 2, 3];
+
+const blankFX = () => ({ inc: "", exc: "", min: {}, max: {}, pair: "any", soc: {}, unread: false });
+let FX = blankFX();
+let FX_FROM = null;
+
+const words = (s) => String(s || "").split(",").map((w) => w.trim().toLowerCase()).filter(Boolean);
+
+function fxValue(e, key) {
+  switch (key) {
+    case "score":  return typeof e.score === "number" ? e.score : null;
+    case "dev":    return e.devPct;
+    case "tax":    return e.taxBps == null ? null : e.taxBps / 100;
+    case "exempt": return e.exempt == null ? null : e.exempt.length;
+    case "twins":  return Number(e.farmTwins || 0);
+    case "curve":  return e.progress == null ? null : e.progress * 100;
+    case "age":    return Math.max(0, (Date.now() - e.at) / 1000);
+    case "prior":  return e.deployerPrior;
+    case "grad":   return e.deployerGraduated;
+    default:       return null;
+  }
+}
+
+function fxMatch(e) {
+  if (FX.unread && e.devPct == null) return false;
+  if (FX.pair === "eth" && !e.pairNative) return false;
+  if (FX.pair === "alt" && e.pairNative) return false;
+
+  const soc = e.socials || {};
+  if (FX.soc.none && (soc.x || soc.web || soc.tg)) return false;
+  if (FX.soc.x && !soc.x) return false;
+  if (FX.soc.web && !soc.web) return false;
+  if (FX.soc.tg && !soc.tg) return false;
+
+  for (const [key] of FX_NUM) {
+    const lo = FX.min[key], hi = FX.max[key];
+    if (lo == null && hi == null) continue;
+    const v = fxValue(e, key);
+    // A bound was asked for and the chain never gave the number up. That is not a pass.
+    if (v == null) return false;
+    if (lo != null && v < lo) return false;
+    if (hi != null && v > hi) return false;
+  }
+
+  const inc = words(FX.inc), exc = words(FX.exc);
+  if (!inc.length && !exc.length) return true;
+  const hay = `${e.symbol || ""} ${e.name || ""} ${e.description || ""} ${e.token || ""}`.toLowerCase();
+  if (inc.length && !inc.some((w) => hay.includes(w))) return false;
+  if (exc.some((w) => hay.includes(w))) return false;
+  return true;
+}
+
+/* How many conditions are on, for the badge and for what a preset slot says it holds. */
+function fxCountOf(f) {
+  let n = 0;
+  if (words(f.inc).length) n++;
+  if (words(f.exc).length) n++;
+  for (const [k] of FX_NUM) { if (f.min[k] != null) n++; if (f.max[k] != null) n++; }
+  if (f.pair !== "any") n++;
+  for (const s of FX_SOC) if (f.soc[s]) n++;
+  if (f.unread) n++;
+  return n;
+}
+
+/* A min above a max is the reader's own business — it is said out loud rather than corrected,
+   because silently matching nothing looks like a broken feed. */
+const fxCrossed = () =>
+  FX_NUM.filter(([k]) => FX.min[k] != null && FX.max[k] != null && FX.min[k] > FX.max[k]).map(([, key]) => t(key));
+
+/* Whatever is in storage was put there by this page, but it is still parsed as if it were not:
+   a slot is read into a blank filter one field at a time. */
+function fxFrom(o) {
+  const f = blankFX();
+  if (!o || typeof o !== "object") return f;
+  if (typeof o.inc === "string") f.inc = o.inc;
+  if (typeof o.exc === "string") f.exc = o.exc;
+  if (o.pair === "eth" || o.pair === "alt") f.pair = o.pair;
+  f.unread = o.unread === true;
+  for (const s of FX_SOC) if (o.soc && o.soc[s] === true) f.soc[s] = true;
+  for (const [k] of FX_NUM) for (const side of ["min", "max"]) {
+    const v = o[side] ? Number(o[side][k]) : NaN;
+    if (o[side] && o[side][k] != null && Number.isFinite(v)) f[side][k] = v;
+  }
+  return f;
+}
+
+const slotKey = (i) => "assay.filter." + i;
+function slotRead(i) {
+  try { const raw = localStorage.getItem(slotKey(i)); return raw ? fxFrom(JSON.parse(raw)) : null; }
+  catch { return null; }
+}
+function slotWrite(i, f) {
+  try { localStorage.setItem(slotKey(i), JSON.stringify(f)); }
+  catch { /* private mode: the filter still works, it just will not be here tomorrow */ }
+}
+function slotWipe(i) { try { localStorage.removeItem(slotKey(i)); } catch { /* nothing to remove it from */ } }
+
+function paintSlots() {
+  const box = $("#fx-slots");
+  box.innerHTML = "";
+  for (const i of FX_SLOTS) {
+    const saved = slotRead(i);
+    const row = document.createElement("div");
+    row.className = "fx-slot";
+    row.innerHTML = `<span class="k">${esc(t("fx_slot", { i }))}</span>
+      <span class="s">${esc(saved ? t("fx_saved", { n: fxCountOf(saved) }) : t("fx_slot_empty"))}</span>
+      <button type="button" class="mini" data-slot-save="${i}">${esc(t("fx_save"))}</button>
+      <button type="button" class="mini" data-slot-load="${i}"${saved ? "" : " disabled"}>${esc(t("fx_load"))}</button>
+      <button type="button" class="mini" data-slot-wipe="${i}"${saved ? "" : " disabled"}>${esc(t("fx_wipe"))}</button>`;
+    box.append(row);
+  }
+}
+
+function paintFX() {
+  // never write over the box the reader is typing in
+  const live = document.activeElement;
+  // The row label sits beside these boxes rather than being tied to them, so each one carries the
+  // whole name — "score, min" — instead of nine boxes all reading "min".
+  for (const [key, label] of FX_NUM) {
+    const lo = document.querySelector(`#fx [data-min="${key}"]`), hi = document.querySelector(`#fx [data-max="${key}"]`);
+    if (lo) lo.setAttribute("aria-label", `${t(label)}, ${t("fx_min")}`);
+    if (hi) hi.setAttribute("aria-label", `${t(label)}, ${t("fx_max")}`);
+  }
+  if ($("#fx-inc") !== live) $("#fx-inc").value = FX.inc;
+  if ($("#fx-exc") !== live) $("#fx-exc").value = FX.exc;
+  for (const el of document.querySelectorAll("#fx [data-min]")) if (el !== live) el.value = FX.min[el.dataset.min] ?? "";
+  for (const el of document.querySelectorAll("#fx [data-max]")) if (el !== live) el.value = FX.max[el.dataset.max] ?? "";
+  for (const b of document.querySelectorAll("#fx-pair button")) b.setAttribute("aria-pressed", String(b.dataset.pair === FX.pair));
+  for (const b of document.querySelectorAll("#fx [data-soc]")) b.setAttribute("aria-pressed", String(!!FX.soc[b.dataset.soc]));
+  $("#fx-unread").setAttribute("aria-pressed", String(FX.unread));
+
+  const crossed = fxCrossed();
+  $("#fx-warn").textContent = crossed.length ? t("fx_warn", { list: crossed.join(", ") }) : "";
+  $("#fx-warn").hidden = crossed.length === 0;
+
+  const n = fxCountOf(FX);
+  $("#fx-n").textContent = n ? String(n) : "";
+  $("#fx-n").hidden = n === 0;
+
+  paintSlots();
+}
+
+const fxChanged = () => { paintFX(); applyFilter(); };
+
+$("#fx").addEventListener("input", (ev) => {
+  const el = ev.target;
+  if (el.id === "fx-inc") FX.inc = el.value;
+  else if (el.id === "fx-exc") FX.exc = el.value;
+  else if (el.dataset.min || el.dataset.max) {
+    const side = el.dataset.min ? "min" : "max";
+    const key = el.dataset.min || el.dataset.max;
+    const v = Number(el.value);
+    if (el.value.trim() === "" || !Number.isFinite(v)) delete FX[side][key];
+    else FX[side][key] = v;
+  } else return;
+  fxChanged();
+});
+
+$("#fx").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button");
+  if (!b) return;
+  const d = b.dataset;
+  if (d.pair) { FX.pair = d.pair; fxChanged(); return; }
+  if (d.soc) {
+    // "has none" and the three "has one" are opposite claims about the same launch. Holding both
+    // is a filter nothing can satisfy, so switching one on lets go of the other.
+    const on = !FX.soc[d.soc];
+    if (d.soc === "none") FX.soc = on ? { none: true } : {};
+    else { delete FX.soc.none; if (on) FX.soc[d.soc] = true; else delete FX.soc[d.soc]; }
+    fxChanged(); return;
+  }
+  if (b.id === "fx-unread") { FX.unread = !FX.unread; fxChanged(); return; }
+  if (d.slotSave) { slotWrite(Number(d.slotSave), FX); paintSlots(); return; }
+  if (d.slotLoad) { FX = slotRead(Number(d.slotLoad)) || blankFX(); fxChanged(); return; }
+  if (d.slotWipe) { slotWipe(Number(d.slotWipe)); paintSlots(); return; }
+  if (b.id === "fx-clear") { FX = blankFX(); fxChanged(); return; }
+  if (b.id === "fx-close") closeFx();
+});
+
+$("#fx").addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closeFx(); }
+});
+
+function openFx() {
+  if (TOUR_AT >= 0) tourEnd();
+  closeFarm();
+  FX_FROM = $("#filters");
+  paintFX();
+  $("#fx").hidden = false;
+  $("#filters").setAttribute("aria-expanded", "true");
+  $("#veil").classList.add("on");
+  $("#fx-inc").focus();
+}
+
+function closeFx() {
+  if ($("#fx").hidden) return;
+  $("#fx").hidden = true;
+  $("#filters").setAttribute("aria-expanded", "false");
+  if (!$("#gate").hidden || !$("#farm").hidden) return;   // whichever is still up keeps the veil
+  $("#veil").classList.remove("on");
+  if (FX_FROM && FX_FROM.isConnected) FX_FROM.focus();
+  FX_FROM = null;
+}
+
+$("#filters").addEventListener("click", () => { if ($("#fx").hidden) openFx(); else closeFx(); });
 
 /* `positions` and `rules` only exist in /state for the operator, so both of these have to be
    happy with nothing at all: for most readers there is nothing to draw and no section to draw
@@ -1822,7 +2296,7 @@ $("#signin").addEventListener("click", openGate);
 $("#signout").addEventListener("click", () => { void signOut(); });
 $("#gate-cancel").addEventListener("click", closeGate);
 // the veil belongs to whichever of the two is up; only the dialog treats a click on it as cancel
-$("#veil").addEventListener("click", () => { if (!$("#gate").hidden) closeGate(); });
+$("#veil").addEventListener("click", () => { if (!$("#gate").hidden) closeGate(); else if (!$("#fx").hidden) closeFx(); });
 $("#gate-go").addEventListener("click", () => { void signIn(); });
 $("#gate").addEventListener("keydown", (e) => {
   if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeGate(); return; }
@@ -1862,7 +2336,7 @@ $("#q").addEventListener("input", (e) => { QUERY = e.target.value.trim().toLower
 document.addEventListener("keydown", (e) => {
   // Without the modifier guard, cmd+P and ctrl+P — print — were starting and stopping the engine.
   if (e.metaKey || e.ctrlKey || e.altKey) return;
-  if (!$("#gate").hidden) return;   // the dialog owns the keyboard while it is up
+  if (!$("#gate").hidden || !$("#fx").hidden) return;   // the dialog owns the keyboard while it is up
   if (e.target.closest("input, textarea, select, [contenteditable]")) { if (e.key === "Escape") e.target.blur(); return; }
   if (e.key === "p" && !$("#toggle").hidden) { e.preventDefault(); $("#toggle").click(); }
   if (e.key === "/") { e.preventDefault(); $("#q").focus(); }
@@ -1873,7 +2347,7 @@ document.addEventListener("keydown", (e) => {
    this reader. */
 function teardown() {
   if (SRC) { SRC.close(); SRC = null; }
-  for (const tr of rows) { tr._detach(); tr.remove(); }
+  for (const tr of rows) killRow(tr);
   rows.length = 0;
   seen = 0; passing = 0;
   $("#k-seen").textContent = "0";
@@ -1953,6 +2427,7 @@ function applyLang(lang) {
   renderPositions(POSITIONS);
   renderStats(STATS);
   paintWallet();
+  paintFX();
   redrawRows();
   showEmpty();
   if (TOUR_AT >= 0) paintStep();
@@ -1964,7 +2439,7 @@ function applyLang(lang) {
 function redrawRows() {
   const body = $("#feed");
   const events = rows.map((tr) => tr._e);
-  for (const tr of rows) { tr._detach(); tr.remove(); }
+  for (const tr of rows) killRow(tr);
   rows.length = 0;
   for (const e of events.reverse()) {
     const tr = launchRow(e);

@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { isAddress, type Address } from "viem";
 import { clearCookie, LoginThrottle, readCookie, sessionCookie, Sessions, verifyPassword } from "./auth.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -10,6 +11,7 @@ import { progress } from "../pons/curve.js";
 import { allPositions, openPositions, pnlPct } from "../trade/positions.js";
 import { EXPLORER, PONS } from "../chain/config.js";
 import { client } from "../chain/clients.js";
+import { holdersFor } from "./holders.js";
 import { logoFor } from "./logo.js";
 import { buyQuote } from "./quote.js";
 import { factoryAbi } from "../abi/pons.js";
@@ -471,6 +473,17 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
           res.end(l.body);
         },
         () => json(res, 404, { error: "no image" }),
+      );
+      return;
+    }
+
+    // Who holds it now, as opposed to who bought at launch. See holders.ts for why those differ.
+    if (method === "GET" && path === "/holders") {
+      const tok = url.searchParams.get("token") ?? "";
+      if (!isAddress(tok, { strict: false })) { json(res, 400, { error: "that is not a token address" }); return; }
+      void holdersFor(tok as Address).then(
+        (h) => (h ? json(res, 200, h) : json(res, 404, { error: "the factory has no record of that token" })),
+        () => json(res, 502, { error: "the chain would not answer just now" }),
       );
       return;
     }

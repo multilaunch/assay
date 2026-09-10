@@ -31,20 +31,25 @@ import { client } from "../chain/clients.js";
  */
 const MAX_BYTES = 2 * 1024 * 1024;
 const CACHE_BUDGET = 48 * 1024 * 1024;
-const TIMEOUT_MS = 5_000;
+/** Measured: the one gateway that reliably answers takes about 7 s to do it. Five was cutting it off. */
+const TIMEOUT_MS = 12_000;
 const TTL_MS = 30 * 60_000;
 
 /**
  * ipfs:// has no host of its own, so it needs one we choose rather than one the launcher does.
  *
- * Several, raced: the public gateways are free and behave like it. Measured against live launches,
- * pinata alone timed out often enough to leave real launches without a picture, and a CID that one
- * gateway is slow to serve another usually has already.
+ * Several, raced in parallel: the public gateways are free and behave like it. Probed one at a time
+ * on the same CID, cloudflare-ipfs.com was dead outright, ipfs.io and dweb.link answered 429, three
+ * more answered with a redirect, and the one that served the image took seven seconds. Trying them
+ * in turn meant waiting out every failure before reaching it; whichever answers first now wins and
+ * the rest are abandoned.
  */
 const IPFS_GATEWAYS = [
-  "https://ipfs.io/ipfs/",
   "https://gateway.pinata.cloud/ipfs/",
-  "https://cloudflare-ipfs.com/ipfs/",
+  "https://w3s.link/ipfs/",
+  "https://dweb.link/ipfs/",
+  "https://nftstorage.link/ipfs/",
+  "https://ipfs.io/ipfs/",
 ];
 
 /** Who we are. Some hosts refuse an unidentified fetch, and lying about being a browser is not the fix. */
@@ -102,13 +107,29 @@ async function hostIsPublic(host: string): Promise<boolean> {
   } catch { return false; }
 }
 
-async function fetchLogo(url: string): Promise<Logo | null> {
+/**
+ * One URL, following at most one redirect.
+ *
+ * `redirect: manual` is deliberate rather than lazy: a public host is free to bounce us at
+ * 127.0.0.1, and letting fetch follow that on its own would undo the address check. So the hop is
+ * taken by hand and the new host is checked exactly like the first — which also un-breaks the three
+ * gateways that answer every request with a 301.
+ */
+async function fetchLogo(url: string, signal: AbortSignal, hops = 1): Promise<Logo | null> {
   if (!(await hostIsPublic(new URL(url).host))) return null;
-  const stop = AbortSignal.timeout(TIMEOUT_MS);
-  // `redirect: manual` matters: a public host is free to bounce us at 127.0.0.1, and following
-  // that would undo the check above.
-  const res = await fetch(url, { redirect: "manual", signal: stop, headers: { accept: "image/*", "user-agent": UA } }).catch(() => null);
-  if (!res || !res.ok) return null;
+  const res = await fetch(url, { redirect: "manual", signal, headers: { accept: "image/*", "user-agent": UA } }).catch(() => null);
+  if (!res) return null;
+
+  if (res.status >= 300 && res.status < 400) {
+    const to = res.headers.get("location");
+    if (!to || hops <= 0) return null;
+    let next: string;
+    try { next = new URL(to, url).href; } catch { return null; }
+    const proto = new URL(next).protocol;
+    if (proto !== "https:" && proto !== "http:") return null;
+    return fetchLogo(next, signal, hops - 1);
+  }
+  if (!res.ok) return null;
 
   const type = (res.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
   if (!type.startsWith("image/") || type.includes("svg")) return null; // svg is a script container
@@ -118,6 +139,24 @@ async function fetchLogo(url: string): Promise<Logo | null> {
   const buf = Buffer.from(await res.arrayBuffer().catch(() => new ArrayBuffer(0)));
   if (buf.length === 0 || buf.length > MAX_BYTES) return null;
   return { body: buf, type };
+}
+
+/** All of them at once; the first real image wins and the others are dropped. */
+async function raceLogos(urls: string[]): Promise<Logo | null> {
+  if (urls.length === 0) return null;
+  const ctl = new AbortController();
+  const stop = AbortSignal.any([ctl.signal, AbortSignal.timeout(TIMEOUT_MS)]);
+  try {
+    return await new Promise<Logo | null>((resolve) => {
+      let left = urls.length;
+      for (const u of urls) {
+        void fetchLogo(u, stop).then(
+          (l) => { if (l) resolve(l); else if (--left === 0) resolve(null); },
+          () => { if (--left === 0) resolve(null); },
+        );
+      }
+    });
+  } finally { ctl.abort(); }
 }
 
 /**
@@ -146,12 +185,7 @@ export async function logoFor(token: string): Promise<Logo | null> {
   let logo: Logo | null = null;
   try {
     const info = await client.readContract({ address: token as Address, abi: tokenAbi, functionName: "getTokenInfo" });
-    const urls = resolveLogoUrl((info as readonly [Address, string, string, unknown])[1] ?? "");
-    // first one that answers with an image wins; a slow gateway should not cost the whole picture
-    for (const u of urls) {
-      logo = await fetchLogo(u);
-      if (logo) break;
-    }
+    logo = await raceLogos(resolveLogoUrl((info as readonly [Address, string, string, unknown])[1] ?? ""));
   } catch { /* a launch we cannot read has no picture, which is not an error worth surfacing */ }
 
   cache.set(key, { at: Date.now(), logo });
