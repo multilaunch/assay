@@ -10,6 +10,7 @@ import { progress } from "../pons/curve.js";
 import { allPositions, openPositions, pnlPct } from "../trade/positions.js";
 import { EXPLORER, PONS } from "../chain/config.js";
 import { client } from "../chain/clients.js";
+import { logoFor } from "./logo.js";
 import { buyQuote } from "./quote.js";
 import { factoryAbi } from "../abi/pons.js";
 import { MATURE_MS, lift, report, thinFor, wilsonLower } from "../track/accuracy.js";
@@ -458,6 +459,19 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
       if (!png) { json(res, 404, { error: "no preview image" }); return; }
       res.writeHead(200, { "content-type": "image/png", "content-length": png.length, "cache-control": "public, max-age=86400" });
       res.end(png);
+      return;
+    }
+
+    // The token's picture, fetched by us. See logo.ts for why the reader's browser must not.
+    if (method === "GET" && path === "/logo") {
+      void logoFor(url.searchParams.get("token") ?? "").then(
+        (l) => {
+          if (!l) { json(res, 404, { error: "no image" }); return; }
+          res.writeHead(200, { "content-type": l.type, "content-length": l.body.length, "cache-control": "public, max-age=1800" });
+          res.end(l.body);
+        },
+        () => json(res, 404, { error: "no image" }),
+      );
       return;
     }
 
