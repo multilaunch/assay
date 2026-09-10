@@ -11,6 +11,7 @@ import { progress } from "../pons/curve.js";
 import { allPositions, openPositions, pnlPct } from "../trade/positions.js";
 import { EXPLORER, PONS } from "../chain/config.js";
 import { client } from "../chain/clients.js";
+import { candlesFor } from "./candles.js";
 import { holdersFor } from "./holders.js";
 import { logoFor } from "./logo.js";
 import { buyQuote } from "./quote.js";
@@ -483,6 +484,18 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
       if (!isAddress(tok, { strict: false })) { json(res, 400, { error: "that is not a token address" }); return; }
       void holdersFor(tok as Address).then(
         (h) => (h ? json(res, 200, h) : json(res, 404, { error: "the factory has no record of that token" })),
+        () => json(res, 502, { error: "the chain would not answer just now" }),
+      );
+      return;
+    }
+
+    // Price over time, folded out of the curve's trade log. See candles.ts for what it cannot show.
+    if (method === "GET" && path === "/candles") {
+      const tok = url.searchParams.get("token") ?? "";
+      if (!isAddress(tok, { strict: false })) { json(res, 400, { error: "that is not a token address" }); return; }
+      const b = Number(url.searchParams.get("bucket") ?? "0");
+      void candlesFor(tok as Address, Number.isFinite(b) && b > 0 ? Math.min(3600, Math.round(b)) : undefined).then(
+        (c) => (c ? json(res, 200, c) : json(res, 404, { error: "the factory has no record of that token" })),
         () => json(res, 502, { error: "the chain would not answer just now" }),
       );
       return;
