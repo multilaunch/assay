@@ -97,6 +97,52 @@ services:
     networks:
       - assay
 
+  # ---- the local copy of the chain ---------------------------------------------------------------
+  # Follows the chain once and writes what it says into /data/index.sqlite, which the board opens
+  # read-only. Nothing depends on it: stop this container and the board goes back to reading logs
+  # from RPC on every request, slower and just as correct. It holds no key and reaches no wallet.
+  index:
+    build:
+      context: .
+      target: runtime
+    image: assay:prod
+    command: ["index", "run"]
+
+    env_file:
+      - path: ./deploy/env.prod
+        required: true
+        format: raw
+    environment:
+      NODE_ENV: production
+      ASSAY_DATA: /data
+
+    volumes:
+      - positions:/data
+
+    restart: unless-stopped
+    stop_grace_period: 30s   # it finishes the range it is on rather than leaving a torn one
+    init: true
+
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    logging: *logging
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+    container_name: assay-index
+    networks:
+      - assay
+
   # ---- TLS, certificates, and the only thing on a public port ------------------------------------
   caddy:
     image: caddy:2.10-alpine

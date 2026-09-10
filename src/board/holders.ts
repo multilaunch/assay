@@ -3,6 +3,7 @@ import { factoryAbi } from "../abi/pons.js";
 import { client } from "../chain/clients.js";
 import { PONS, ZERO } from "../chain/config.js";
 import { searchLaunchEvent } from "../pons/detect.js";
+import { launchOf } from "../index/read.js";
 
 /**
  * Who holds the token now, folded out of its own Transfer log.
@@ -84,10 +85,16 @@ export async function holdersFor(token: Address, top = 12): Promise<Holders | nu
   const rec = await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "getLaunchedToken", args: [token] }).catch(() => null);
   if (!rec || !rec.exists) return null;
 
-  // start at the launch: everything before it is somebody else's token
-  const found = await searchLaunchEvent(token).catch(() => null);
+  // Start at the launch: everything before it is somebody else's token. The block comes from the
+  // index when it holds this launch, and is searched for down the chain only when it does not.
+  const known = launchOf(token);
   const head = await client.getBlockNumber();
-  const from = found?.ev?.blockNumber ?? (head > 400_000n ? head - 400_000n : 0n);
+  let from: bigint;
+  if (known) from = BigInt(known.block);
+  else {
+    const found = await searchLaunchEvent(token).catch(() => null);
+    from = found?.ev?.blockNumber ?? (head > 400_000n ? head - 400_000n : 0n);
+  }
 
   const events: Transfer[] = [];
   let failedChunks = 0;

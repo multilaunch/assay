@@ -18,6 +18,7 @@ import { registerAccuracyCommands } from "./accuracy.js";
 import { registerFarmsCommand } from "./farms.js";
 import { registerRulesCommand } from "./rules.js";
 import { registerPasswordCommand } from "./password.js";
+import { registerIndexCommand } from "./indexer.js";
 
 const program = new Command();
 program.name("assay").description("Launch terminal for Robinhood Chain (pons v2). Local, open, non-custodial, dry run by default.").version("0.1.0");
@@ -213,5 +214,6 @@ registerAccuracyCommands(program);
 registerFarmsCommand(program);
 registerRulesCommand(program);
 registerPasswordCommand(program);
+registerIndexCommand(program);
 
 program.parseAsync(process.argv).catch((e: Error) => { log.error(e.message.split("\n")[0]); process.exitCode = 1; });

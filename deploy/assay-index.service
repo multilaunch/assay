@@ -1,0 +1,100 @@
+# The chain follower, alongside the board unit, for a box without Docker.
+#
+#   install -o root -g root -m 0644 deploy/assay-index.service /etc/systemd/system/assay-index.service
+#   systemctl daemon-reload
+#   systemctl enable --now assay-index
+#   journalctl -u assay-index -f
+#
+# It writes /var/lib/assay/index.sqlite, which the board opens read-only. Nothing depends on it:
+# stop this unit and the board reads its logs from RPC again, slower and just as correct. It needs
+# no key, so PRIVATE_KEY in the shared env file is unused here and could be split out.
+#
+# Assumes the layout deploy/bootstrap.sh creates:
+#   /opt/assay/app        the checkout, already built (npm ci --omit=dev && npm run build)
+#   /etc/assay/env.prod   0600 root:assay, holds PRIVATE_KEY
+#   /var/lib/assay        0750 assay:assay, holds positions.json
+#
+# SIGINT rather than SIGTERM on stop, below: the follower catches it, finishes the range it is
+# on and writes the cursor, so a restart never leaves a block half-read.
+
+[Unit]
+Description=assay index — the local copy of the launch log
+Documentation=file:/opt/assay/app/docs/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=assay
+Group=assay
+WorkingDirectory=/opt/assay/app
+
+EnvironmentFile=/etc/assay/env.prod
+Environment=NODE_ENV=production
+Environment=ASSAY_DATA=/var/lib/assay
+
+# Loopback only. Caddy runs on this host and reaches it over 127.0.0.1; nothing else can.
+ExecStart=/usr/bin/node /opt/assay/app/dist/cli/main.js index run
+
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=45s
+KillSignal=SIGINT
+
+# ---- logs ----------------------------------------------------------------------------------------
+# journald, so journalctl's own rotation applies (SystemMaxUse in journald.conf) and there is no
+# logfile to fill the disk.
+StandardOutput=journal
+StandardError=journal
+StandardInput=null
+SyslogIdentifier=assay-index
+
+# ---- hardening -------------------------------------------------------------------------------------
+# The process can hold a private key. Give it a filesystem it cannot write to, no capabilities,
+# and no way to gain any.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateMounts=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+# MemoryDenyWriteExecute is deliberately NOT set. V8 writes and then executes its own JIT pages;
+# turning it on makes node refuse to start. This is the one hardening knob that does not apply.
+
+# The only writable path. StateDirectory creates and chowns it on first start; ReadWritePaths is
+# the explicit statement of the same thing, and survives someone deleting StateDirectory.
+StateDirectory=assay
+StateDirectoryMode=0750
+ReadWritePaths=/var/lib/assay
+
+# ---- resources -------------------------------------------------------------------------------------
+MemoryMax=512M
+MemoryHigh=384M
+CPUQuota=100%
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

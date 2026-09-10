@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- The feed carries strings a stranger wrote on chain. Nothing here loads code from anywhere but this page. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
 <title>assay</title>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="assay">
@@ -424,16 +424,20 @@ tr.detail td{position:relative}
 .mini-flag.tap:hover{border-color:var(--hot); color:var(--ink)}
 
 /* ---- price on the curve ---------------------------------------------------
-   The curve's own trade log, folded into candles. Up and down are the two risk
-   colours the rest of the page already uses and there is no third; the volume
-   strip under the price is ink, not a hue. Most launches never fill a chart at
-   all, so the states where there is nothing to draw are written out rather than
-   drawn as an empty box. */
+   The curve's own trade log, folded into candles and drawn by TradingView's
+   Lightweight Charts, served from this origin and fetched only when a reader
+   actually opens one. Up and down are the two risk colours the rest of the page
+   already uses and there is no third: the volume below reuses them faded rather
+   than introducing a hue of its own. Most launches never fill a chart at all, so
+   the states where there is nothing to draw are written out rather than drawn as
+   an empty box. */
 .chart{margin-top:var(--s3); border-top:1px solid var(--line); padding-top:var(--s3)}
 .ch-hd{display:flex; gap:var(--s3); align-items:baseline; flex-wrap:wrap;
   font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-bottom:var(--s2)}
-/* A tap must scrub the readout without stealing the page's scroll from a thumb. */
-.chart canvas{display:block; width:100%; max-width:720px; height:168px; touch-action:manipulation}
+/* The chart sizes itself to this box. A tap must scrub the readout without stealing the page's
+   scroll from a thumb, and the focus ring has to be visible because the arrows work from here. */
+.ch-plot{width:100%; max-width:720px; height:250px; touch-action:pan-y}
+.ch-plot:focus-visible{outline:1px solid var(--hot); outline-offset:2px}
 .ch-msg{font-family:var(--mono); font-size:11.5px; line-height:1.6; color:var(--ink-3); max-width:74ch}
 .ch-out{margin-top:var(--s2); display:flex; gap:var(--s3); flex-wrap:wrap; min-height:1.6em;
   font-family:var(--mono); font-variant-numeric:tabular-nums slashed-zero; font-size:11px; color:var(--ink)}
@@ -442,7 +446,7 @@ tr.detail td{position:relative}
 .ch-notes{max-width:74ch}
 /* Same reason as the buy control above: the table is wider than a phone and scrolls sideways
    inside its pane, and the chart must be readable with the columns at rest. */
-@media(max-width:560px){.chart{max-width:300px} .chart canvas{height:140px}}
+@media(max-width:560px){.chart{max-width:300px} .ch-plot{height:200px}}
 
 /* ---- the filter panel ------------------------------------------------------
    Same card as the two above it, same hairlines, same spacing steps. It narrows
@@ -765,7 +769,9 @@ const I18N = {
     ch_fail:"could not read the price just now.",
     ch_thin:"barely traded — {n} prints. there is no chart in that yet.",
     ch_thin_none:"nothing has traded on the curve yet.",
-    ch_grad:"the dashed line is where it left the curve — everything right of it is its uniswap pool.",
+    ch_grad:"the marked candle is where it left the curve — everything right of it is its uniswap pool.",
+    ch_pool:"pool",
+    ch_nolib:"the chart could not be drawn. the numbers above it are unaffected.",
     ch_partial:"{n} log ranges were refused, so this picture is partial.",
     ch_truncated:"the trade log is longer than this reads; the early part is missing.",
     ch_o:"o", ch_h:"h", ch_l:"l", ch_c:"c", ch_vol:"vol",
@@ -967,7 +973,9 @@ const I18N = {
     ch_fail:"не удалось прочитать цену.",
     ch_thin:"почти не торговался — сделок на кривой: {n}. графику пока не из чего сложить.",
     ch_thin_none:"на кривой ещё не было ни одной сделки.",
-    ch_grad:"пунктир — место, где он ушёл с кривой. всё правее уже его пул uniswap.",
+    ch_grad:"помеченная свеча — место, где он ушёл с кривой. всё правее уже его пул uniswap.",
+    ch_pool:"пул",
+    ch_nolib:"график не удалось отрисовать. на числа выше это не влияет.",
     ch_partial:"диапазонов журнала не отдали: {n} — так что картина неполная.",
     ch_truncated:"журнал сделок длиннее, чем читается; начало не попало.",
     ch_o:"откр", ch_h:"макс", ch_l:"мин", ch_c:"закр", ch_vol:"объём",
@@ -1342,10 +1350,9 @@ async function loadHolders(box, token) {
 const CANDLES = new Map();   // token → the last payload that read, for an instant repaint on reopen
 const CHARTS = new Set();    // the charts on screen right now, so a language switch can redraw them
 const CH_EVERY = 20_000;
-const CH_GUT = 50;           // right-hand gutter, where the price labels live
-const CH_PADL = 1;
 
 const hhmm = (ms) => new Date(ms).toTimeString().slice(0, 5);
+const hhmmss = (ms) => new Date(ms).toTimeString().slice(0, 8);
 
 /* Prices here are around 1e-8 and two of them have to be comparable at a glance, so they are
    carried into a prefix rather than printed as a run of zeroes: 24.92n, 126.4n, 1.503µ. */
@@ -1372,117 +1379,162 @@ const fmtBucket = (s) => s < 60 ? s + t("u_s") : s < 3600 ? Math.round(s / 60) +
 
 const chDrawable = (d) => !!d && d.trades >= 3 && d.candles.length > 0;
 
-/* Same conventions as the ribbon's sparkline: device pixels off devicePixelRatio, colours read
-   off the custom properties rather than hard-coded, and the whole thing redrawn on a resize. */
-function chDraw(c) {
-  const cv = c.cv, cx = c.cx, d = c.data;
-  if (!chDrawable(d)) return;
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = cv.clientWidth, h = cv.clientHeight;
-  if (!w || !h) return;
-  const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
-  if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
-  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  cx.clearRect(0, 0, w, h);
+/* Fetched the first time somebody opens a chart, and never before: most readers watch the feed and
+   close the tab, and they should not pay 62 KB for a panel they did not open. From our own origin —
+   see vendor/README.md for why a CDN is not an option here. */
+let chLibP = null;
+function chLib() {
+  if (chLibP) return chLibP;
+  chLibP = new Promise((ok, no) => {
+    const el = document.createElement("script");
+    el.src = "/vendor/lightweight-charts.js";
+    el.async = true;
+    el.onload = () => (window.LightweightCharts ? ok(window.LightweightCharts) : no(new Error("loaded but empty")));
+    el.onerror = () => no(new Error("could not load"));
+    document.head.append(el);
+  });
+  chLibP.catch(() => { chLibP = null; });   // a failed load must not poison every later attempt
+  return chLibP;
+}
 
+/* This page's palette is written in oklch, and the chart library parses hex and rgb and nothing
+   else — it throws on the rest. Rather than keep a second palette in a syntax it likes, each colour
+   is painted into a one-pixel canvas and read back: whatever the browser can display, this can
+   convert, and the two definitions of "up" stay one. */
+let chPix = null;
+function toRgb(col, a) {
+  if (!chPix) chPix = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  try {
+    chPix.clearRect(0, 0, 1, 1);
+    chPix.fillStyle = "#000";
+    chPix.fillStyle = col;
+    chPix.fillRect(0, 0, 1, 1);
+    const d = chPix.getImageData(0, 0, 1, 1).data;
+    return `rgba(${d[0]},${d[1]},${d[2]},${(a == null ? d[3] / 255 : a * (d[3] / 255)).toFixed(3)})`;
+  } catch { return col; }
+}
+
+/* The chart takes its colours from the page rather than carrying its own, so a change to the
+   palette moves it too. */
+function chTheme() {
   const css = getComputedStyle(document.documentElement);
-  const line = css.getPropertyValue("--line").trim() || "rgba(255,255,255,.09)";
-  const hard = css.getPropertyValue("--line-hard").trim() || "rgba(255,255,255,.17)";
-  const dim = css.getPropertyValue("--n-500").trim() || "#8a8f96";
-  const up = css.getPropertyValue("--ok").trim() || "#6fce97";
-  const dn = css.getPropertyValue("--crit").trim() || "#f0645a";
+  const v = (n, d) => toRgb(css.getPropertyValue(n).trim() || d);
+  return {
+    line: v("--line", "rgba(255,255,255,.09)"),
+    dim: v("--n-500", "#8a8f96"),
+    ink: v("--ink", "#e8eaed"),
+    bg: v("--bg-1", "#101214"),
+    up: v("--ok", "#6fce97"),
+    dn: v("--crit", "#f0645a"),
+    mono: css.getPropertyValue("--mono").trim() || "ui-monospace, monospace",
+  };
+}
 
-  const cs = d.candles;
-  const axisH = 14, volH = 24, gap = 8, padT = 8;
-  const left = CH_PADL, right = Math.max(left + 10, w - CH_GUT);
-  const plotW = right - left;
-  const priceT = padT, priceH = Math.max(24, h - padT - axisH - volH - gap);
-  const volT = priceT + priceH + gap;
+/* Volume reuses the two price colours faded rather than introducing a third hue. */
+const fade = (col, a) => toRgb(col, a);
 
-  let lo = Infinity, hi = -Infinity, vmax = 0;
-  for (const k of cs) { if (k.l < lo) lo = k.l; if (k.h > hi) hi = k.h; if (k.vol > vmax) vmax = k.vol; }
-  // a launch that printed one price all day still needs a band to sit in
-  if (!(hi > lo)) { const mid = hi || 1; hi = mid * 1.005; lo = mid * 0.995; }
-  const pad = (hi - lo) * 0.08;
-  lo -= pad; hi += pad;
-  const y = (p) => priceT + priceH - ((p - lo) / (hi - lo)) * priceH;
+/* Enough decimals for the scale to step through the band, and no more: at 1e-8 a fixed precision
+   either prints eight zeroes or collapses every tick onto the same number. */
+function chMinMove(cs) {
+  let lo = Infinity, hi = -Infinity;
+  for (const k of cs) { if (k.l < lo) lo = k.l; if (k.h > hi) hi = k.h; }
+  const span = hi > lo ? hi - lo : Math.abs(hi) || 1;
+  return Math.pow(10, Math.floor(Math.log10(span / 120)));
+}
 
-  const step = plotW / cs.length;
-  const bw = Math.max(1, Math.min(18, step * 0.62));
-  const at = (i) => left + step * (i + 0.5);
+function chMount(c, LWC) {
+  const th = chTheme();
+  const chart = LWC.createChart(c.plot, {
+    autoSize: true,
+    layout: {
+      background: { color: "transparent" }, textColor: th.dim,
+      fontFamily: th.mono, fontSize: 10,
+      // TradingView's own mark. Apache-2.0 does not demand it; they ask, and it is their chart.
+      attributionLogo: true,
+    },
+    grid: { vertLines: { color: th.line }, horzLines: { color: th.line } },
+    rightPriceScale: { borderColor: th.line, scaleMargins: { top: 0.08, bottom: 0.08 }, entireTextOnly: true },
+    timeScale: {
+      borderColor: th.line, timeVisible: true, secondsVisible: false,
+      rightOffset: 2, barSpacing: 8, minBarSpacing: 0.5,
+      tickMarkFormatter: (ts) => hhmm(ts * 1000),
+    },
+    crosshair: {
+      mode: LWC.CrosshairMode.Normal,
+      vertLine: { color: th.dim, width: 1, style: LWC.LineStyle.Dotted, labelBackgroundColor: th.bg },
+      horzLine: { color: th.dim, width: 1, style: LWC.LineStyle.Dotted, labelBackgroundColor: th.bg },
+    },
+    localization: { timeFormatter: (ts) => hhmmss(ts * 1000), priceFormatter: fmtPrice },
+    handleScale: { axisPressedMouseMove: { time: true, price: false } },
+  });
 
-  cx.font = "10px " + (css.getPropertyValue("--mono").trim() || "monospace");
-  cx.textBaseline = "middle";
-  cx.lineWidth = 1;
+  const price = chart.addSeries(LWC.CandlestickSeries, {
+    upColor: th.up, downColor: th.dn, borderVisible: false,
+    wickUpColor: th.up, wickDownColor: th.dn,
+    priceFormat: { type: "custom", formatter: fmtPrice, minMove: 1e-12 },
+  });
+  /* Volume goes in a pane of its own rather than under the candles on the same scale. Overlaid, the
+     room reserved for it sits below the price range and the axis keeps counting into it — the chart
+     came out labelling −20n, and there has never been a token at a negative price. Its scale is an
+     overlay with no axis of its own: the bar heights are the whole message and a raw 1e18 tick down
+     the side would only be noise. */
+  const vol = chart.addSeries(LWC.HistogramSeries, {
+    priceScaleId: "vol", priceLineVisible: false, lastValueVisible: false,
+  }, 1);
+  chart.priceScale("vol", 1).applyOptions({ scaleMargins: { top: 0.1, bottom: 0 } });
+  const panes = chart.panes();
+  if (panes[1]) panes[1].setHeight(54);
 
-  // three price levels: the bottom of the band, the middle, the top
-  for (const f of [0, 0.5, 1]) {
-    const p = lo + (hi - lo) * f, yy = y(p);
-    cx.strokeStyle = line;
-    cx.beginPath(); cx.moveTo(left, Math.round(yy) + 0.5); cx.lineTo(right, Math.round(yy) + 0.5); cx.stroke();
-    cx.fillStyle = dim; cx.textAlign = "left";
-    cx.fillText(fmtPrice(p), right + 6, yy);
-  }
+  /* The readout follows the crosshair, and falls back to the newest candle when the pointer is
+     away — a blank line under a chart reads as a chart that is broken. */
+  chart.subscribeCrosshairMove((param) => {
+    const ts = param && param.time;
+    c.hover = typeof ts === "number" ? ts : null;
+    chOut(c);
+  });
 
-  // the volume strip, in ink. It carries shape, not a scale of its own.
-  cx.fillStyle = dim;
-  for (let i = 0; i < cs.length; i++) {
-    const bh = vmax > 0 ? Math.max(1, (cs[i].vol / vmax) * volH) : 1;
-    cx.fillRect(at(i) - bw / 2, volT + volH - bh, bw, bh);
-  }
-  cx.strokeStyle = line;
-  cx.beginPath(); cx.moveTo(left, volT + volH + 0.5); cx.lineTo(right, volT + volH + 0.5); cx.stroke();
+  c.chart = chart; c.price = price; c.vol = vol; c.markers = null;
+}
 
-  // whichever candle the readout is talking about
-  if (c.sel >= 0 && c.sel < cs.length) {
-    const x = Math.round(at(c.sel)) + 0.5;
-    cx.strokeStyle = hard;
-    cx.beginPath(); cx.moveTo(x, priceT); cx.lineTo(x, volT + volH); cx.stroke();
-  }
+/* Everything that depends on the data: called on the first paint and on every refresh, never
+   rebuilding the chart itself so the reader's zoom and pan survive a 20-second reload. */
+function chApply(c) {
+  const d = c.data, cs = d.candles, th = chTheme();
+  const sec = (ms) => Math.floor(ms / 1000);
 
-  // Where the curve stopped and the pool took over. Both halves are the same units — checked at a
-  // live graduation, the join stepped 0.3% — but they are different venues and the reader should
-  // know which one a candle came from.
-  if (d.poolFrom != null) {
-    const first = cs.findIndex((k) => k.t >= d.poolFrom);
-    if (first > 0) {
-      const x = Math.round((at(first) + at(first - 1)) / 2) + 0.5;
-      cx.save();
-      cx.strokeStyle = dim;
-      cx.setLineDash([2, 3]);
-      cx.beginPath(); cx.moveTo(x, priceT); cx.lineTo(x, volT + volH); cx.stroke();
-      cx.restore();
-    }
-  }
+  c.price.applyOptions({ priceFormat: { type: "custom", formatter: fmtPrice, minMove: chMinMove(cs) } });
+  c.price.setData(cs.map((k) => ({ time: sec(k.t), open: k.o, high: k.h, low: k.l, close: k.c })));
+  c.vol.setData(cs.map((k) => ({ time: sec(k.t), value: k.vol, color: fade(k.c >= k.o ? th.up : th.dn, 0.28) })));
 
-  for (let i = 0; i < cs.length; i++) {
-    const k = cs[i], col = k.c >= k.o ? up : dn, x = at(i);
-    cx.strokeStyle = col; cx.fillStyle = col;
-    cx.beginPath(); cx.moveTo(Math.round(x) + 0.5, y(k.h)); cx.lineTo(Math.round(x) + 0.5, y(k.l)); cx.stroke();
-    const top = Math.min(y(k.o), y(k.c));
-    cx.fillRect(Math.round(x - bw / 2), Math.round(top), Math.max(1, Math.round(bw)), Math.max(1, Math.round(Math.abs(y(k.c) - y(k.o)))));
-  }
+  /* Where the curve stopped and the pool took over. Both halves are the same units — checked at a
+     live graduation, the join stepped 0.3% — but they are different venues, and a reader deciding
+     on the shape of the last hour should know which of the two drew it. */
+  const seam = d.poolFrom == null ? -1 : cs.findIndex((k) => k.t >= d.poolFrom);
+  const marks = seam > 0 ? [{ time: sec(cs[seam].t), position: "aboveBar", color: th.dim, shape: "arrowDown", text: t("ch_pool") }] : [];
+  if (c.markers) c.markers.setMarkers(marks);
+  else if (marks.length) c.markers = window.LightweightCharts.createSeriesMarkers(c.price, marks);
 
-  // the clock, at both ends and in the middle when there is room for a third
-  cx.fillStyle = dim;
-  const ay = h - axisH / 2, span = d.bucketSec * 1000;
-  cx.textAlign = "left"; cx.fillText(hhmm(cs[0].t), left, ay);
-  if (cs.length > 1) {
-    cx.textAlign = "right"; cx.fillText(hhmm(cs[cs.length - 1].t + span), right, ay);
-    if (plotW > 320) {
-      const mid = cs[Math.floor(cs.length / 2)];
-      cx.textAlign = "center"; cx.fillText(hhmm(mid.t), left + plotW / 2, ay);
-    }
+  /* Not `fitContent()`: it settles on the next frame, and the frame it settles from is the one
+     where the panel was still opening at no width — which leaves every candle stacked in a
+     centimetre at the right edge. The range is stated instead, once, so a reader who has zoomed in
+     keeps their zoom across the twenty-second refresh. */
+  if (!c.fitted) {
+    c.fitted = true;
+    requestAnimationFrame(() => {
+      if (c.dead || !c.chart) return;
+      c.chart.timeScale().setVisibleLogicalRange({ from: -0.5, to: cs.length + 1.5 });
+    });
   }
 }
 
-/* One candle spelled out. Whatever the pointer is over, or the arrow keys landed on, or — with
-   neither — the newest one, because a blank line under a chart reads as a chart that is broken. */
+/* One candle spelled out: whatever the crosshair is over, or the arrow keys landed on, or the
+   newest one. */
 function chOut(c) {
   const el = c.box.querySelector(".ch-out");
   const cs = chDrawable(c.data) ? c.data.candles : [];
   if (!cs.length) { el.hidden = true; el.textContent = ""; return; }
-  const k = cs[c.sel >= 0 && c.sel < cs.length ? c.sel : cs.length - 1];
+  const at = c.hover != null ? cs.find((k) => Math.floor(k.t / 1000) === c.hover) : null;
+  const k = at || cs[c.sel >= 0 && c.sel < cs.length ? c.sel : cs.length - 1];
   const bit = (key, v) => `<span><span class="k">${esc(key)}</span> ${esc(v)}</span>`;
   el.hidden = false;
   el.innerHTML =
@@ -1501,13 +1553,29 @@ function chPaint(c) {
     + (drawable ? `<span>${esc(t("ch_bucket", { b: fmtBucket(d.bucketSec) }))}</span>` : "");
 
   let msg = "";
-  if (!d) msg = c.state === "fail" ? t("ch_fail") : t("ch_load");
+  if (c.state === "nolib") msg = t("ch_nolib");
+  else if (!d) msg = c.state === "fail" ? t("ch_fail") : t("ch_load");
   else if (!drawable) msg = d.trades ? t("ch_thin", { n: d.trades }) : t("ch_thin_none");
   const m = c.box.querySelector(".ch-msg");
   m.hidden = !msg; m.textContent = msg;
 
-  c.cv.hidden = !drawable;
-  if (drawable) { c.cv.setAttribute("aria-label", t("ch_aria")); chDraw(c); }
+  c.plot.hidden = !drawable;
+  if (drawable) {
+    c.plot.setAttribute("aria-label", t("ch_aria"));
+    chLib()
+      .then((LWC) => {
+        if (c.dead || !chDrawable(c.data)) return;
+        if (!c.chart) chMount(c, LWC);
+        chApply(c);
+      })
+      .catch((err) => {
+        // covers both halves: the script not arriving, and it arriving and refusing the data
+        if (c.dead || c.state === "nolib") return;
+        console.error("chart", err);
+        c.state = "nolib"; c.plot.hidden = true;
+        chPaint(c);
+      });
+  }
   chOut(c);
 
   const said = [];
@@ -1517,10 +1585,16 @@ function chPaint(c) {
   c.box.querySelector(".ch-notes").innerHTML = said.map(([cls, s]) => `<div class="${cls}">${esc(s)}</div>`).join("");
 }
 
-function chSel(c, i) {
-  if (c.sel === i) return;
-  c.sel = i;
-  chDraw(c); chOut(c);
+/* Arrow keys step the crosshair. The chart is a canvas and a canvas has no tab stops of its own,
+   so without this the whole panel is unreachable from a keyboard. */
+function chStep(c, dir) {
+  if (!chDrawable(c.data) || !c.chart) return;
+  const cs = c.data.candles;
+  const from = c.hover != null ? cs.findIndex((k) => Math.floor(k.t / 1000) === c.hover) : (c.sel < 0 ? cs.length - 1 : c.sel);
+  const i = Math.max(0, Math.min(cs.length - 1, (from < 0 ? cs.length - 1 : from) + dir));
+  c.sel = i; c.hover = null;
+  c.chart.setCrosshairPosition(cs[i].c, Math.floor(cs[i].t / 1000), c.price);
+  chOut(c);
 }
 
 async function chLoad(c) {
@@ -1545,53 +1619,37 @@ function chartBox(e) {
   box.innerHTML = `
     <div class="ch-hd"></div>
     <div class="ch-msg"></div>
-    <canvas tabindex="0" role="img"></canvas>
+    <div class="ch-plot" tabindex="0" role="img"></div>
     <div class="ch-out" role="status"></div>
     <div class="ch-notes"></div>`;
 
-  const cv = box.querySelector("canvas");
   const c = {
-    box, cv, cx: cv.getContext("2d"),
+    box, plot: box.querySelector(".ch-plot"),
     token: e.token, pair: e.pair || "",
     data: CANDLES.get(e.token) || null,
     state: CANDLES.has(e.token) ? "ok" : "load",
-    sel: -1, dead: false, timer: null, ro: null,
+    sel: -1, hover: null, dead: false, timer: null,
+    chart: null, price: null, vol: null, markers: null, fitted: false,
   };
 
-  // which candle a given x is over. Same geometry as the draw, read off the live box.
-  const idxAt = (clientX) => {
-    if (!chDrawable(c.data)) return -1;
-    const r = cv.getBoundingClientRect();
-    const plotW = Math.max(10, r.width - CH_GUT - CH_PADL);
-    const i = Math.floor((clientX - r.left - CH_PADL) / (plotW / c.data.candles.length));
-    return Math.max(0, Math.min(c.data.candles.length - 1, i));
-  };
-
-  cv.addEventListener("pointermove", (ev) => { if (ev.pointerType === "mouse") chSel(c, idxAt(ev.clientX)); });
-  cv.addEventListener("pointerleave", (ev) => { if (ev.pointerType === "mouse") chSel(c, -1); });
-  // a tap is the touch reader's hover, and it takes the focus so the arrows work from there
-  cv.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); cv.focus(); chSel(c, idxAt(ev.clientX)); });
-  cv.addEventListener("keydown", (ev) => {
+  c.plot.addEventListener("keydown", (ev) => {
     if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
-    if (!chDrawable(c.data)) return;
     ev.preventDefault(); ev.stopPropagation();
-    const n = c.data.candles.length, from = c.sel < 0 ? n - 1 : c.sel;
-    chSel(c, Math.max(0, Math.min(n - 1, from + (ev.key === "ArrowRight" ? 1 : -1))));
+    chStep(c, ev.key === "ArrowRight" ? 1 : -1);
   });
+  // the row underneath opens and closes on a click; the chart's own drags are not that
+  c.plot.addEventListener("pointerdown", (ev) => ev.stopPropagation());
 
-  // The canvas is inside a panel that opens, closes and reflows under a table; a window resize
-  // is not the only thing that changes its width.
-  c.ro = new ResizeObserver(() => chDraw(c));
-  c.ro.observe(cv);
   c.timer = setInterval(() => void chLoad(c), CH_EVERY);
 
   // Nothing here may outlive the row: the panel is removed on close, on filter and on a language
-  // switch, and each of those goes through the detail row's own kill.
+  // switch, and each of those goes through the detail row's own kill. The chart holds a
+  // ResizeObserver and canvases of its own, so it has to be told.
   c.kill = () => {
     if (c.dead) return;
     c.dead = true;
     clearInterval(c.timer); c.timer = null;
-    c.ro.disconnect(); c.ro = null;
+    if (c.chart) { c.chart.remove(); c.chart = null; }
     CHARTS.delete(c);
   };
 

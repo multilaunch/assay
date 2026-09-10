@@ -120,6 +120,23 @@ function ogImage(): Buffer | null {
   return (ogCache = null);
 }
 
+/**
+ * The chart library, served by us rather than by a CDN.
+ *
+ * Same reason the token images are proxied: a script tag pointing at someone else's host tells that
+ * host the address of everyone reading the board, seconds before they decide whether to buy. It is
+ * read once and held, like the preview image; 193 KB is cheap to keep and expensive to re-read.
+ */
+let chartCache: Buffer | null | undefined;
+function chartLib(): Buffer | null {
+  if (chartCache !== undefined) return chartCache;
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const p of [join(here, "vendor", "lightweight-charts.js"), join(here, "..", "..", "src", "board", "vendor", "lightweight-charts.js")]) {
+    try { return (chartCache = readFileSync(p)); } catch { /* try the next one */ }
+  }
+  return (chartCache = null);
+}
+
 /** Only these rules can be changed from the page, and only inside these bounds. */
 const EDITABLE = {
   minScore: { min: 0, max: 100 },
@@ -472,6 +489,16 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
       if (!png) { json(res, 404, { error: "no preview image" }); return; }
       res.writeHead(200, { "content-type": "image/png", "content-length": png.length, "cache-control": "public, max-age=86400" });
       res.end(png);
+      return;
+    }
+
+    // Asked for only when a reader opens their first chart, so the page itself stays small for
+    // everyone who only ever watches the feed. Immutable: the version is part of the deployment.
+    if (method === "GET" && path === "/vendor/lightweight-charts.js") {
+      const js = chartLib();
+      if (!js) { json(res, 404, { error: "chart library not installed" }); return; }
+      res.writeHead(200, { "content-type": "application/javascript; charset=utf-8", "content-length": js.length, "cache-control": "public, max-age=31536000, immutable" });
+      res.end(js);
       return;
     }
 

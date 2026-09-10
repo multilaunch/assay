@@ -7,6 +7,9 @@ import { PONS, UNI } from "../chain/config.js";
 import { searchLaunchEvent } from "../pons/detect.js";
 import { pairInfo } from "../pons/enrich.js";
 import { poolId, poolKeyFor } from "../trade/v4.js";
+import { coverage } from "../index/db.js";
+import { launchOf, pointsFor } from "../index/read.js";
+import { curvePoint } from "../index/ingest.js";
 
 /**
  * Price over time, folded out of the curve's own trade log.
@@ -47,6 +50,8 @@ export function priceFromSqrt(sqrtPriceX96: bigint, tokenIsCurrency1: boolean, t
 }
 
 const CHUNK = 20_000n;
+/** Blocks at the head the index does not answer for: about three minutes. */
+const LIVE_TAIL = 2_000;
 const MAX_LOGS = 30_000;
 const TTL_MS = 20_000;
 /** Aim for about this many candles, whatever the launch's age. */
@@ -123,31 +128,62 @@ export async function candlesFor(token: Address, bucketSec?: number): Promise<Ca
   const rec = await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "getLaunchedToken", args: [token] }).catch(() => null);
   if (!rec || !rec.exists) return null;
 
-  const found = await searchLaunchEvent(token).catch(() => null);
+  /**
+   * Where the launch happened. `searchLaunchEvent` finds it by walking backwards through the chain
+   * in hundred-thousand-block steps until the log turns up, which for a launch half a day old is
+   * several getLogs before the chart has drawn anything. The index wrote that block down the first
+   * time it saw the launch, so when it has the token this costs nothing.
+   */
+  const known = launchOf(token);
   const head = await client.getBlockNumber();
-  const from = found?.ev?.blockNumber ?? (head > 400_000n ? head - 400_000n : 0n);
+  let from: bigint;
+  if (known) from = BigInt(known.block);
+  else {
+    const found = await searchLaunchEvent(token).catch(() => null);
+    from = found?.ev?.blockNumber ?? (head > 400_000n ? head - 400_000n : 0n);
+  }
   const clock = await blockClock(head);
 
   const points: Point[] = [];
   let failedChunks = 0;
   let truncated = false;
-  for (let lo = from; lo <= head; lo += CHUNK) {
+
+  /**
+   * Whatever the index already holds, taken from disk; the rest from the chain.
+   *
+   * Asking whether the index "covers the chart" is the wrong question — its cursor sits a few
+   * blocks behind a head that moves ten times a second, so the answer would be no forever. It owns
+   * everything up to its cursor and the live tail is read as before, which leaves no gap and, for a
+   * launch that is hours old, replaces almost every request with a query.
+   */
+  let liveFrom = from;
+  const { from: idxFrom, cursor } = coverage();
+  if (idxFrom !== null && cursor !== null && Number(from) >= idxFrom) {
+    // the last stretch stays live. The index dates a block by interpolating between seals sampled a
+    // thousand apart, good to about a second, while `blockClock` is anchored two hundred blocks off
+    // the head and is better than that right there — which is exactly where a minute-old launch is
+    // drawn in one-second candles. Older launches use buckets of thirty seconds and up, where a
+    // second does not show.
+    const upTo = Math.min(cursor, Number(head) - LIVE_TAIL);
+    if (upTo > Number(from)) {
+      const stored = pointsFor(rec.curve, Number(from), upTo);
+      if (stored) {
+        for (const pt of stored) points.push({ t: Math.round(pt.t), p: pt.p, vol: pt.vol });
+        liveFrom = BigInt(upTo) + 1n;
+      }
+    }
+  }
+
+  for (let lo = liveFrom; lo <= head; lo += CHUNK) {
     const hi = lo + CHUNK - 1n > head ? head : lo + CHUNK - 1n;
     let logs;
     try { logs = await client.getLogs({ address: rec.curve, events: [BUY, SELL], fromBlock: lo, toBlock: hi }); }
     catch { failedChunks++; continue; }
     for (const l of parseEventLogs({ abi: curveAbi, logs })) {
       if (l.blockNumber === null) continue;
-      const t = Math.round(clock.at(l.blockNumber));
-      if (l.eventName === "CurveBuy") {
-        const net = l.args.quoteIn - l.args.fee - l.args.tax;
-        if (l.args.tokensOut === 0n || net <= 0n) continue;
-        points.push({ t, p: Number(net) / Number(l.args.tokensOut), vol: Number(net) });
-      } else if (l.eventName === "CurveSell") {
-        if (l.args.tokensIn === 0n) continue;
-        const gross = l.args.quoteOut + l.args.fee + l.args.tax;
-        points.push({ t, p: Number(gross) / Number(l.args.tokensIn), vol: Number(gross) });
-      }
+      const pt = curvePoint(l.eventName, l.args as Record<string, unknown>);
+      if (!pt) continue;
+      points.push({ t: Math.round(clock.at(l.blockNumber)), p: pt.p, vol: pt.vol });
     }
     if (points.length > MAX_LOGS) { truncated = true; break; }
   }

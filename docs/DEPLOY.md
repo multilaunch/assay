@@ -141,12 +141,13 @@ cd /opt/assay/app
 npm ci && npm run typecheck && npm test && npm run build && npm prune --omit=dev
 
 install -o root -g root -m 0644 deploy/assay.service /etc/systemd/system/assay.service
+install -o root -g root -m 0644 deploy/assay-index.service /etc/systemd/system/assay-index.service
 install -o root -g root -m 0644 deploy/Caddyfile /etc/caddy/Caddyfile
 mkdir -p /etc/systemd/system/caddy.service.d
 printf '[Service]\nEnvironmentFile=/etc/assay/caddy.env\n' > /etc/systemd/system/caddy.service.d/10-assay.conf
 
 systemctl daemon-reload
-systemctl enable --now assay
+systemctl enable --now assay assay-index
 systemctl restart caddy
 ```
 
@@ -158,6 +159,29 @@ the only writable path, `PrivateTmp`, an empty capability bounding set, `SystemC
 `Restart=on-failure`, and journald for logs. One knob is deliberately **not** set:
 `MemoryDenyWriteExecute`, because V8 writes and then executes its own JIT pages and node will not
 start with it on.
+
+---
+
+## The index
+
+`assay-index` (the `index` container, or the `assay-index` unit) follows the chain and writes
+`index.sqlite` next to `positions.json` in the same data directory. The board opens it read-only.
+
+It is a cache of public data and nothing depends on it. Stop it, delete the file, mount the volume
+somewhere else: the board reads its logs from RPC again, slower and just as correct. That is
+deliberate — the moment a derived copy becomes load-bearing it can be wrong in a way nobody
+notices, and the numbers on this page are the whole product.
+
+```sh
+docker compose -f compose.prod.yaml exec index assay index stats   # what it holds
+docker compose -f compose.prod.yaml stop index                     # the board keeps working
+```
+
+Size to expect: about **45 MB per 400 000 blocks**, which is roughly half a day of this chain, so
+budget a few gigabytes a year and prune by deleting the file when it stops being worth its disk.
+Holders are not in it — a chain-wide transfer log is seventeen events a block, about seven million
+rows for that same window, which is not worth half a gigabyte to speed up a panel that is opened
+for a handful of tokens.
 
 ---
 

@@ -75,13 +75,21 @@ one.
 | `farms` | who is printing the same token from many wallets right now |
 | `accuracy` | what the score has been worth, from your own journal |
 | `rules` | sweeps the journal for rules that survive launches they were not fitted to |
+| `index run` · `index stats` · `index reset` | keeps a local copy of the launch log so the same ranges are not read twice |
 | `buy` · `sell` · `claim` · `positions` · `wallet` | the trading side; each needs `--live` and a key |
 
 ```sh
 npm run hunt -- --fire-only --min-score 70
 npx tsx src/cli/main.ts accuracy --backfill --limit 2000
 npx tsx src/cli/main.ts rules --label peak2x
+npx tsx src/cli/main.ts index run          # catches up, then follows
 ```
+
+`index` is optional and nothing depends on it. It reads the chain once into a SQLite file — no
+service, no dependency, delete it and it rebuilds — and every reader falls back to RPC for
+anything it does not hold. Measured on the board's own window: a chart that took ten to twelve
+seconds takes two to four, because opening one stopped meaning twenty `getLogs` for ranges that
+had already been fetched for something else.
 
 ## Going live
 
