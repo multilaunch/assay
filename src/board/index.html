@@ -784,6 +784,23 @@ const I18N = {
     ch_grad:"the marked candle is where it left the curve — everything right of it is its uniswap pool.",
     ch_pool:"pool",
     ch_auto:"auto", ch_tf:"candle size",
+    /* Refusals from the server. It answers with a code as well as a sentence; the sentence is
+       English because that is what a curl of the route should print, and these are what the page
+       says instead. A code with no entry here falls back to the server's own words, which is worse
+       than a translation and much better than nothing. */
+    e_bad_password:"wrong password", e_need_signin:"sign in first",
+    e_read_only:"this board is read only", e_rule_locked:"that rule cannot be changed from here",
+    e_not_a_number:"not a number", e_bad_token:"that is not a token address",
+    e_no_token:"the factory has no record of that token", e_chain_silent:"the chain would not answer just now",
+    e_no_fingerprint:"which fingerprint?", e_refused:"the board refused that request",
+    e_throttled:"too many attempts — wait {wait} s", e_no_wallet:"connect a wallet first",
+    e_amount_nan:"the amount has to be a whole number of wei",
+    e_amount_small:"that amount is smaller than the gas to spend it",
+    e_amount_big:"the page will not quote more than 1 ETH at a time",
+    e_not_eth_pair:"this launch is not paired with ETH — buy it from the terminal",
+    e_curve_unread:"could not read the curve just now; try again",
+    e_graduated:"this launch has left the curve; it trades in its uniswap pool now",
+    e_zero_out:"the curve gives zero tokens for that amount",
     ch_nolib:"the chart could not be drawn. the numbers above it are unaffected.",
     ch_partial:"{n} log ranges were refused, so this picture is partial.",
     ch_truncated:"the trade log is longer than this reads; the early part is missing.",
@@ -989,6 +1006,19 @@ const I18N = {
     ch_grad:"помеченная свеча — место, где он ушёл с кривой. всё правее уже его пул uniswap.",
     ch_pool:"пул",
     ch_auto:"авто", ch_tf:"размер свечи",
+    e_bad_password:"неверный пароль", e_need_signin:"сначала войдите",
+    e_read_only:"доска только для чтения", e_rule_locked:"это правило отсюда не меняется",
+    e_not_a_number:"это не число", e_bad_token:"это не адрес токена",
+    e_no_token:"фабрика не знает такого токена", e_chain_silent:"чейн сейчас не отвечает",
+    e_no_fingerprint:"какой отпечаток?", e_refused:"доска отклонила запрос",
+    e_throttled:"слишком много попыток — подождите {wait} с", e_no_wallet:"сначала подключите кошелёк",
+    e_amount_nan:"сумма должна быть целым числом wei",
+    e_amount_small:"эта сумма меньше, чем газ за неё",
+    e_amount_big:"страница не считает больше 1 ETH за раз",
+    e_not_eth_pair:"этот запуск не в паре с ETH — покупайте его из терминала",
+    e_curve_unread:"не удалось прочитать кривую, попробуйте ещё раз",
+    e_graduated:"этот запуск ушёл с кривой — теперь он торгуется в своём пуле uniswap",
+    e_zero_out:"на эту сумму кривая даёт ноль токенов",
     ch_nolib:"график не удалось отрисовать. на числа выше это не влияет.",
     ch_partial:"диапазонов журнала не отдали: {n} — так что картина неполная.",
     ch_truncated:"журнал сделок длиннее, чем читается; начало не попало.",
@@ -1390,6 +1420,16 @@ function fmtVol(v) {
 }
 
 const fmtBucket = (s) => s < 60 ? s + t("u_s") : s < 3600 ? Math.round(s / 60) + t("u_m") : Math.round(s / 3600) + t("u_h");
+
+/* What the server refused, in the reader's language. Falls back to the server's own sentence for a
+   code this page has never heard of — a new refusal should read oddly, not vanish. */
+function srvErr(body, fallbackKey) {
+  const code = body && typeof body.code === "string" ? body.code : "";
+  const key = "e_" + code;
+  if (code && I18N[LANG] && I18N[LANG][key]) return t(key, body);
+  if (body && typeof body.error === "string" && body.error) return body.error;
+  return t(fallbackKey || "log_req_failed");
+}
 
 const chDrawable = (d) => !!d && d.trades >= 3 && d.candles.length > 0;
 
@@ -2241,7 +2281,7 @@ function renderPositions(list) {
   box.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", async (ev) => {
     ev.stopPropagation(); b.disabled = true;
     const r = await fetch("/close", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: b.dataset.close }) }).then((x) => x.json()).catch(() => ({ ok: false, error: t("log_req_failed") }));
-    say(r.ok ? t("log_closed", { p: (r.pnlPct >= 0 ? "+" : "") + r.pnlPct.toFixed(1), v: r.venue }) : t("log_close_refused", { e: r.error }), r.ok ? "g" : "r");
+    say(r.ok ? t("log_closed", { p: (r.pnlPct >= 0 ? "+" : "") + r.pnlPct.toFixed(1), v: r.venue }) : t("log_close_refused", { e: srvErr(r) }), r.ok ? "g" : "r");
   }));
 }
 
@@ -2257,7 +2297,7 @@ function renderRules(rules) {
     row.innerHTML = `<label for="r-${key}">${esc(label)}</label><input id="r-${key}" type="number" min="${b.min}" max="${b.max}" value="${value}"${FROZEN ? " disabled" : ""}>`;
     row.querySelector("input").addEventListener("change", async (ev) => {
       const r = await fetch("/rule", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key, value: Number(ev.target.value) }) }).then((x) => x.json()).catch(() => ({ ok: false, error: t("log_req_failed") }));
-      if (r.ok) { ev.target.value = r.value; RULES = { ...RULES, [key]: r.value }; say(t("log_rule", { k: label, v: r.value })); } else say(t("log_rule_refused", { e: r.error }), "r");
+      if (r.ok) { ev.target.value = r.value; RULES = { ...RULES, [key]: r.value }; say(t("log_rule", { k: label, v: r.value })); } else say(t("log_rule_refused", { e: srvErr(r) }), "r");
     });
     box.append(row);
   }
@@ -2653,7 +2693,7 @@ async function doQuote(tok) {
   if (!ok) {
     // The server refuses with a reason a person can act on — not an ETH pair, off the curve,
     // out of bounds. Repeating it is the point; paraphrasing it would lose the reason.
-    st.msg = body && typeof body.error === "string" && body.error ? body.error : t("log_req_failed");
+    st.msg = srvErr(body);
     st.tone = "bad";
   } else {
     st.q = body;
@@ -2863,7 +2903,7 @@ async function signIn() {
     ok = r.ok && body.admin === true;
     // 401 and 429 both arrive with the server's own wording — a wrong password, or how long the
     // throttle wants. Repeating it is the point; inventing a second version of it is not.
-    if (!ok) said = typeof body.error === "string" && body.error ? body.error : t("log_req_failed");
+    if (!ok) said = srvErr(body);
   } catch { said = t("log_req_failed"); }
   pw.value = "";
   go.disabled = false;
@@ -2915,7 +2955,7 @@ $("#toggle").addEventListener("click", async () => {
     .then((x) => x.json()).catch(() => ({ error: t("log_req_failed") }));
   // A session can expire under a page that is still open. The server refuses, and the button
   // goes back to saying what the engine is actually doing rather than what was asked of it.
-  if (typeof r.paused !== "boolean") { say(r.error || t("log_req_failed"), "r"); setPaused(PAUSED); return; }
+  if (typeof r.paused !== "boolean") { say(srvErr(r), "r"); setPaused(PAUSED); return; }
   setPaused(r.paused);
 });
 /* Scoped to the verdict group. Bound to `.seg button` it also caught the pair buttons inside the

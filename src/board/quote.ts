@@ -43,7 +43,15 @@ export interface BuyQuote {
   expiresAt: number;
 }
 
-export type QuoteResult = { ok: true; quote: BuyQuote } | { ok: false; error: string };
+/**
+ * A refusal carries a code as well as a sentence.
+ *
+ * The sentence is English and always will be — it is what a `curl` of this route should print. The
+ * code is what the page looks up to say the same thing in the language the reader chose. Without it
+ * a Russian reader clicking buy got "that amount is too small to be worth the gas", which is the
+ * bug this project already fixed once for the score's reasons and had left standing here.
+ */
+export type QuoteResult = { ok: true; quote: BuyQuote } | { ok: false; error: string; code: string };
 
 /** Bounds on what a page may ask for. A quote is a read, but it is a read someone can spam. */
 const MAX_ETH = 10n ** 18n; // one whole ETH per buy through the page
@@ -58,33 +66,33 @@ const MIN_ETH = 10n ** 12n;
  * fail in the wallet. Refusing with a reason is better than that.
  */
 export async function buyQuote(input: { token: string; buyer: string; quoteIn: string; slippageBps?: number }): Promise<QuoteResult> {
-  if (!isAddress(input.token, { strict: false })) return { ok: false, error: "that is not a token address" };
-  if (!isAddress(input.buyer, { strict: false })) return { ok: false, error: "connect a wallet first" };
+  if (!isAddress(input.token, { strict: false })) return { ok: false, error: "that is not a token address", code: "bad_token" };
+  if (!isAddress(input.buyer, { strict: false })) return { ok: false, error: "connect a wallet first", code: "no_wallet" };
 
   let quoteIn: bigint;
   // BigInt("") is 0n rather than a throw, and an empty box deserves a better answer than being
   // told its amount is too small
   const raw = (input.quoteIn ?? "").trim();
-  if (!/^\d+$/.test(raw)) return { ok: false, error: "amount must be an integer number of wei" };
-  try { quoteIn = BigInt(raw); } catch { return { ok: false, error: "amount must be an integer number of wei" }; }
-  if (quoteIn < MIN_ETH) return { ok: false, error: "that amount is too small to be worth the gas" };
-  if (quoteIn > MAX_ETH) return { ok: false, error: "the page will not quote more than 1 ETH at a time" };
+  if (!/^\d+$/.test(raw)) return { ok: false, error: "amount must be an integer number of wei", code: "amount_nan" };
+  try { quoteIn = BigInt(raw); } catch { return { ok: false, error: "amount must be an integer number of wei", code: "amount_nan" }; }
+  if (quoteIn < MIN_ETH) return { ok: false, error: "that amount is too small to be worth the gas", code: "amount_small" };
+  if (quoteIn > MAX_ETH) return { ok: false, error: "the page will not quote more than 1 ETH at a time", code: "amount_big" };
 
   const slippageBps = Math.max(0, Math.min(5_000, Math.round(input.slippageBps ?? 300)));
   const token = input.token as Address;
   const buyer = input.buyer as Address;
 
   const rec = await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "getLaunchedToken", args: [token] }).catch(() => null);
-  if (!rec || !rec.exists) return { ok: false, error: "the factory has no record of that token" };
-  if (rec.pairToken.toLowerCase() !== ZERO) return { ok: false, error: "this launch is not paired with ETH; buy it from the terminal instead" };
+  if (!rec || !rec.exists) return { ok: false, error: "the factory has no record of that token", code: "no_token" };
+  if (rec.pairToken.toLowerCase() !== ZERO) return { ok: false, error: "this launch is not paired with ETH; buy it from the terminal instead", code: "not_eth_pair" };
 
   // read the curve as the buyer, so the opening tax is theirs and not somebody else's
   const cv = await curveState(rec.curve, buyer).catch(() => null);
-  if (!cv) return { ok: false, error: "could not read the curve just now; try again" };
-  if (cv.graduated || cv.readyToGraduate) return { ok: false, error: "this launch has left the curve; it trades in its Uniswap pool now" };
+  if (!cv) return { ok: false, error: "could not read the curve just now; try again", code: "curve_unread" };
+  if (cv.graduated || cv.readyToGraduate) return { ok: false, error: "this launch has left the curve; it trades in its Uniswap pool now", code: "graduated" };
 
   const q = quoteBuy(cv, quoteIn);
-  if (q.tokensOut === 0n) return { ok: false, error: "the curve quotes zero tokens for that amount" };
+  if (q.tokensOut === 0n) return { ok: false, error: "the curve quotes zero tokens for that amount", code: "zero_out" };
   const minOut = minOutWithSlippage(q.tokensOut, slippageBps);
 
   return {

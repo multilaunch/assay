@@ -390,14 +390,14 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     const method = head ? "GET" : req.method;
 
     const refused = guard(req, hosts);
-    if (refused) { json(res, 403, { error: refused }); return; }
+    if (refused) { json(res, 403, { error: refused, code: "refused" }); return; }
     const admin = sessions.verify(readCookie(req.headers.cookie, "assay_session"));
 
     // Login is the one POST an anonymous caller may make. Everything else that writes needs a
     // session, and read-only refuses even a signed-in operator.
     if (method === "POST" && path === "/admin/login") {
       const wait = throttle.retryAfter(clientKey(req));
-      if (wait > 0) { json(res, 429, { error: `too many attempts, wait ${Math.ceil(wait / 1000)} s` }); return; }
+      if (wait > 0) { json(res, 429, { error: `too many attempts, wait ${Math.ceil(wait / 1000)} s`, code: "throttled", wait: Math.ceil(wait / 1000) }); return; }
       const hash = adminHash();
       void readBody(req).then(async (b) => {
         const ok = hash !== "" && (await verifyPassword(String(b.password ?? ""), hash));
@@ -406,7 +406,7 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
           // The same answer whether the password was wrong or never configured: which of the two
           // it is tells an attacker something and tells the operator nothing they cannot read in
           // their own logs.
-          json(res, 401, { error: "wrong password" });
+          json(res, 401, { error: "wrong password", code: "bad_password" });
           return;
         }
         throttle.succeed(clientKey(req));
@@ -424,8 +424,8 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     }
 
     if (method === "POST") {
-      if (!admin) { json(res, 401, { error: "sign in first" }); return; }
-      if (frozen) { json(res, 403, { error: "this board is read only" }); return; }
+      if (!admin) { json(res, 401, { error: "sign in first", code: "need_signin" }); return; }
+      if (frozen) { json(res, 403, { error: "this board is read only", code: "read_only" }); return; }
     }
 
     if (method === "GET" && (path === "/" || path === "/index.html")) {
@@ -467,8 +467,8 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
         quoteIn: url.searchParams.get("wei") ?? "0",
         ...(url.searchParams.has("slippageBps") ? { slippageBps: Number(url.searchParams.get("slippageBps")) } : {}),
       }).then(
-        (r) => (r.ok ? json(res, 200, r.quote) : json(res, 400, { error: r.error })),
-        () => json(res, 502, { error: "the chain would not answer just now" }),
+        (r) => (r.ok ? json(res, 200, r.quote) : json(res, 400, { error: r.error, code: r.code })),
+        () => json(res, 502, { error: "the chain would not answer just now", code: "chain_silent" }),
       );
       return;
     }
@@ -477,7 +477,7 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     // window that shares it. In memory and thirty minutes wide, so it answers for this session only.
     if (method === "GET" && path === "/farm") {
       const key = url.searchParams.get("key") ?? "";
-      if (!key) { json(res, 400, { error: "which fingerprint?" }); return; }
+      if (!key) { json(res, 400, { error: "which fingerprint?", code: "no_fingerprint" }); return; }
       json(res, 200, engine.farmCohort(key));
       return;
     }
@@ -518,10 +518,10 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     // Who holds it now, as opposed to who bought at launch. See holders.ts for why those differ.
     if (method === "GET" && path === "/holders") {
       const tok = url.searchParams.get("token") ?? "";
-      if (!isAddress(tok, { strict: false })) { json(res, 400, { error: "that is not a token address" }); return; }
+      if (!isAddress(tok, { strict: false })) { json(res, 400, { error: "that is not a token address", code: "bad_token" }); return; }
       void holdersFor(tok as Address).then(
-        (h) => (h ? json(res, 200, h) : json(res, 404, { error: "the factory has no record of that token" })),
-        () => json(res, 502, { error: "the chain would not answer just now" }),
+        (h) => (h ? json(res, 200, h) : json(res, 404, { error: "the factory has no record of that token", code: "no_token" })),
+        () => json(res, 502, { error: "the chain would not answer just now", code: "chain_silent" }),
       );
       return;
     }
@@ -529,11 +529,11 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     // Price over time, folded out of the curve's trade log. See candles.ts for what it cannot show.
     if (method === "GET" && path === "/candles") {
       const tok = url.searchParams.get("token") ?? "";
-      if (!isAddress(tok, { strict: false })) { json(res, 400, { error: "that is not a token address" }); return; }
+      if (!isAddress(tok, { strict: false })) { json(res, 400, { error: "that is not a token address", code: "bad_token" }); return; }
       const b = Number(url.searchParams.get("bucket") ?? "0");
       void candlesFor(tok as Address, Number.isFinite(b) && b > 0 ? Math.min(3600, Math.round(b)) : undefined).then(
-        (c) => (c ? json(res, 200, c) : json(res, 404, { error: "the factory has no record of that token" })),
-        () => json(res, 502, { error: "the chain would not answer just now" }),
+        (c) => (c ? json(res, 200, c) : json(res, 404, { error: "the factory has no record of that token", code: "no_token" })),
+        () => json(res, 502, { error: "the chain would not answer just now", code: "chain_silent" }),
       );
       return;
     }
@@ -568,9 +568,9 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
       void readBody(req).then((b) => {
         const key = String(b.key ?? "") as EditableKey;
         const bound = EDITABLE[key];
-        if (!bound) { json(res, 400, { ok: false, error: "that rule cannot be changed from here" }); return; }
+        if (!bound) { json(res, 400, { ok: false, error: "that rule cannot be changed from here", code: "rule_locked" }); return; }
         const raw = Number(b.value);
-        if (!Number.isFinite(raw)) { json(res, 400, { ok: false, error: "not a number" }); return; }
+        if (!Number.isFinite(raw)) { json(res, 400, { ok: false, error: "not a number", code: "not_a_number" }); return; }
         const value = Math.max(bound.min, Math.min(bound.max, Math.round(raw)));
         (engine.rules as unknown as Record<string, number>)[key] = value;
         push({ kind: "rule", at: Date.now(), key, value });
