@@ -434,9 +434,21 @@ tr.detail td{position:relative}
 .chart{margin-top:var(--s3); border-top:1px solid var(--line); padding-top:var(--s3)}
 .ch-hd{display:flex; gap:var(--s3); align-items:baseline; flex-wrap:wrap;
   font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-bottom:var(--s2)}
+/* Candle size. Pushed to the right of the header because it is the one thing here you can act on;
+   everything to its left is the chart describing itself. */
+.ch-tf{display:flex; margin-left:auto; border:1px solid var(--line); align-self:center}
+.ch-tf button{border:0; background:none; padding:2px 7px; font-family:var(--mono); font-size:10.5px; color:var(--ink-3)}
+.ch-tf button+button{border-left:1px solid var(--line)}
+.ch-tf button[aria-pressed="true"]{background:var(--hot); color:var(--hot-ink); font-weight:600}
+/* A size that would draw one candle, or four hundred, is offered and refused rather than hidden:
+   a row of buttons that reshuffles itself as the launch ages is harder to use than a greyed one. */
+.ch-tf button[disabled]{opacity:.3}
 /* The chart sizes itself to this box. A tap must scrub the readout without stealing the page's
    scroll from a thumb, and the focus ring has to be visible because the arrows work from here. */
-.ch-plot{width:100%; max-width:720px; height:250px; touch-action:pan-y}
+.ch-plot{width:100%; max-width:720px; height:250px; touch-action:pan-y; transition:opacity .12s}
+/* A new candle size is several seconds of reading the chain. Without this the old chart just sits
+   there and the button reads as broken, which is the whole reason the control was asked for. */
+.ch-plot.busy{opacity:.4}
 .ch-plot:focus-visible{outline:1px solid var(--hot); outline-offset:2px}
 .ch-msg{font-family:var(--mono); font-size:11.5px; line-height:1.6; color:var(--ink-3); max-width:74ch}
 .ch-out{margin-top:var(--s2); display:flex; gap:var(--s3); flex-wrap:wrap; min-height:1.6em;
@@ -446,7 +458,7 @@ tr.detail td{position:relative}
 .ch-notes{max-width:74ch}
 /* Same reason as the buy control above: the table is wider than a phone and scrolls sideways
    inside its pane, and the chart must be readable with the columns at rest. */
-@media(max-width:560px){.chart{max-width:300px} .ch-plot{height:200px}}
+@media(max-width:560px){.chart{max-width:300px} .ch-plot{height:200px} .ch-tf button{min-height:32px; padding:2px 10px}}
 
 /* ---- the filter panel ------------------------------------------------------
    Same card as the two above it, same hairlines, same spacing steps. It narrows
@@ -687,7 +699,7 @@ tr.detail td{position:relative}
 <div class="shell">
   <main>
     <div class="bar">
-      <div class="seg" role="group" aria-label="Filter by verdict">
+      <div class="seg" role="group" id="verdict" aria-label="Filter by verdict">
         <button data-f="all" aria-pressed="true" data-i18n="f_all">all</button>
         <button data-f="FIRE" aria-pressed="false" data-i18n="f_fire">fire</button>
         <button data-f="WATCH" aria-pressed="false" data-i18n="f_watch">watch</button>
@@ -771,6 +783,7 @@ const I18N = {
     ch_thin_none:"nothing has traded on the curve yet.",
     ch_grad:"the marked candle is where it left the curve — everything right of it is its uniswap pool.",
     ch_pool:"pool",
+    ch_auto:"auto", ch_tf:"candle size",
     ch_nolib:"the chart could not be drawn. the numbers above it are unaffected.",
     ch_partial:"{n} log ranges were refused, so this picture is partial.",
     ch_truncated:"the trade log is longer than this reads; the early part is missing.",
@@ -975,6 +988,7 @@ const I18N = {
     ch_thin_none:"на кривой ещё не было ни одной сделки.",
     ch_grad:"помеченная свеча — место, где он ушёл с кривой. всё правее уже его пул uniswap.",
     ch_pool:"пул",
+    ch_auto:"авто", ch_tf:"размер свечи",
     ch_nolib:"график не удалось отрисовать. на числа выше это не влияет.",
     ch_partial:"диапазонов журнала не отдали: {n} — так что картина неполная.",
     ch_truncated:"журнал сделок длиннее, чем читается; начало не попало.",
@@ -1379,6 +1393,19 @@ const fmtBucket = (s) => s < 60 ? s + t("u_s") : s < 3600 ? Math.round(s / 60) +
 
 const chDrawable = (d) => !!d && d.trades >= 3 && d.candles.length > 0;
 
+/* null is "let the server pick", which is what an unopened chart gets: a launch four minutes old
+   and one four hours old want different candles and neither reader wants to choose first. */
+const CH_TFS = [null, 1, 5, 15, 60, 300, 900, 3600];
+
+/* How long the launch has been trading, whatever size it is currently drawn at, so the row of
+   sizes does not change its mind every time one of them is picked. */
+function chSpanSec(d) {
+  const cs = d && d.candles;
+  if (!cs || cs.length === 0) return 0;
+  return (cs[cs.length - 1].t - cs[0].t) / 1000 + d.bucketSec;
+}
+const chTfOk = (sec, span) => sec === null || (span > 0 && span / sec >= 2 && span / sec <= 400);
+
 /* Fetched the first time somebody opens a chart, and never before: most readers watch the feed and
    close the tab, and they should not pay 62 KB for a panel they did not open. From our own origin —
    see vendor/README.md for why a CDN is not an option here. */
@@ -1516,13 +1543,17 @@ function chApply(c) {
 
   /* Not `fitContent()`: it settles on the next frame, and the frame it settles from is the one
      where the panel was still opening at no width — which leaves every candle stacked in a
-     centimetre at the right edge. The range is stated instead, once, so a reader who has zoomed in
-     keeps their zoom across the twenty-second refresh. */
-  if (!c.fitted) {
-    c.fitted = true;
+     centimetre at the right edge. The range is stated instead.
+     
+     Keyed on the candle size rather than on a "have we framed this yet" flag. With a flag, picking
+     a new size framed the chart against the candles still on screen from the old one and then
+     refused to do it again when the real ones arrived: fifty-two candles, sixteen of them visible.
+     The refresh every twenty seconds does not change the size, so a reader's zoom survives it. */
+  if (c.framedAt !== d.bucketSec) {
+    c.framedAt = d.bucketSec;
     requestAnimationFrame(() => {
       if (c.dead || !c.chart) return;
-      c.chart.timeScale().setVisibleLogicalRange({ from: -0.5, to: cs.length + 1.5 });
+      c.chart.timeScale().setVisibleLogicalRange({ from: -0.5, to: c.data.candles.length + 1.5 });
     });
   }
 }
@@ -1545,19 +1576,38 @@ function chOut(c) {
     + bit(t("ch_vol"), `${fmtVol(k.vol)} ${c.pair}`);
 }
 
+/* The size row is built once and updated in place. Rewriting the header's innerHTML on every
+   repaint — and it repaints every twenty seconds — would throw away the button the reader just
+   pressed, along with the keyboard focus sitting on it. */
+function chTfPaint(c) {
+  const row = c.box.querySelector(".ch-tf");
+  const span = chSpanSec(c.data);
+  row.setAttribute("aria-label", t("ch_tf"));
+  for (const b of row.children) {
+    const sec = b.dataset.tf === "" ? null : Number(b.dataset.tf);
+    b.textContent = sec === null ? t("ch_auto") : fmtBucket(sec);
+    b.setAttribute("aria-pressed", String(c.bucket === sec));
+    // auto stays available always; the rest only where they would draw something worth looking at
+    b.disabled = !chTfOk(sec, span) && c.bucket !== sec;
+  }
+}
+
 function chPaint(c) {
   const d = c.data, drawable = chDrawable(d);
-  c.box.querySelector(".ch-hd").innerHTML =
-    `<span class="lbl">${esc(t("ch_title"))}</span>`
+  c.box.querySelector(".ch-lbl").innerHTML =
+    `<span class="lbl">${esc(t("ch_title"))}</span> `
     + `<span>${esc(t("ch_unit", { pair: c.pair }))}</span>`
-    + (drawable ? `<span>${esc(t("ch_bucket", { b: fmtBucket(d.bucketSec) }))}</span>` : "");
+    + (drawable ? ` <span>${esc(t("ch_bucket", { b: fmtBucket(d.bucketSec) }))}</span>` : "");
+  chTfPaint(c);
 
   let msg = "";
   if (c.state === "nolib") msg = t("ch_nolib");
   else if (!d) msg = c.state === "fail" ? t("ch_fail") : t("ch_load");
   else if (!drawable) msg = d.trades ? t("ch_thin", { n: d.trades }) : t("ch_thin_none");
+  else if (c.busy) msg = t("ch_load");     // a chart is up, but it is not the one that was asked for
   const m = c.box.querySelector(".ch-msg");
   m.hidden = !msg; m.textContent = msg;
+  c.plot.classList.toggle("busy", !!c.busy && drawable);
 
   c.plot.hidden = !drawable;
   if (drawable) {
@@ -1597,15 +1647,26 @@ function chStep(c, dir) {
   chOut(c);
 }
 
+/* Keyed by size as well as by token: reopening a row that was left on five-minute candles should
+   come back on five-minute candles, not flash the automatic one first. */
+const chKey = (token, bucket) => `${token}|${bucket ?? "auto"}`;
+
 async function chLoad(c) {
+  const asked = c.bucket;
   let data = null, ok = false;
+  // only a size the reader chose is worth saying anything about; the twenty-second refresh is not
+  if (asked !== null && c.data && c.data.bucketSec !== asked) { c.busy = true; chPaint(c); }
   try {
-    const r = await fetch("/candles?token=" + encodeURIComponent(c.token));
+    const q = "/candles?token=" + encodeURIComponent(c.token) + (asked ? "&bucket=" + asked : "");
+    const r = await fetch(q);
     if (r.ok) { data = await r.json(); ok = !!data && Array.isArray(data.candles); }
   } catch { /* chPaint says so */ }
   if (c.dead) return;
+  // the reader may have changed their mind while this was in the air
+  if (asked !== c.bucket) return;
+  c.busy = false;
   if (ok) {
-    CANDLES.set(c.token, data);
+    CANDLES.set(chKey(c.token, asked), data);
     c.data = data;
     c.state = "ok";
     if (c.sel >= data.candles.length) c.sel = -1;
@@ -1613,24 +1674,47 @@ async function chLoad(c) {
   chPaint(c);
 }
 
+function chSetTf(c, sec) {
+  if (c.bucket === sec) return;
+  c.bucket = sec;
+  c.sel = -1;
+  c.hover = null;
+  const held = CANDLES.get(chKey(c.token, sec));
+  if (held) { c.data = held; c.state = "ok"; }
+  chPaint(c);
+  void chLoad(c);
+}
+
 function chartBox(e) {
   const box = document.createElement("div");
   box.className = "chart";
   box.innerHTML = `
-    <div class="ch-hd"></div>
+    <div class="ch-hd">
+      <span class="ch-lbl"></span>
+      <span class="ch-tf" role="group">${CH_TFS.map((x) => `<button type="button" data-tf="${x ?? ""}" aria-pressed="false"></button>`).join("")}</span>
+    </div>
     <div class="ch-msg"></div>
     <div class="ch-plot" tabindex="0" role="img"></div>
     <div class="ch-out" role="status"></div>
     <div class="ch-notes"></div>`;
 
+  const held = CANDLES.get(chKey(e.token, null));
   const c = {
     box, plot: box.querySelector(".ch-plot"),
     token: e.token, pair: e.pair || "",
-    data: CANDLES.get(e.token) || null,
-    state: CANDLES.has(e.token) ? "ok" : "load",
-    sel: -1, hover: null, dead: false, timer: null,
-    chart: null, price: null, vol: null, markers: null, fitted: false,
+    bucket: null,                          // null is "whatever the server thinks fits"
+    data: held || null,
+    state: held ? "ok" : "load",
+    sel: -1, hover: null, dead: false, busy: false, timer: null,
+    chart: null, price: null, vol: null, markers: null, framedAt: null,
   };
+
+  box.querySelector(".ch-tf").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button");
+    if (!b || b.disabled) return;
+    ev.stopPropagation();                  // the row underneath closes on a click
+    chSetTf(c, b.dataset.tf === "" ? null : Number(b.dataset.tf));
+  });
 
   c.plot.addEventListener("keydown", (ev) => {
     if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
@@ -2834,9 +2918,12 @@ $("#toggle").addEventListener("click", async () => {
   if (typeof r.paused !== "boolean") { say(r.error || t("log_req_failed"), "r"); setPaused(PAUSED); return; }
   setPaused(r.paused);
 });
-document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+/* Scoped to the verdict group. Bound to `.seg button` it also caught the pair buttons inside the
+   filter panel, which share the class: clicking "eth only" set FILTER to undefined and cleared the
+   verdict highlight, so the two controls quietly switched each other off. */
+document.querySelectorAll("#verdict button").forEach((b) => b.addEventListener("click", () => {
   FILTER = b.dataset.f;
-  document.querySelectorAll(".seg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  document.querySelectorAll("#verdict button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
   applyFilter();
 }));
 $("#q").addEventListener("input", (e) => { QUERY = e.target.value.trim().toLowerCase(); applyFilter(); });
