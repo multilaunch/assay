@@ -384,6 +384,34 @@ a:hover{border-bottom-color:var(--hot)}
   width:min(560px, calc(100vw - 24px)); max-height:calc(100vh - 48px); overflow:auto;
   background:var(--surface-2); border:1px solid var(--line-hard); padding:var(--s4);
 }
+/* ---- the chart, in a window of its own ------------------------------------
+   Almost all of it is the inline chart with its cage taken off: the plot stops
+   being 720 px wide and stranded at the left of a table cell, and takes the
+   height of the dialog instead of a fixed 250. Same code, same data, same
+   twenty-second refresh. */
+#chartwin{
+  position:fixed; z-index:62; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:min(1180px, calc(100vw - 32px)); height:min(760px, calc(100vh - 48px));
+  background:var(--surface-2); border:1px solid var(--line-hard);
+  padding:var(--s4); display:flex; flex-direction:column;
+}
+#chartwin[hidden]{display:none}
+#chartwin .cw-top{display:flex; align-items:baseline; gap:var(--s3); margin-bottom:var(--s3)}
+#chartwin h3{margin:0; font-size:13px; font-weight:600; font-family:var(--mono)}
+#chartwin .cw-sub{font-family:var(--mono); font-size:11.5px; color:var(--ink-3);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+#chartwin .cw-x{margin-left:auto; border:0; background:none; color:var(--ink-3);
+  font-size:17px; line-height:1; padding:0 4px}
+#chartwin .cw-x:hover{color:var(--ink)}
+#chartwin .cw-body{flex:1; min-height:0; display:flex}
+/* the chart fills the dialog rather than sitting in the corner of it */
+#chartwin .chart{flex:1; min-width:0; margin:0; border-top:0; padding-top:0; display:flex; flex-direction:column}
+#chartwin .ch-plot{max-width:none; height:auto; flex:1; min-height:200px}
+#chartwin .ch-notes{max-width:none}
+@media(max-width:560px){#chartwin{padding:var(--s3)} #chartwin .cw-sub{display:none}}
+
+/* An inline chart capped at 720 px looked stranded on a wide screen, with two thirds of the row
+   empty beside it. It takes the width it is given now, and the window above is for going bigger. */
 #farm h3{margin:0 0 var(--s2); font-size:13px; font-weight:600}
 #farm .lede{margin:0 0 var(--s3); font-size:12.5px; line-height:1.6; color:var(--ink-2)}
 #farm dl{display:grid; grid-template-columns:auto 1fr; gap:2px var(--s3); margin:0 0 var(--s3);
@@ -437,15 +465,19 @@ tr.detail td{position:relative}
 /* Candle size. Pushed to the right of the header because it is the one thing here you can act on;
    everything to its left is the chart describing itself. */
 .ch-tf{display:flex; margin-left:auto; border:1px solid var(--line); align-self:center}
+.ch-hd .ch-tf + .ch-open{margin-left:0}
 .ch-tf button{border:0; background:none; padding:2px 7px; font-family:var(--mono); font-size:10.5px; color:var(--ink-3)}
 .ch-tf button+button{border-left:1px solid var(--line)}
 .ch-tf button[aria-pressed="true"]{background:var(--hot); color:var(--hot-ink); font-weight:600}
 /* A size that would draw one candle, or four hundred, is offered and refused rather than hidden:
    a row of buttons that reshuffles itself as the launch ages is harder to use than a greyed one. */
 .ch-tf button[disabled]{opacity:.3}
+.ch-open{border:1px solid var(--line); background:none; padding:2px 9px; align-self:center;
+  font-family:var(--mono); font-size:10.5px; color:var(--ink-3)}
+.ch-open:hover{border-color:var(--line-hard); color:var(--ink)}
 /* The chart sizes itself to this box. A tap must scrub the readout without stealing the page's
    scroll from a thumb, and the focus ring has to be visible because the arrows work from here. */
-.ch-plot{width:100%; max-width:720px; height:250px; touch-action:pan-y; transition:opacity .12s}
+.ch-plot{width:100%; max-width:1100px; height:300px; touch-action:pan-y; transition:opacity .12s}
 /* A new candle size is several seconds of reading the chain. Without this the old chart just sits
    there and the button reads as broken, which is the whole reason the control was asked for. */
 .ch-plot.busy{opacity:.4}
@@ -605,6 +637,17 @@ tr.detail td{position:relative}
   <div class="who-list" id="farm-list"></div>
   <p class="caveat" id="farm-caveat"></p>
   <div class="foot"><button id="farm-close" data-i18n="fm_close">close</button></div>
+</div>
+
+<!-- The chart, given room. Inline it shares a table cell with everything else the row has to say;
+     here it gets the screen, which is what a chart is for. -->
+<div id="chartwin" role="dialog" aria-modal="true" aria-labelledby="cw-h" hidden>
+  <div class="cw-top">
+    <h3 id="cw-h"></h3>
+    <span class="cw-sub" id="cw-sub"></span>
+    <button id="cw-close" class="cw-x" aria-label="close">&times;</button>
+  </div>
+  <div class="cw-body" id="cw-body"></div>
 </div>
 
 <div id="fx" role="dialog" aria-modal="true" aria-labelledby="fx-h" hidden>
@@ -783,7 +826,7 @@ const I18N = {
     ch_thin_none:"nothing has traded on the curve yet.",
     ch_grad:"the marked candle is where it left the curve — everything right of it is its uniswap pool.",
     ch_pool:"pool",
-    ch_auto:"auto", ch_tf:"candle size",
+    ch_auto:"auto", ch_tf:"candle size", ch_open:"open", ch_open_t:"open the chart in a window",
     /* Refusals from the server. It answers with a code as well as a sentence; the sentence is
        English because that is what a curl of the route should print, and these are what the page
        says instead. A code with no entry here falls back to the server's own words, which is worse
@@ -1005,7 +1048,7 @@ const I18N = {
     ch_thin_none:"на кривой ещё не было ни одной сделки.",
     ch_grad:"помеченная свеча — место, где он ушёл с кривой. всё правее уже его пул uniswap.",
     ch_pool:"пул",
-    ch_auto:"авто", ch_tf:"размер свечи",
+    ch_auto:"авто", ch_tf:"размер свечи", ch_open:"развернуть", ch_open_t:"открыть график в окне",
     e_bad_password:"неверный пароль", e_need_signin:"сначала войдите",
     e_read_only:"доска только для чтения", e_rule_locked:"это правило отсюда не меняется",
     e_not_a_number:"это не число", e_bad_token:"это не адрес токена",
@@ -1524,7 +1567,9 @@ function chMount(c, LWC) {
     timeScale: {
       borderColor: th.line, timeVisible: true, secondsVisible: false,
       rightOffset: 2, barSpacing: 8, minBarSpacing: 0.5,
-      tickMarkFormatter: (ts) => hhmm(ts * 1000),
+      // At two-second candles an hour:minute axis prints 10:31 three times in a row and the reader
+      // has no way to tell the ticks apart. The seconds appear exactly when they carry information.
+      tickMarkFormatter: (ts) => (c.data && c.data.bucketSec < 60 ? hhmmss(ts * 1000) : hhmm(ts * 1000)),
     },
     crosshair: {
       mode: LWC.CrosshairMode.Normal,
@@ -1623,6 +1668,8 @@ function chTfPaint(c) {
   const row = c.box.querySelector(".ch-tf");
   const span = chSpanSec(c.data);
   row.setAttribute("aria-label", t("ch_tf"));
+  const open = c.box.querySelector(".ch-open");
+  if (open) { open.textContent = t("ch_open"); open.title = t("ch_open_t"); }
   for (const b of row.children) {
     const sec = b.dataset.tf === "" ? null : Number(b.dataset.tf);
     b.textContent = sec === null ? t("ch_auto") : fmtBucket(sec);
@@ -1725,13 +1772,14 @@ function chSetTf(c, sec) {
   void chLoad(c);
 }
 
-function chartBox(e) {
+function chartBox(e, big) {
   const box = document.createElement("div");
   box.className = "chart";
   box.innerHTML = `
     <div class="ch-hd">
       <span class="ch-lbl"></span>
       <span class="ch-tf" role="group">${CH_TFS.map((x) => `<button type="button" data-tf="${x ?? ""}" aria-pressed="false"></button>`).join("")}</span>
+      ${big ? "" : `<button type="button" class="ch-open"></button>`}
     </div>
     <div class="ch-msg"></div>
     <div class="ch-plot" tabindex="0" role="img"></div>
@@ -1763,6 +1811,10 @@ function chartBox(e) {
   });
   // the row underneath opens and closes on a click; the chart's own drags are not that
   c.plot.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+  box.querySelector(".ch-open")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();                  // the row underneath closes on a click
+    openChartWin(e, ev.currentTarget);
+  });
 
   c.timer = setInterval(() => void chLoad(c), CH_EVERY);
 
@@ -1782,6 +1834,43 @@ function chartBox(e) {
   chPaint(c);
   void chLoad(c);
   return box;
+}
+
+/* ---- the chart, in a window --------------------------------------------------
+   The inline chart shares a table cell with the reasons, the links and the buy
+   box, so it is small by necessity. This is the same chart with the room a chart
+   wants. It builds a second instance rather than moving the first: moving it
+   would tear down its canvases anyway, and two charts on one token cost one more
+   request every twenty seconds. */
+let CW = null;       // the chart living in the window, or null
+let CW_FROM = null;  // what to give the focus back to
+
+function openChartWin(e, from) {
+  if (TOUR_AT >= 0) tourEnd();
+  closeChartWin();
+  CW_FROM = from || null;
+  $("#cw-h").textContent = e.symbol ? "$" + e.symbol : short(e.token);
+  $("#cw-sub").textContent = [e.name, e.token].filter(Boolean).join("  ");
+  const body = $("#cw-body");
+  body.innerHTML = "";
+  const box = chartBox(e, true);
+  body.append(box);
+  CW = box._chart;
+  $("#chartwin").hidden = false;
+  $("#veil").classList.add("on");
+  $("#cw-close").focus();
+}
+
+function closeChartWin() {
+  if ($("#chartwin").hidden) return;
+  $("#chartwin").hidden = true;
+  CW?.kill();
+  CW = null;
+  $("#cw-body").innerHTML = "";
+  // the sign-in dialog and the farm may still want the veil
+  if ($("#gate").hidden && $("#farm").hidden && $("#fx").hidden) $("#veil").classList.remove("on");
+  if (CW_FROM && CW_FROM.isConnected) CW_FROM.focus();
+  CW_FROM = null;
 }
 
 /* The zero address is not a third party, it is nobody. Printing forty zeroes next to the words
@@ -2927,7 +3016,13 @@ $("#signin").addEventListener("click", openGate);
 $("#signout").addEventListener("click", () => { void signOut(); });
 $("#gate-cancel").addEventListener("click", closeGate);
 // the veil belongs to whichever of the two is up; only the dialog treats a click on it as cancel
-$("#veil").addEventListener("click", () => { if (!$("#gate").hidden) closeGate(); else if (!$("#fx").hidden) closeFx(); });
+$("#veil").addEventListener("click", () => {
+  if (!$("#gate").hidden) closeGate();
+  else if (!$("#chartwin").hidden) closeChartWin();
+  else if (!$("#farm").hidden) closeFarm();
+  else if (!$("#fx").hidden) closeFx();
+});
+$("#cw-close").addEventListener("click", () => closeChartWin());
 $("#gate-go").addEventListener("click", () => { void signIn(); });
 $("#gate").addEventListener("keydown", (e) => {
   if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeGate(); return; }
@@ -2972,7 +3067,10 @@ document.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (!$("#gate").hidden || !$("#fx").hidden) return;   // the dialog owns the keyboard while it is up
   if (e.target.closest("input, textarea, select, [contenteditable]")) { if (e.key === "Escape") e.target.blur(); return; }
-  if (e.key === "Escape" && OPEN_ROWS.size && TOUR_AT < 0 && $("#farm").hidden) {
+  // innermost first: the window, then the farm, then whichever row was opened last
+  if (e.key === "Escape" && !$("#chartwin").hidden) { e.preventDefault(); closeChartWin(); return; }
+  if (e.key === "Escape" && !$("#farm").hidden) { e.preventDefault(); closeFarm(); return; }
+  if (e.key === "Escape" && OPEN_ROWS.size && TOUR_AT < 0) {
     e.preventDefault();
     [...OPEN_ROWS].pop()._collapse();
     return;
