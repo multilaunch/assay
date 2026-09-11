@@ -477,7 +477,9 @@ tr.detail td{position:relative}
 .ch-open:hover{border-color:var(--line-hard); color:var(--ink)}
 /* The chart sizes itself to this box. A tap must scrub the readout without stealing the page's
    scroll from a thumb, and the focus ring has to be visible because the arrows work from here. */
-.ch-plot{width:100%; max-width:1100px; height:300px; touch-action:pan-y; transition:opacity .12s}
+/* No width cap. Capped, it sat in the left two thirds of a row whose every other line ran the
+   full width, and read as broken rather than compact. The window above is for going bigger still. */
+.ch-plot{width:100%; height:320px; touch-action:pan-y; transition:opacity .12s}
 /* A new candle size is several seconds of reading the chain. Without this the old chart just sits
    there and the button reads as broken, which is the whole reason the control was asked for. */
 .ch-plot.busy{opacity:.4}
@@ -1638,7 +1640,10 @@ function chApply(c) {
     c.framedAt = d.bucketSec;
     requestAnimationFrame(() => {
       if (c.dead || !c.chart) return;
-      c.chart.timeScale().setVisibleLogicalRange({ from: -0.5, to: c.data.candles.length + 1.5 });
+      // bar i sits at logical i, so -0.5 .. n-0.5 frames all of them with half a bar either side.
+      // It used to say n + 1.5, which reserved two bar widths of nothing against the price scale —
+      // an eighth of the plot on a short launch, and it read as the chart ending early.
+      c.chart.timeScale().setVisibleLogicalRange({ from: -0.7, to: c.data.candles.length - 0.3 });
     });
   }
 }

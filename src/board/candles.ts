@@ -56,7 +56,10 @@ const MAX_LOGS = 30_000;
 const TTL_MS = 20_000;
 /** Aim for about this many candles, whatever the launch's age. */
 const TARGET_CANDLES = 48;
-const BUCKETS_SEC = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600];
+/** The ladder the automatic choice steps through. 900 is here because the jump from 600 to 1800
+ *  halved the candle count on any launch older than about eight hours, and 900 is a size the
+ *  reader can also pick by hand. */
+const BUCKETS_SEC = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
 
 export interface Candle {
   /** unix ms at the start of the bucket */
@@ -112,9 +115,20 @@ export function toCandles(points: readonly Point[], bucketMs: number): Candle[] 
     });
 }
 
-/** A bucket size that gives roughly TARGET_CANDLES over the span, from a fixed ladder. */
-export function pickBucketSec(spanSec: number): number {
-  const want = spanSec / TARGET_CANDLES;
+/**
+ * A bucket size, from the span and — the part that was missing — how much actually traded in it.
+ *
+ * Cutting every launch into forty-eight candles is right for one that traded four thousand times
+ * and absurd for one that traded three: each bucket holds a single print, open equals close, and a
+ * candle with no body is a one-pixel line. The result was a chart that looked broken rather than
+ * quiet, which is a worse lie than an empty box — the launch was fine, the slicing was not.
+ *
+ * So the target is set by the trades and only then divided into the span: roughly three prints per
+ * candle, never fewer than five candles and never more than forty-eight.
+ */
+export function pickBucketSec(spanSec: number, trades = TARGET_CANDLES * 3): number {
+  const target = Math.min(TARGET_CANDLES, Math.max(5, Math.round(trades / 3)));
+  const want = spanSec / target;
   return BUCKETS_SEC.find((b) => b >= want) ?? BUCKETS_SEC[BUCKETS_SEC.length - 1]!;
 }
 
@@ -223,7 +237,7 @@ export async function candlesFor(token: Address, bucketSec?: number): Promise<Ca
 
   points.sort((a, b) => a.t - b.t);
   const spanSec = points.length > 1 ? (points[points.length - 1]!.t - points[0]!.t) / 1000 : 60;
-  const bucket = bucketSec && bucketSec > 0 ? bucketSec : pickBucketSec(Math.max(spanSec, 30));
+  const bucket = bucketSec && bucketSec > 0 ? bucketSec : pickBucketSec(Math.max(spanSec, 30), points.length);
 
   const data: Candles = {
     token,
