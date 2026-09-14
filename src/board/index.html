@@ -202,8 +202,17 @@ input[type=search]{width:190px}
 input[type=search]::placeholder,input[type=password]::placeholder{color:var(--ink-3)}
 
 /* ---- table -------------------------------------------------------------- */
-.pane{flex:1; min-height:0; overflow:auto; overscroll-behavior:contain}
-table{width:100%; border-collapse:collapse; min-width:980px}
+.pane{flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; container:feed / inline-size}
+/* No minimum width and no sideways scroll. The pane is what the columns have to fit into, and it
+   is not the window: opening the trade dock takes 340px off it on any screen. So the queries are
+   against the pane itself — a viewport media query would keep every column while the feed was
+   squeezed into a third of the page, which is exactly what it did. Least useful goes first. */
+table{width:100%; border-collapse:collapse; table-layout:auto}
+@container feed (max-width:1000px){ .c-dev{display:none} }
+@container feed (max-width:880px){ .c-ex{display:none} }
+@container feed (max-width:780px){ .c-pair{display:none} }
+@container feed (max-width:680px){ .c-tax{display:none} }
+@container feed (max-width:560px){ .c-curve{display:none} }
 thead th{
   position:sticky; top:0; z-index:9; background:var(--bg);
   border-bottom:1px solid var(--line-hard); text-align:left; white-space:nowrap;
@@ -286,6 +295,9 @@ tr.v-SKIP .sc{color:var(--ink-3)}
 tr.detail>td{
   padding:var(--s3) var(--s4) var(--s4) 34px; background:var(--surface-2);
   border-bottom:1px solid var(--line-hard); white-space:normal;
+  /* an address is one unbroken 42-character word: left alone it sets the width of the whole
+     table and every row above it starts scrolling sideways */
+  overflow-wrap:anywhere;
 }
 .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:var(--s2) var(--s5)}
 .kv{display:flex; gap:var(--s2); font-size:12px; line-height:1.55}
@@ -946,13 +958,13 @@ tr.detail td{position:relative}
           <th scope="col" aria-label="Verdict"></th>
           <th scope="col" class="r" data-i18n="c_score">score</th>
           <th scope="col" data-i18n="c_launch">launch</th>
-          <th scope="col" class="r" data-i18n="c_buy">opening buy</th>
-          <th scope="col" class="r" data-i18n="c_tax">tax</th>
-          <th scope="col" class="r" data-i18n="c_exempt">exempt</th>
-          <th scope="col" data-i18n="c_pair">pair</th>
-          <th scope="col" class="r" data-i18n="c_curve">curve</th>
-          <th scope="col" class="r" data-i18n="c_dev">deployer</th>
-          <th scope="col" class="r" data-i18n="c_age">age</th>
+          <th scope="col" class="r c-buy" data-i18n="c_buy">opening buy</th>
+          <th scope="col" class="r c-tax" data-i18n="c_tax">tax</th>
+          <th scope="col" class="r c-ex" data-i18n="c_exempt">exempt</th>
+          <th scope="col" class="c-pair" data-i18n="c_pair">pair</th>
+          <th scope="col" class="r c-curve" data-i18n="c_curve">curve</th>
+          <th scope="col" class="r c-dev" data-i18n="c_dev">deployer</th>
+          <th scope="col" class="r c-age" data-i18n="c_age">age</th>
         </tr></thead>
         <tbody id="feed"></tbody>
       </table>
@@ -2279,13 +2291,13 @@ function launchRow(e) {
     <td class="mk"><i></i></td>
     <td class="r"><span class="sc">${e.score}</span></td>
     <td class="who"><span class="ico" data-token="${esc(e.token)}"><b>${esc(icoLetters(e))}</b></span><span class="tick">${esc(e.symbol ? "$" + e.symbol : e.token.slice(0, 10))}</span><span class="nm">${esc(e.name)}</span>${e.farmTwins ? `<span class="mini-flag${e.farmKey ? " tap" : ""}"${e.farmKey ? ` role="button" tabindex="0" data-farm="${esc(e.farmKey)}"` : ""}>${esc(t("row_farm", { n: e.farmTwins }))}</span>` : ""}${e.fire ? `<span class="mini-flag good">${esc(t("row_passes"))}</span>` : ""}</td>
-    <td class="r"><span class="q ${bBuy(e.devPct)}" title="${esc(why("buy", bBuy(e.devPct)))}">${e.devPct == null ? "?" : e.devPct.toFixed(2) + "%"}</span></td>
-    <td class="r"><span class="q ${bTax(e.taxBps)}" title="${esc(why("tax", bTax(e.taxBps)))}">${e.taxBps == null ? "?" : e.taxBps / 100 + "%"}</span></td>
-    <td class="r"><span class="q ${bEx(e.exempt ? e.exempt.length : null)}" title="${esc(why("ex", bEx(e.exempt ? e.exempt.length : null)))}">${e.exempt == null ? "?" : e.exempt.length}</span></td>
-    <td><span class="pair ${e.pairNative ? "" : "alt"}">${esc(e.pair)}</span></td>
-    <td class="r"><div class="fill"><div class="t"><i style="width:${pct.toFixed(0)}%"></i></div><span class="p">${pct.toFixed(0)}%</span></div></td>
-    <td class="r"><span class="cell-dim">${dev}</span></td>
-    <td class="r"><span class="cell-dim age">0s</span></td>`;
+    <td class="r c-buy"><span class="q ${bBuy(e.devPct)}" title="${esc(why("buy", bBuy(e.devPct)))}">${e.devPct == null ? "?" : e.devPct.toFixed(2) + "%"}</span></td>
+    <td class="r c-tax"><span class="q ${bTax(e.taxBps)}" title="${esc(why("tax", bTax(e.taxBps)))}">${e.taxBps == null ? "?" : e.taxBps / 100 + "%"}</span></td>
+    <td class="r c-ex"><span class="q ${bEx(e.exempt ? e.exempt.length : null)}" title="${esc(why("ex", bEx(e.exempt ? e.exempt.length : null)))}">${e.exempt == null ? "?" : e.exempt.length}</span></td>
+    <td class="c-pair"><span class="pair ${e.pairNative ? "" : "alt"}">${esc(e.pair)}</span></td>
+    <td class="r c-curve"><div class="fill"><div class="t"><i style="width:${pct.toFixed(0)}%"></i></div><span class="p">${pct.toFixed(0)}%</span></div></td>
+    <td class="r c-dev"><span class="cell-dim">${dev}</span></td>
+    <td class="r c-age"><span class="cell-dim age">0s</span></td>`;
 
   let open = null;
   const collapse = () => {
