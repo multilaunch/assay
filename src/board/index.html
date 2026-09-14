@@ -323,6 +323,15 @@ a:hover{border-bottom-color:var(--hot)}
 .slipbox{display:flex; align-items:center; gap:var(--s2); margin-left:auto}
 .slipbox .lbl{font-size:11px; color:var(--ink-3)}
 .chips.slip button{padding:3px 7px; font-size:10.5px}
+/* the box for anything the three presets do not cover */
+.slip-own{display:inline-flex; align-items:center; border:1px solid var(--line-hard)}
+.slip-own input{width:52px; border:0; background:none; padding:3px 4px 3px 7px; text-align:right;
+  font-family:var(--mono); font-size:10.5px; color:var(--ink-3); -moz-appearance:textfield}
+.slip-own input::-webkit-outer-spin-button,.slip-own input::-webkit-inner-spin-button{-webkit-appearance:none; margin:0}
+.slip-own input.on{color:var(--hot-ink); background:var(--hot); font-weight:600}
+.slip-own input.on + .pc{color:var(--hot-ink); background:var(--hot); font-weight:600}
+.slip-own .pc{padding:3px 7px 3px 0; font-family:var(--mono); font-size:10.5px; color:var(--ink-3)}
+.slip-warn{margin:var(--s2) 0 0; font-size:11.5px; line-height:1.5; color:var(--warn); max-width:74ch}
 .held{margin:var(--s2) 0 0; font-family:var(--mono); font-size:11px; color:var(--ink-3)}
 .buy-f.two{color:var(--warn)}
 .buy-f.two .k{color:var(--warn)}
@@ -884,6 +893,8 @@ const I18N = {
     ch_pool:"pool",
     ch_auto:"auto", ch_tf:"candle size", ch_open:"open", ch_open_t:"open the chart in a window",
     soc_web:"Website", soc_none:"no socials at all",
+    b_slip_own:"own", b_slip_low:"under 1% a curve trade usually reverts before it lands",
+    b_slip_high:"above 10% the quote stops protecting you: you can be filled far below it",
     b_side:"buy or sell", b_sell:"SELL", b_token:"tokens",
     b_quote_sell:"price this sell", b_send_sell:"sign and sell",
     b_sell_in:"you sell", b_sell_out:"you get",
@@ -1116,6 +1127,8 @@ const I18N = {
     ch_pool:"пул",
     ch_auto:"авто", ch_tf:"размер свечи", ch_open:"развернуть", ch_open_t:"открыть график в окне",
     soc_web:"Сайт", soc_none:"соцсетей нет вообще",
+    b_slip_own:"своё", b_slip_low:"ниже 1% сделка на кривой обычно отваливается, не дойдя до блока",
+    b_slip_high:"выше 10% котировка уже не защищает: могут исполнить сильно ниже неё",
     b_side:"покупка или продажа", b_sell:"ПРОДАТЬ", b_token:"токенов",
     b_quote_sell:"посчитать продажу", b_send_sell:"подписать и продать",
     b_sell_in:"отдаёте", b_sell_out:"получаете",
@@ -2575,8 +2588,38 @@ const SLIPPAGE_BPS = 300;
 const CHIPS = ["0.005", "0.01", "0.05"];
 /** On a sell the chips are a share of what the wallet holds; selling "0.01 tokens" means nothing. */
 const SELL_PCTS = [25, 50, 100];
-/** Slippage the reader can pick, in basis points. 1% is tight for a curve this thin, 10% is a lot. */
-const SLIPS = [100, 300, 500, 1000];
+/**
+ * Slippage: three presets and a box for anything else.
+ *
+ * One setting for the whole page rather than one per launch. It is a statement about how much worse
+ * a fill the reader will accept, which does not change because they scrolled to a different token —
+ * and a value that silently reset every time a row was opened would be worse than no control.
+ *
+ * The bounds are the server's own clamp. Below the floor a curve this thin reverts on almost every
+ * trade; above the ceiling `minOut` stops protecting anything at all, which is the setting people
+ * reach for when a trade keeps failing and is exactly when they should be told.
+ */
+const SLIPS = [100, 300, 500];
+const SLIP_MIN = 10;      // 0.1%
+const SLIP_MAX = 5000;    // 50%, where the server stops accepting it
+const SLIP_LOW = 100;     // under 1% a curve trade usually reverts before it lands
+const SLIP_HIGH = 1000;   // over 10% the quote stops meaning much
+
+let SLIP = SLIPPAGE_BPS;
+try { const v = Number(localStorage.getItem("assay.slip")); if (Number.isFinite(v) && v >= SLIP_MIN && v <= SLIP_MAX) SLIP = Math.round(v); }
+catch { /* private mode: the default holds for this page load */ }
+
+/** Percent for display, without a trailing ".00" on the round ones. */
+const slipPct = (bps) => String(Math.round(bps) / 100);
+
+function setSlip(bps) {
+  const v = Math.min(SLIP_MAX, Math.max(SLIP_MIN, Math.round(bps)));
+  if (v === SLIP) return;
+  SLIP = v;
+  try { localStorage.setItem("assay.slip", String(v)); } catch { /* it will hold for this page load */ }
+  // every quote on screen was priced against the old tolerance
+  for (const [tok, st] of BUY) { dropQuote(st); paintBuy(tok); }
+}
 
 const dropQuote = (st) => { st.q = null; st.deadline = 0; st.stale = false; st.msg = null; st.approved = false; };
 
@@ -2746,7 +2789,6 @@ function buySt(tok, e) {
       side: "buy",                 // which way round the trade goes
       amt: CHIPS[1],               // the pair, on a buy
       pct: 50,                     // a share of the balance, on a sell
-      slip: SLIPPAGE_BPS,          // the reader's own tolerance, not a constant any more
       balance: null,               // what the wallet holds of this launch, raw units
       approved: false,             // the allowance for this quote has been signed
       q: null, deadline: 0, stale: false, msg: null, tone: "", busy: false, hash: null, status: null,
@@ -2811,9 +2853,12 @@ function buyBox(e) {
       <span class="pair">ETH</span>
       <span class="slipbox">
         <span class="lbl">${esc(t("b_slip"))}</span>
-        <span class="chips slip">${SLIPS.map((v) => `<button type="button" data-slip="${v}" aria-pressed="false">${v / 100}%</button>`).join("")}</span>
+        <span class="chips slip">${SLIPS.map((v) => `<button type="button" data-slip="${v}" aria-pressed="false">${slipPct(v)}%</button>`).join("")}</span>
+        <span class="slip-own"><input type="number" class="slip-in" min="0.1" max="50" step="0.1" inputmode="decimal"
+          placeholder="${esc(t("b_slip_own"))}" aria-label="${esc(t("b_slip_own"))}"><span class="pc">%</span></span>
       </span>
     </div>
+    <p class="slip-warn" hidden></p>
     <p class="held" hidden></p>
     <button type="button" class="act" data-act="quote"></button>
     <p class="buy-truth">${esc(t("b_truth"))}</p>
@@ -2826,7 +2871,7 @@ function buyBox(e) {
     if (!b) return;
     ev.stopPropagation();
     if (b.dataset.side) { setSide(e.token, b.dataset.side); return; }
-    if (b.dataset.slip) { st.slip = Number(b.dataset.slip); dropQuote(st); paintBuy(e.token); return; }
+    if (b.dataset.slip) { setSlip(Number(b.dataset.slip)); return; }
     if (b.dataset.chip) {
       if (st.side === "sell") st.pct = Number(b.dataset.chip);
       else st.amt = b.dataset.chip;
@@ -2840,7 +2885,17 @@ function buyBox(e) {
       case "send": void doSend(e.token); break;
     }
   });
-  box.querySelector("input").addEventListener("input", (ev) => {
+  const slipIn = box.querySelector(".slip-in");
+  slipIn.addEventListener("input", (ev) => {
+    const pct = Number(ev.target.value);
+    // an empty box or a nonsense one is not a setting; the last good value stands until it is
+    if (!Number.isFinite(pct) || pct <= 0) return;
+    setSlip(Math.round(pct * 100));
+  });
+  // leaving "0" or "abc" sitting in the box while a different number is in force is a small lie,
+  // and it is the number people will believe. On the way out it says what is actually set.
+  slipIn.addEventListener("blur", () => paintBuy(e.token));
+  box.querySelector(".buy-in > input").addEventListener("input", (ev) => {
     // on a sell this is a token amount, on a buy an amount of the pair; the state keeps them apart
     // so switching sides does not silently reuse the other side's number
     if (st.side === "sell") { st.sellAmt = ev.target.value; st.pct = 0; }
@@ -2874,9 +2929,19 @@ function paintBuy(tok, into) {
   }
   const chosen = sell ? String(st.pct) : st.amt;
   for (const c of chips.children) c.setAttribute("aria-pressed", String(c.dataset.chip === chosen));
-  for (const c of box.querySelectorAll("[data-slip]")) c.setAttribute("aria-pressed", String(Number(c.dataset.slip) === st.slip));
+  const preset = SLIPS.includes(SLIP);
+  for (const c of box.querySelectorAll("[data-slip]")) c.setAttribute("aria-pressed", String(Number(c.dataset.slip) === SLIP));
+  const own = box.querySelector(".slip-in");
+  // the box shows the value only when it is the one in force, so a preset does not leave a stale
+  // number sitting in it looking selected
+  if (document.activeElement !== own) own.value = preset ? "" : slipPct(SLIP);
+  own.classList.toggle("on", !preset);
+  const warn = SLIP < SLIP_LOW ? t("b_slip_low") : SLIP > SLIP_HIGH ? t("b_slip_high") : "";
+  const wl = box.querySelector(".slip-warn");
+  wl.hidden = !warn;
+  wl.textContent = warn;
 
-  const inp = box.querySelector("input");
+  const inp = box.querySelector(".buy-in > input");
   const shown = sell ? (st.pct > 0 ? fmtUnits(sellUnits(st)) : (st.sellAmt || "")) : st.amt;
   if (document.activeElement !== inp) inp.value = shown;
   box.querySelector(".pair").textContent = sell ? sym : "ETH";
@@ -2961,7 +3026,7 @@ async function doQuote(tok) {
   // one `wei` parameter for both sides: the pair on a buy, raw token units on a sell
   const amount = st.side === "sell" ? sellUnits(st) : toWei(st.amt);
   const url = `/quote?token=${encodeURIComponent(tok)}&buyer=${encodeURIComponent(ACC)}`
-    + `&wei=${encodeURIComponent(amount)}&side=${st.side}&slippageBps=${st.slip}`;
+    + `&wei=${encodeURIComponent(amount)}&side=${st.side}&slippageBps=${SLIP}`;
   let body = null, ok = false;
   try {
     const r = await fetch(url, { headers: { accept: "application/json" } });
