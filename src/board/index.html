@@ -30,10 +30,18 @@
 
    Every tool on Robinhood Chain wears the chain's own brand: #CCFF00 on black,
    pill radii, Instrument Serif. Pons does, bodkin does. Wearing it is not a
-   look, it is camouflage. So this interface has NO accent hue at all: the
-   chrome is black through white, zero radius, hairlines only, and the only
-   colour that ever appears on screen is the three risk states — on the numbers
-   they describe and nowhere else.
+   look, it is camouflage — so this interface does not wear it.
+
+   It used to take that further and have no accent hue at all: chrome from
+   black through white, and colour only on the three risk states. Correct
+   about the brand, wrong about the rest. On a page where nothing is lit,
+   nothing reads as live, and a launch feed is the most live thing there is.
+
+   So: one accent, cyan, and it is not the chain's yellow-green. It marks what
+   the reader can act on — the control that is selected, the field that has
+   focus, the tape that is moving, how full a curve is — and it never touches a
+   verdict. Green, amber and red still mean exactly one thing each, still only
+   on the numbers they describe. Four hues, four jobs, no overlap.
    ========================================================================== */
 :root{
   /* neutrals, faintly cool, never pure grey. Steps are non-linear on purpose. */
@@ -59,17 +67,22 @@
   --ink-2:     var(--n-350);
   --ink-3:     var(--n-500);
 
-  /* interaction is white. that is the whole accent system. */
-  --hot:      var(--n-000);
-  --hot-ink:  var(--n-990);
+  /* One accent, and it is cyan because the other three hues are spoken for: green means a launch
+     is worth something, red that it is not, amber that it is unclear. Interaction used to be white,
+     which never collides with data and also never looks like anything. Cyan is free, it is the
+     colour a terminal has always been, and it cannot be mistaken for a verdict. */
+  --hot:      oklch(80% 0.13 200);
+  --hot-ink:  oklch(17% 0.03 220);
+  --hot-w:    oklch(80% 0.13 200 / 15%);
 
-  /* the only colour in the product. risk states, on data. */
-  --ok:   oklch(76% 0.16 152);
-  --warn: oklch(82% 0.15 82);
-  --crit: oklch(70% 0.20 27);
-  --ok-w:   oklch(76% 0.16 152 / 14%);
-  --warn-w: oklch(82% 0.15 82 / 14%);
-  --crit-w: oklch(70% 0.20 27 / 15%);
+  /* The verdicts. Brighter and more saturated than they were: on a ground this dark a 76% mint
+     reads as grey-green at 11px, which is the size almost every number here is set at. */
+  --ok:   oklch(80% 0.19 158);
+  --warn: oklch(84% 0.16 82);
+  --crit: oklch(68% 0.22 22);
+  --ok-w:   oklch(80% 0.19 158 / 15%);
+  --warn-w: oklch(84% 0.16 82 / 15%);
+  --crit-w: oklch(68% 0.22 22 / 16%);
 
   /* Golos Text and Geist Mono both ship Cyrillic; Archivo does not, and every Russian
      string would have silently fallen back to a system face. Checked, not assumed. */
@@ -107,7 +120,7 @@ button,input,.box{border-radius:0}
 .mark{font-weight:600; font-size:15px; letter-spacing:-.02em}
 .mark span{color:var(--ink-3); font-weight:400}
 .tag{
-  font-family:var(--mono); font-size:10.5px; letter-spacing:.09em; text-transform:uppercase;
+  font-family:var(--mono); font-size:10px; letter-spacing:.09em; text-transform:uppercase;
   padding:2px 7px; border:1px solid var(--line-hard); color:var(--ink-2); white-space:nowrap;
 }
 .tag.crit{background:var(--crit); border-color:var(--crit); color:oklch(17% 0.03 27); font-weight:600}
@@ -127,7 +140,7 @@ button:hover{background:var(--surface-3); border-color:var(--hot)}
 .ghlink:hover{background:var(--surface-3); border-color:var(--hot)}
 button.solid{background:var(--hot); color:var(--hot-ink); border-color:var(--hot); font-weight:600}
 button.solid:hover{background:var(--n-100)}
-button.mini{padding:2px 8px; font-size:11px}
+button.mini{padding:2px 8px; font-size:11.5px}
 button:disabled{opacity:.4; cursor:not-allowed}
 
 /* ---- the activity ribbon -------------------------------------------------
@@ -139,7 +152,7 @@ button:disabled{opacity:.4; cursor:not-allowed}
 .proof{
   flex:none; display:flex; align-items:center; gap:var(--s3); flex-wrap:wrap;
   padding:5px var(--s4); border-bottom:1px solid var(--line); background:var(--bg);
-  font-family:var(--mono); font-size:11px; color:var(--ink-3);
+  font-family:var(--mono); font-size:11.5px; color:var(--ink-3);
 }
 .proof[hidden]{display:none}
 .proof .pv{display:flex; align-items:baseline; gap:var(--s3); flex-wrap:wrap}
@@ -257,7 +270,7 @@ tr.v-SKIP .sc{color:var(--ink-3)}
 }
 .ico b{
   position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-  font-family:var(--mono); font-weight:500; font-size:9.5px; letter-spacing:.02em;
+  font-family:var(--mono); font-weight:500; font-size:10px; letter-spacing:.02em;
   text-transform:uppercase; color:var(--ink-3);
 }
 .ico img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:none}
@@ -270,25 +283,27 @@ tr.v-SKIP .sc{color:var(--ink-3)}
 .q.nil{color:var(--ink-3)}
 .q.unk{color:var(--crit); border-bottom:1px dashed currentColor}
 
-.pair{font-family:var(--mono); font-size:11px; color:var(--ink-3)}
-.cell-dim{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:11px; color:var(--ink-3)}
+.pair{font-family:var(--mono); font-size:11.5px; color:var(--ink-3)}
+.cell-dim{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:11.5px; color:var(--ink-3)}
 .t-dim{color:var(--ink-3)} .t-warn{color:var(--warn)} .t-crit{color:var(--crit)}
 .tag.sm{padding:1px 5px}
 .pos-act{margin-top:var(--s2)}
 .pair.alt{color:var(--warn)}
 
 .fill{display:flex; align-items:center; gap:7px; justify-content:flex-end}
-.fill .t{width:46px; height:2px; background:var(--n-800)}
-.fill .t>i{display:block; height:100%; background:var(--ink-2)}
-.fill .p{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:11px; color:var(--ink-3); width:30px; text-align:right}
+/* How full the curve is, in colour rather than in grey. It is the one number in the row that is a
+   quantity rather than a verdict, so it gets the accent and not a risk colour. */
+.fill .t{width:46px; height:3px; background:var(--hot-w)}
+.fill .t>i{display:block; height:100%; background:var(--hot)}
+.fill .p{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:11.5px; color:var(--ink-3); width:30px; text-align:right}
 
 /* the decay meter: only alive while the opening tax still is */
 .decay{display:inline-flex; align-items:center; gap:5px}
 .decay .t{width:34px; height:2px; background:var(--crit-w)}
 .decay .t>i{display:block; height:100%; background:var(--crit); transition:width 120ms linear}
-.decay .v{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:11px; color:var(--crit)}
+.decay .v{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:11.5px; color:var(--crit)}
 
-.mini-flag{font-family:var(--mono); font-size:9.5px; letter-spacing:.05em; text-transform:uppercase;
+.mini-flag{font-family:var(--mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase;
   border:1px solid currentColor; padding:0 4px; margin-left:6px; color:var(--crit)}
 .mini-flag.good{color:var(--ok)}
 
@@ -320,9 +335,9 @@ a:hover{border-bottom-color:var(--hot)}
 .buy-in{display:flex; align-items:center; gap:var(--s2); flex-wrap:wrap}
 .amt{display:inline-flex; align-items:center; border:1px solid var(--line-hard)}
 .amt input{width:98px; text-align:right; border:0; background:none}
-.amt .pair{padding:0 8px 0 4px; font-family:var(--mono); font-size:11px; color:var(--ink-3)}
+.amt .pair{padding:0 8px 0 4px; font-family:var(--mono); font-size:11.5px; color:var(--ink-3)}
 .chips{display:flex; border:1px solid var(--line-hard)}
-.chips button{border:0; padding:3px 9px; font-family:var(--mono); font-size:11px; color:var(--ink-3)}
+.chips button{border:0; padding:3px 9px; font-family:var(--mono); font-size:11.5px; color:var(--ink-3)}
 .chips button+button{border-left:1px solid var(--line)}
 .chips button[aria-pressed="true"]{background:var(--hot); color:var(--hot-ink); font-weight:600}
 .buy-truth{margin:var(--s2) 0 0; font-size:11.5px; line-height:1.6; color:var(--ink-2); max-width:74ch}
@@ -331,7 +346,7 @@ a:hover{border-bottom-color:var(--hot)}
 .buy-f .k{flex:1; min-width:0; color:var(--ink-3)}
 .buy-f .v{flex:none; font-family:var(--mono); font-variant-numeric:tabular-nums slashed-zero}
 .buy-go{display:flex; align-items:center; gap:var(--s3); margin-top:var(--s2); padding-top:var(--s2); border-top:1px solid var(--line)}
-.buy-left{flex:1; font-family:var(--mono); font-size:11px; color:var(--ink-3)}
+.buy-left{flex:1; font-family:var(--mono); font-size:11.5px; color:var(--ink-3)}
 .buy-left.out{color:var(--warn)}
 .buy-msg{margin:var(--s2) 0 0; font-size:11.5px; line-height:1.6; color:var(--ink-2); max-width:74ch}
 .buy-msg.bad{color:var(--crit)}
@@ -347,7 +362,7 @@ a:hover{border-bottom-color:var(--hot)}
    and a tester opening a launch could not find it at all — which for the one
    control here that spends money is the worst thing a layout can do. */
 .side{display:flex; gap:0; margin-bottom:var(--s3); border:1px solid var(--line-hard); width:max-content}
-.side button{border:0; background:none; padding:7px 22px; font-size:12.5px; font-weight:600;
+.side button{border:0; background:none; padding:7px 22px; font-size:12px; font-weight:600;
   letter-spacing:.04em; color:var(--ink-3)}
 .side button+button{border-left:1px solid var(--line-hard)}
 .side .s-buy[aria-pressed="true"]{background:var(--ok); color:oklch(18% 0.02 152)}
@@ -368,18 +383,18 @@ a:hover{border-bottom-color:var(--hot)}
 .buy-go .act.sell:not([disabled]){background:var(--crit); color:oklch(18% 0.03 27)}
 
 .slipbox{display:flex; align-items:center; gap:var(--s2); margin-left:auto}
-.slipbox .lbl{font-size:11px; color:var(--ink-3)}
-.chips.slip button{padding:3px 7px; font-size:10.5px}
+.slipbox .lbl{font-size:11.5px; color:var(--ink-3)}
+.chips.slip button{padding:3px 7px; font-size:10px}
 /* the box for anything the three presets do not cover */
 .slip-own{display:inline-flex; align-items:center; border:1px solid var(--line-hard)}
 .slip-own input{width:52px; border:0; background:none; padding:3px 4px 3px 7px; text-align:right;
-  font-family:var(--mono); font-size:10.5px; color:var(--ink-3); -moz-appearance:textfield}
+  font-family:var(--mono); font-size:10px; color:var(--ink-3); -moz-appearance:textfield}
 .slip-own input::-webkit-outer-spin-button,.slip-own input::-webkit-inner-spin-button{-webkit-appearance:none; margin:0}
 .slip-own input.on{color:var(--hot-ink); background:var(--hot); font-weight:600}
 .slip-own input.on + .pc{color:var(--hot-ink); background:var(--hot); font-weight:600}
-.slip-own .pc{padding:3px 7px 3px 0; font-family:var(--mono); font-size:10.5px; color:var(--ink-3)}
+.slip-own .pc{padding:3px 7px 3px 0; font-family:var(--mono); font-size:10px; color:var(--ink-3)}
 .slip-warn{margin:var(--s2) 0 0; font-size:11.5px; line-height:1.5; color:var(--warn); max-width:74ch}
-.held{margin:var(--s2) 0 0; font-family:var(--mono); font-size:11px; color:var(--ink-3)}
+.held{margin:var(--s2) 0 0; font-family:var(--mono); font-size:11.5px; color:var(--ink-3)}
 .buy-f.two{color:var(--warn)}
 .buy-f.two .k{color:var(--warn)}
 @media(max-width:560px){
@@ -454,7 +469,7 @@ a:hover{border-bottom-color:var(--hot)}
 .pos .hd{display:flex; align-items:baseline; gap:var(--s2)}
 .pnl{font-family:var(--mono); font-variant-numeric:tabular-nums; font-weight:600; font-size:12px; margin-left:auto}
 .pnl.up{color:var(--ok)} .pnl.dn{color:var(--crit)}
-.pos .sub{font-family:var(--mono); font-size:10.5px; color:var(--ink-3); margin-top:2px}
+.pos .sub{font-family:var(--mono); font-size:10px; color:var(--ink-3); margin-top:2px}
 
 .rule{display:flex; align-items:center; gap:var(--s2); margin-bottom:6px}
 .rule label{flex:1; font-size:11.5px; color:var(--ink-2)}
@@ -468,9 +483,9 @@ a:hover{border-bottom-color:var(--hot)}
    colour is on the bound that carries the claim. */
 .pf-r{display:flex; align-items:baseline; gap:var(--s2); line-height:1.7}
 .pf-r .k{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-.pf-r .s{flex:none; font-size:10.5px; color:var(--ink-3)}
+.pf-r .s{flex:none; font-size:10px; color:var(--ink-3)}
 .pf-r .p{flex:none; width:52px; text-align:right; font-size:11.5px}
-.pf-r .x{flex:none; width:32px; text-align:right; font-size:10.5px; color:var(--ink-3)}
+.pf-r .x{flex:none; width:32px; text-align:right; font-size:10px; color:var(--ink-3)}
 .pf-claim{
   margin-top:var(--s2); padding-top:var(--s2); border-top:1px solid var(--line);
   font-size:11.5px; line-height:1.6; color:var(--ink-2);
@@ -480,9 +495,9 @@ a:hover{border-bottom-color:var(--hot)}
 .pf-f{display:flex; align-items:baseline; gap:var(--s2); line-height:1.7; font-size:11.5px}
 .pf-f .k{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-2)}
 .pf-f .v{flex:none}
-.pf-foot{margin-top:var(--s2); font-size:10.5px; line-height:1.5; color:var(--ink-3)}
+.pf-foot{margin-top:var(--s2); font-size:10px; line-height:1.5; color:var(--ink-3)}
 
-#log{flex:1; min-height:70px; overflow:auto; font-family:var(--mono); font-size:10.5px; line-height:1.7; color:var(--ink-3)}
+#log{flex:1; min-height:70px; overflow:auto; font-family:var(--mono); font-size:10px; line-height:1.7; color:var(--ink-3)}
 #log div{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 #log time{color:var(--ink-3); margin-right:7px}
 #log .g{color:var(--ok)} #log .r{color:var(--crit)}
@@ -501,9 +516,9 @@ a:hover{border-bottom-color:var(--hot)}
   border:1px solid var(--line-hard); padding:var(--s4); display:none}
 #coach.on{display:block}
 #coach h3{margin:0 0 var(--s2); font-size:13px; font-weight:600}
-#coach p{margin:0 0 var(--s3); font-size:12.5px; line-height:1.6; color:var(--ink-2); max-width:60ch}
+#coach p{margin:0 0 var(--s3); font-size:12px; line-height:1.6; color:var(--ink-2); max-width:60ch}
 #coach .foot{display:flex; align-items:center; gap:var(--s2)}
-#coach .step{font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-right:auto; white-space:nowrap}
+#coach .step{font-family:var(--mono); font-size:11.5px; color:var(--ink-3); margin-right:auto; white-space:nowrap}
 /* ---- the door -------------------------------------------------------------
    Same card as the walkthrough, centred rather than pinned to anything: it does
    not point at a control, it is the control. */
@@ -513,7 +528,7 @@ a:hover{border-bottom-color:var(--hot)}
   border:1px solid var(--line-hard); padding:var(--s4);
 }
 #gate h3{margin:0 0 var(--s2); font-size:13px; font-weight:600}
-#gate p{margin:0 0 var(--s3); font-size:12.5px; line-height:1.6; color:var(--ink-2)}
+#gate p{margin:0 0 var(--s3); font-size:12px; line-height:1.6; color:var(--ink-2)}
 #gate input{width:100%; margin-bottom:var(--s3)}
 #gate .foot{display:flex; align-items:center; gap:var(--s2); justify-content:flex-end}
 /* The server says why a sign-in failed — wrong password, or wait n seconds. The page repeats it
@@ -554,7 +569,7 @@ a:hover{border-bottom-color:var(--hot)}
 /* An inline chart capped at 720 px looked stranded on a wide screen, with two thirds of the row
    empty beside it. It takes the width it is given now, and the window above is for going bigger. */
 #farm h3{margin:0 0 var(--s2); font-size:13px; font-weight:600}
-#farm .lede{margin:0 0 var(--s3); font-size:12.5px; line-height:1.6; color:var(--ink-2)}
+#farm .lede{margin:0 0 var(--s3); font-size:12px; line-height:1.6; color:var(--ink-2)}
 #farm dl{display:grid; grid-template-columns:auto 1fr; gap:2px var(--s3); margin:0 0 var(--s3);
   font-family:var(--mono); font-size:11.5px}
 #farm dt{color:var(--ink-3)}
@@ -566,7 +581,7 @@ a:hover{border-bottom-color:var(--hot)}
 #farm .who-row .addr{color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 #farm .who-row .age{margin-left:auto; color:var(--ink-3); white-space:nowrap}
 #farm .who-row a{color:var(--ink-3)}
-#farm .caveat{margin:0 0 var(--s3); font-size:11px; line-height:1.5; color:var(--ink-3)}
+#farm .caveat{margin:0 0 var(--s3); font-size:11.5px; line-height:1.5; color:var(--ink-3)}
 #farm .foot{display:flex; justify-content:flex-end}
 /* The panel is tall — description, grid, reasons, buy box, holders — so by the time it has been
    read the row that opens it is off the top of the screen. The close sticks while it scrolls past. */
@@ -577,7 +592,7 @@ tr.detail td{position:relative}
 .det-x:hover{color:var(--ink); border-color:var(--hot); background:var(--surface-3)}
 
 .hold{margin-top:var(--s3); border-top:1px solid var(--line); padding-top:var(--s3)}
-.hold .hd{display:flex; gap:var(--s3); align-items:baseline; font-family:var(--mono); font-size:11px;
+.hold .hd{display:flex; gap:var(--s3); align-items:baseline; font-family:var(--mono); font-size:11.5px;
   color:var(--ink-3); margin-bottom:var(--s2); flex-wrap:wrap}
 .hold .hd b{color:var(--ink); font-weight:500}
 .hold .bar{display:flex; height:4px; margin-bottom:var(--s2); background:var(--surface-3)}
@@ -602,19 +617,19 @@ tr.detail td{position:relative}
    an empty box. */
 .chart{margin-top:var(--s3); border-top:1px solid var(--line); padding-top:var(--s3)}
 .ch-hd{display:flex; gap:var(--s3); align-items:baseline; flex-wrap:wrap;
-  font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-bottom:var(--s2)}
+  font-family:var(--mono); font-size:11.5px; color:var(--ink-3); margin-bottom:var(--s2)}
 /* Candle size. Pushed to the right of the header because it is the one thing here you can act on;
    everything to its left is the chart describing itself. */
 .ch-tf{display:flex; margin-left:auto; border:1px solid var(--line); align-self:center}
 .ch-hd .ch-tf + .ch-open{margin-left:0}
-.ch-tf button{border:0; background:none; padding:2px 7px; font-family:var(--mono); font-size:10.5px; color:var(--ink-3)}
+.ch-tf button{border:0; background:none; padding:2px 7px; font-family:var(--mono); font-size:10px; color:var(--ink-3)}
 .ch-tf button+button{border-left:1px solid var(--line)}
 .ch-tf button[aria-pressed="true"]{background:var(--hot); color:var(--hot-ink); font-weight:600}
 /* A size that would draw one candle, or four hundred, is offered and refused rather than hidden:
    a row of buttons that reshuffles itself as the launch ages is harder to use than a greyed one. */
 .ch-tf button[disabled]{opacity:.3}
 .ch-open{border:1px solid var(--line); background:none; padding:2px 9px; align-self:center;
-  font-family:var(--mono); font-size:10.5px; color:var(--ink-3)}
+  font-family:var(--mono); font-size:10px; color:var(--ink-3)}
 .ch-open:hover{border-color:var(--line-hard); color:var(--ink)}
 /* The chart sizes itself to this box. A tap must scrub the readout without stealing the page's
    scroll from a thumb, and the focus ring has to be visible because the arrows work from here. */
@@ -627,7 +642,7 @@ tr.detail td{position:relative}
 .ch-plot:focus-visible{outline:1px solid var(--hot); outline-offset:2px}
 .ch-msg{font-family:var(--mono); font-size:11.5px; line-height:1.6; color:var(--ink-3); max-width:74ch}
 .ch-out{margin-top:var(--s2); display:flex; gap:var(--s3); flex-wrap:wrap; min-height:1.6em;
-  font-family:var(--mono); font-variant-numeric:tabular-nums slashed-zero; font-size:11px; color:var(--ink)}
+  font-family:var(--mono); font-variant-numeric:tabular-nums slashed-zero; font-size:11.5px; color:var(--ink)}
 .ch-out .k{color:var(--ink-3)}
 .chart .said{margin-top:var(--s2); font-size:11.5px; line-height:1.6; color:var(--ink-3); max-width:74ch}
 .ch-notes{max-width:74ch}
@@ -667,7 +682,7 @@ tr.detail td{position:relative}
 #fx .lede{margin:0 0 var(--s3); font-size:11.5px; line-height:1.55; color:var(--ink-3); max-width:70ch}
 .fx-sec{border-top:1px solid var(--line); padding-top:var(--s2); margin-bottom:var(--s3)}
 .fx-sec>.lbl{display:block; margin-bottom:var(--s2)}
-.fx-note{margin:var(--s1) 0 0; font-size:10.5px; line-height:1.5; color:var(--ink-3)}
+.fx-note{margin:var(--s1) 0 0; font-size:10px; line-height:1.5; color:var(--ink-3)}
 .fx-line{display:flex; align-items:center; gap:var(--s2); margin-bottom:var(--s1)}
 .fx-line>label{width:66px; flex:none; font-size:11.5px; color:var(--ink-2)}
 .fx-line input[type=search]{flex:1; min-width:0; width:auto}
@@ -676,16 +691,16 @@ tr.detail td{position:relative}
 .fx-row>label{flex:1; min-width:0; font-size:11.5px; color:var(--ink-2);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .fx-row input[type=number]{width:60px; text-align:right}
-.fx-dash{flex:none; font-family:var(--mono); font-size:11px; color:var(--ink-3)}
+.fx-dash{flex:none; font-family:var(--mono); font-size:11.5px; color:var(--ink-3)}
 #fx .seg{width:max-content; max-width:100%; flex-wrap:wrap}
 .fx-set{display:flex; flex-wrap:wrap; gap:var(--s1) var(--s2); align-items:center}
 .fx-set button{padding:3px 10px; font-size:11.5px; color:var(--ink-3)}
 .fx-set button[aria-pressed="true"]{background:var(--hot); color:var(--hot-ink); border-color:var(--hot); font-weight:600}
 .fx-slot{display:flex; align-items:center; gap:var(--s2); padding:5px 0; border-bottom:1px solid var(--line)}
-.fx-slot .k{flex:none; width:56px; font-family:var(--mono); font-size:11px; color:var(--ink-2)}
-.fx-slot .s{flex:1; min-width:0; font-size:11px; color:var(--ink-3);
+.fx-slot .k{flex:none; width:56px; font-family:var(--mono); font-size:11.5px; color:var(--ink-2)}
+.fx-slot .s{flex:1; min-width:0; font-size:11.5px; color:var(--ink-3);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-#fx .fx-warn{margin:0 0 var(--s3); font-size:11px; line-height:1.55; color:var(--warn)}
+#fx .fx-warn{margin:0 0 var(--s3); font-size:11.5px; line-height:1.55; color:var(--warn)}
 #fx .foot{display:flex; justify-content:flex-end; gap:var(--s2); border-top:1px solid var(--line); padding-top:var(--s3)}
 /* how many of them are on, on the control that opens them */
 .badge{
@@ -695,7 +710,7 @@ tr.detail td{position:relative}
 #filters[aria-expanded="true"]{border-color:var(--hot)}
 
 .langs{display:flex; border:1px solid var(--line-hard)}
-.langs button{border:0; padding:3px 8px; font-size:11px; color:var(--ink-3); font-family:var(--mono)}
+.langs button{border:0; padding:3px 8px; font-size:11.5px; color:var(--ink-3); font-family:var(--mono)}
 .langs button[aria-pressed="true"]{background:var(--hot); color:var(--hot-ink); font-weight:600}
 @media(max-width:720px){#coach{left:var(--s3) !important; right:var(--s3); max-width:none; width:auto}}
 
@@ -740,6 +755,14 @@ tr.detail td{position:relative}
    Keyed off the pointer rather than the width, so a touch laptop gets it too. */
 @media (pointer: coarse){
   button{min-height:44px; padding:0 16px}
+  /* Measured at 375px: twelve controls came out between 18 and 32px. Three of them are ones this
+     page added later — the candle sizes, the social chips, and the two links out to pons and the
+     explorer, which are the only way off this page and were 18px tall. */
+  .ch-tf button{min-height:44px}
+  .soc{padding:13px 14px}
+  .row-links a{display:inline-block; padding:13px 0; margin-right:var(--s3)}
+  /* styled as a button but it is an anchor, so the button rule above never reached it */
+  .ghlink{min-height:44px; display:inline-flex; align-items:center}
   button.mini{min-height:40px}
   .seg button{min-height:44px}
   input[type=search],input[type=number]{min-height:44px}
@@ -1578,8 +1601,10 @@ function drawSpark() {
     const x = Math.round(t * (w / buckets.length)) + 0.5;
     cx.beginPath(); cx.moveTo(x, h - 7); cx.lineTo(x, h); cx.stroke();
   }
-  // bars, oldest at the left
-  cx.fillStyle = css.getPropertyValue("--n-500").trim() || "#8a8f96";
+  // bars, oldest at the left. The accent rather than grey: this is the one thing on the page that
+  // moves on its own, and a page where nothing is lit reads as a page where nothing is happening.
+  cx.fillStyle = css.getPropertyValue("--hot").trim() || "#4fd0e0";
+  cx.globalAlpha = 0.55;
   for (let i = 0; i < buckets.length; i++) {
     const v = buckets[i];
     if (!v) continue;
@@ -1587,9 +1612,10 @@ function drawSpark() {
     cx.fillRect(i * step, h - bh - 1, Math.max(1.5, step - 1), bh);
   }
   // the newest second, so the live edge is legible
+  cx.globalAlpha = 1;
   const last = buckets[buckets.length - 1];
   if (last) {
-    cx.fillStyle = css.getPropertyValue("--ink").trim() || "#fff";
+    cx.fillStyle = css.getPropertyValue("--hot").trim() || "#4fd0e0";
     const bh = Math.max(2, (last / peak) * (h - 8));
     cx.fillRect((buckets.length - 1) * step, h - bh - 1, Math.max(1.5, step - 1), bh);
   }
@@ -1787,8 +1813,8 @@ function chTheme() {
     dim: v("--n-500", "#8a8f96"),
     ink: v("--ink", "#e8eaed"),
     bg: v("--bg-1", "#101214"),
-    up: v("--ok", "#6fce97"),
-    dn: v("--crit", "#f0645a"),
+    up: v("--ok", "#5ce39a"),
+    dn: v("--crit", "#ff5a58"),
     mono: css.getPropertyValue("--mono").trim() || "ui-monospace, monospace",
   };
 }
