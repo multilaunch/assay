@@ -102,6 +102,8 @@ export const erc20Abi = parseAbi([
   "function decimals() view returns (uint8)",
   "function balanceOf(address) view returns (uint256)",
   "function allowance(address owner, address spender) view returns (uint256)",
+  // needed to encode the approve a sell has to make before the curve can pull the tokens
+  "function approve(address spender, uint256 amount) returns (bool)",
 ]);
 
 /** Event topics we filter on. */

@@ -294,6 +294,44 @@ a:hover{border-bottom-color:var(--hot)}
 .buy-tx .st.ok{color:var(--ok)}
 .buy-tx .st.no{color:var(--crit)}
 
+/* ---- the swap ---------------------------------------------------------------
+   Two sides, two colours, and the button that moves money is the largest thing
+   in the panel. It was one grey control saying "quote" next to three grey chips,
+   and a tester opening a launch could not find it at all — which for the one
+   control here that spends money is the worst thing a layout can do. */
+.side{display:flex; gap:0; margin-bottom:var(--s3); border:1px solid var(--line-hard); width:max-content}
+.side button{border:0; background:none; padding:7px 22px; font-size:12.5px; font-weight:600;
+  letter-spacing:.04em; color:var(--ink-3)}
+.side button+button{border-left:1px solid var(--line-hard)}
+.side .s-buy[aria-pressed="true"]{background:var(--ok); color:oklch(18% 0.02 152)}
+.side .s-sell[aria-pressed="true"]{background:var(--crit); color:oklch(18% 0.03 27)}
+
+/* The one control that spends money. Green to buy, red to sell, and big enough that "I could not
+   see the buy button" cannot be said again. */
+/* The disabled look is the default and the colour is what a working button earns, rather than the
+   other way round. Written as `.buy.is-sell .act { red }` the side colour outranked the disabled
+   rule, and "no wallet" came out in full red — a button that looks live and does nothing. */
+.act{border:0; padding:10px 26px; margin-top:var(--s3); font-size:13px; font-weight:500;
+  letter-spacing:.03em; background:var(--surface-3); color:var(--ink-3); min-width:190px}
+.act:not([disabled]){background:var(--ok); color:oklch(18% 0.02 152); font-weight:600}
+.buy.is-sell .act:not([disabled]){background:var(--crit); color:oklch(18% 0.03 27)}
+.act:not([disabled]):hover{filter:brightness(1.1)}
+.buy-go .act{margin-top:0; padding:8px 20px; min-width:0; font-size:12px}
+.buy-go .act.buy:not([disabled]){background:var(--ok); color:oklch(18% 0.02 152)}
+.buy-go .act.sell:not([disabled]){background:var(--crit); color:oklch(18% 0.03 27)}
+
+.slipbox{display:flex; align-items:center; gap:var(--s2); margin-left:auto}
+.slipbox .lbl{font-size:11px; color:var(--ink-3)}
+.chips.slip button{padding:3px 7px; font-size:10.5px}
+.held{margin:var(--s2) 0 0; font-family:var(--mono); font-size:11px; color:var(--ink-3)}
+.buy-f.two{color:var(--warn)}
+.buy-f.two .k{color:var(--warn)}
+@media(max-width:560px){
+  .side button{padding:9px 20px}
+  .act{width:100%; padding:12px 0}
+  .slipbox{margin-left:0; width:100%}
+}
+
 /* ---- rail --------------------------------------------------------------- */
 /* The rail scrolls when it has to. Four sections fit a laptop; on a short window the log used to be
    squeezed to nothing instead of the rail simply being longer than the screen. */
@@ -493,6 +531,22 @@ tr.detail td{position:relative}
 /* Same reason as the buy control above: the table is wider than a phone and scrolls sideways
    inside its pane, and the chart must be readable with the columns at rest. */
 @media(max-width:560px){.chart{max-width:300px} .ch-plot{height:200px} .ch-tf button{min-height:32px; padding:2px 10px}}
+
+/* ---- socials ----------------------------------------------------------------
+   Each in the colour it is known by, because that is what makes them findable
+   at a glance in a wall of monospace. Having none is not a blank — it is the
+   thing the score deducts for — so it is drawn in the warning colour instead of
+   being left empty. */
+.soc{display:inline-flex; align-items:center; gap:4px; padding:3px 10px; margin:0 6px 4px 0;
+  border:1px solid currentColor; font-size:11.5px; font-weight:500; line-height:1.3;
+  text-decoration:none; border-radius:2px}
+.soc:hover{filter:brightness(1.25)}
+.soc.s-x{color:oklch(88% 0.02 240)}
+.soc.s-web{color:oklch(75% 0.13 200)}
+.soc.s-tg{color:oklch(72% 0.13 240)}
+.soc.none{color:var(--warn); border-style:dashed}
+/* touch targets: this is the row people open on a phone to decide something */
+@media(max-width:560px){.soc{padding:7px 12px}}
 
 /* ---- the filter panel ------------------------------------------------------
    Same card as the two above it, same hairlines, same spacing steps. It narrows
@@ -829,6 +883,15 @@ const I18N = {
     ch_grad:"the marked candle is where it left the curve — everything right of it is its uniswap pool.",
     ch_pool:"pool",
     ch_auto:"auto", ch_tf:"candle size", ch_open:"open", ch_open_t:"open the chart in a window",
+    soc_web:"Website", soc_none:"no socials at all",
+    b_side:"buy or sell", b_sell:"SELL", b_token:"tokens",
+    b_quote_sell:"price this sell", b_send_sell:"sign and sell",
+    b_sell_in:"you sell", b_sell_out:"you get",
+    b_held:"in this wallet: {n} {s}", b_held_reading:"reading the balance…", b_held_unknown:"connect a wallet to see what it holds",
+    b_two_steps:"two signatures: the token has to allow the curve to take it, then the sale itself",
+    b_approve:"1 · allow", b_approving:"waiting for the wallet to allow it…",
+    b_approve_wait:"allowance sent — waiting for it to be mined", b_approved:"allowed. sign the sale.",
+    b_approve_failed:"the allowance did not go through, so the sale was not attempted",
     /* Refusals from the server. It answers with a code as well as a sentence; the sentence is
        English because that is what a curl of the route should print, and these are what the page
        says instead. A code with no entry here falls back to the server's own words, which is worse
@@ -846,6 +909,7 @@ const I18N = {
     e_curve_unread:"could not read the curve just now; try again",
     e_graduated:"this launch has left the curve; it trades in its uniswap pool now",
     e_zero_out:"the curve gives zero tokens for that amount",
+    e_over_balance:"that is more than this wallet holds",
     ch_nolib:"the chart could not be drawn. the numbers above it are unaffected.",
     ch_partial:"{n} log ranges were refused, so this picture is partial.",
     ch_truncated:"the trade log is longer than this reads; the early part is missing.",
@@ -952,7 +1016,7 @@ const I18N = {
     w_connect:"connect", w_disconnect:"disconnect", w_none:"no wallet",
     w_none_t:"no wallet in this browser — install one, or open the board where you keep yours",
     w_switch:"wrong chain, switch", w_switching:"switching", w_declined:"you turned that down",
-    b_buy:"buy", b_amount:"eth", b_quote:"quote", b_requote:"re-quote", b_working:"pricing",
+    b_buy:"BUY", b_amount:"eth", b_quote:"quote", b_requote:"re-quote", b_working:"pricing",
     b_send:"sign and send", b_sending:"waiting for the wallet",
     b_out:"you get", b_min:"at least", b_slip:"slippage", b_fee:"fee",
     b_creator:"creator tax", b_open:"opening tax", b_spend:"you spend",
@@ -1051,6 +1115,15 @@ const I18N = {
     ch_grad:"помеченная свеча — место, где он ушёл с кривой. всё правее уже его пул uniswap.",
     ch_pool:"пул",
     ch_auto:"авто", ch_tf:"размер свечи", ch_open:"развернуть", ch_open_t:"открыть график в окне",
+    soc_web:"Сайт", soc_none:"соцсетей нет вообще",
+    b_side:"покупка или продажа", b_sell:"ПРОДАТЬ", b_token:"токенов",
+    b_quote_sell:"посчитать продажу", b_send_sell:"подписать и продать",
+    b_sell_in:"отдаёте", b_sell_out:"получаете",
+    b_held:"в этом кошельке: {n} {s}", b_held_reading:"читаю баланс…", b_held_unknown:"подключите кошелёк, чтобы увидеть баланс",
+    b_two_steps:"две подписи: сначала токен разрешает кривой себя забрать, потом сама продажа",
+    b_approve:"1 · разрешить", b_approving:"жду разрешения в кошельке…",
+    b_approve_wait:"разрешение отправлено — жду, пока попадёт в блок", b_approved:"разрешено. подпишите продажу.",
+    b_approve_failed:"разрешение не прошло, поэтому продажу не пробовал",
     e_bad_password:"неверный пароль", e_need_signin:"сначала войдите",
     e_read_only:"доска только для чтения", e_rule_locked:"это правило отсюда не меняется",
     e_not_a_number:"это не число", e_bad_token:"это не адрес токена",
@@ -1064,6 +1137,7 @@ const I18N = {
     e_curve_unread:"не удалось прочитать кривую, попробуйте ещё раз",
     e_graduated:"этот запуск ушёл с кривой — теперь он торгуется в своём пуле uniswap",
     e_zero_out:"на эту сумму кривая даёт ноль токенов",
+    e_over_balance:"это больше, чем есть в кошельке",
     ch_nolib:"график не удалось отрисовать. на числа выше это не влияет.",
     ch_partial:"диапазонов журнала не отдали: {n} — так что картина неполная.",
     ch_truncated:"журнал сделок длиннее, чем читается; начало не попало.",
@@ -1170,7 +1244,7 @@ const I18N = {
     w_connect:"подключить", w_disconnect:"отключить", w_none:"нет кошелька",
     w_none_t:"в этом браузере нет кошелька — поставьте расширение или откройте доску там, где он есть",
     w_switch:"не та сеть, сменить", w_switching:"меняю сеть", w_declined:"вы отказались",
-    b_buy:"купить", b_amount:"eth", b_quote:"цена", b_requote:"пересчитать", b_working:"считаю",
+    b_buy:"КУПИТЬ", b_amount:"eth", b_quote:"цена", b_requote:"пересчитать", b_working:"считаю",
     b_send:"подписать и отправить", b_sending:"ждём кошелёк",
     b_out:"получите", b_min:"не меньше", b_slip:"проскальзывание", b_fee:"комиссия",
     b_creator:"налог создателя", b_open:"стартовый налог", b_spend:"платите",
@@ -1891,11 +1965,16 @@ function feeLine(e) {
 function detailRow(e, close) {
   const tr = document.createElement("tr");
   tr.className = "detail";
+  /* Socials are one of the few things here that came from a person rather than the chain, and they
+     are the first thing anyone opening a launch goes looking for. They were three grey words in a
+     row of grey words. Now they are chips, each in its own colour, and the absence of them says so
+     in the colour of a warning — because having none is a finding, not a blank. */
+  const socChip = (href, cls, label) => `<a class="soc ${cls}" href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}</a>`;
   const soc = [
-    e.socials?.x && `<a href="${esc(e.socials.x)}" target="_blank" rel="noopener">x</a>`,
-    e.socials?.web && `<a href="${esc(e.socials.web)}" target="_blank" rel="noopener">website</a>`,
-    e.socials?.tg && `<a href="${esc(e.socials.tg)}" target="_blank" rel="noopener">telegram</a>`,
-  ].filter(Boolean).join(" · ") || `<span class="t-dim">${esc(t("none"))}</span>`;
+    e.socials?.x && socChip(e.socials.x, "s-x", "X"),
+    e.socials?.web && socChip(e.socials.web, "s-web", t("soc_web")),
+    e.socials?.tg && socChip(e.socials.tg, "s-tg", "Telegram"),
+  ].filter(Boolean).join("") || `<span class="soc none">${esc(t("soc_none"))}</span>`;
   tr.innerHTML = `<td colspan="10">
     ${e.description ? `<p class="blurb">${esc(e.description)}</p>` : ""}
     <div class="grid">
@@ -2494,6 +2573,49 @@ const CHAIN_ADD = {
 };
 const SLIPPAGE_BPS = 300;
 const CHIPS = ["0.005", "0.01", "0.05"];
+/** On a sell the chips are a share of what the wallet holds; selling "0.01 tokens" means nothing. */
+const SELL_PCTS = [25, 50, 100];
+/** Slippage the reader can pick, in basis points. 1% is tight for a curve this thin, 10% is a lot. */
+const SLIPS = [100, 300, 500, 1000];
+
+const dropQuote = (st) => { st.q = null; st.deadline = 0; st.stale = false; st.msg = null; st.approved = false; };
+
+function setSide(tok, side) {
+  const st = BUY.get(tok);
+  if (!st || st.side === side) return;
+  st.side = side;
+  dropQuote(st);
+  st.hash = null; st.status = null;
+  paintBuy(tok);
+  if (side === "sell") void loadBalance(tok);
+}
+
+/**
+ * What the wallet holds of this launch, so a share of it can be offered.
+ *
+ * Read through the board rather than the wallet: it is one ERC-20 call and the page has no business
+ * encoding ABI. Null while it is unknown, which is different from zero — "you hold none of this" is
+ * an answer and "we have not looked yet" is not.
+ */
+async function loadBalance(tok) {
+  const st = BUY.get(tok);
+  if (!st || !ACC) return;
+  try {
+    const r = await fetch(`/balance?token=${encodeURIComponent(tok)}&owner=${encodeURIComponent(ACC)}`);
+    const b = r.ok ? await r.json() : null;
+    if (b && typeof b.balance === "string" && BUY.get(tok) === st) st.balance = b.balance;
+  } catch { /* the panel says "unknown" rather than guessing zero */ }
+  paintBuy(tok);
+}
+
+/** Raw token units for the sell the reader has actually asked for. */
+function sellUnits(st) {
+  if (st.pct > 0) {
+    if (st.balance === null) return "0";
+    return ((BigInt(st.balance) * BigInt(st.pct)) / 100n).toString();
+  }
+  return toWei(st.sellAmt || "0");
+}
 
 const eth = () => window.ethereum || null;
 /* WMSG is what the wallet last said when there was no panel to say it in — a dismissed connect
@@ -2619,7 +2741,18 @@ const BUY = new Map();
 
 function buySt(tok, e) {
   let s = BUY.get(tok);
-  if (!s) { s = { amt: CHIPS[1], q: null, deadline: 0, stale: false, msg: null, tone: "", busy: false, hash: null, status: null }; BUY.set(tok, s); }
+  if (!s) {
+    s = {
+      side: "buy",                 // which way round the trade goes
+      amt: CHIPS[1],               // the pair, on a buy
+      pct: 50,                     // a share of the balance, on a sell
+      slip: SLIPPAGE_BPS,          // the reader's own tolerance, not a constant any more
+      balance: null,               // what the wallet holds of this launch, raw units
+      approved: false,             // the allowance for this quote has been signed
+      q: null, deadline: 0, stale: false, msg: null, tone: "", busy: false, hash: null, status: null,
+    };
+    BUY.set(tok, s);
+  }
   if (e) s.e = e;
   return s;
 }
@@ -2668,13 +2801,21 @@ function buyBox(e) {
   box.className = "buy";
   box.dataset.token = e.token;
   box.innerHTML = `
+    <div class="side" role="group" aria-label="${esc(t("b_side"))}">
+      <button type="button" class="s-buy" data-side="buy" aria-pressed="true">${esc(t("b_buy"))}</button>
+      <button type="button" class="s-sell" data-side="sell" aria-pressed="false">${esc(t("b_sell"))}</button>
+    </div>
     <div class="buy-in">
-      <span class="lbl">${esc(t("b_buy"))}</span>
       <div class="chips">${CHIPS.map((c) => `<button type="button" data-chip="${esc(c)}" aria-pressed="false">${esc(c)}</button>`).join("")}</div>
       <input type="number" min="0" step="0.001" inputmode="decimal" placeholder="${esc(t("b_amount"))}" aria-label="${esc(t("b_amount"))}">
       <span class="pair">ETH</span>
-      <button type="button" data-act="quote"></button>
+      <span class="slipbox">
+        <span class="lbl">${esc(t("b_slip"))}</span>
+        <span class="chips slip">${SLIPS.map((v) => `<button type="button" data-slip="${v}" aria-pressed="false">${v / 100}%</button>`).join("")}</span>
+      </span>
     </div>
+    <p class="held" hidden></p>
+    <button type="button" class="act" data-act="quote"></button>
     <p class="buy-truth">${esc(t("b_truth"))}</p>
     <div class="buy-q" hidden></div>
     <p class="buy-msg" hidden></p>
@@ -2684,17 +2825,27 @@ function buyBox(e) {
     const b = ev.target.closest("button");
     if (!b) return;
     ev.stopPropagation();
-    if (b.dataset.chip) { st.amt = b.dataset.chip; st.q = null; st.deadline = 0; st.stale = false; st.msg = null; paintBuy(e.token); return; }
+    if (b.dataset.side) { setSide(e.token, b.dataset.side); return; }
+    if (b.dataset.slip) { st.slip = Number(b.dataset.slip); dropQuote(st); paintBuy(e.token); return; }
+    if (b.dataset.chip) {
+      if (st.side === "sell") st.pct = Number(b.dataset.chip);
+      else st.amt = b.dataset.chip;
+      dropQuote(st); paintBuy(e.token); return;
+    }
     switch (b.dataset.act) {
       case "connect": void walletConnect(); break;
       case "switch": void walletSwitch(); break;
       case "quote": void doQuote(e.token); break;
+      case "approve": void doApprove(e.token); break;
       case "send": void doSend(e.token); break;
     }
   });
   box.querySelector("input").addEventListener("input", (ev) => {
-    st.amt = ev.target.value;
-    st.q = null; st.deadline = 0; st.stale = false;   // the old price is not this amount's price
+    // on a sell this is a token amount, on a buy an amount of the pair; the state keeps them apart
+    // so switching sides does not silently reuse the other side's number
+    if (st.side === "sell") { st.sellAmt = ev.target.value; st.pct = 0; }
+    else st.amt = ev.target.value;
+    dropQuote(st);                                    // the old price is not this amount's price
     paintBuy(e.token);
   });
 
@@ -2708,13 +2859,39 @@ function paintBuy(tok, into) {
   if (!box || !st) return;
   const e = st.e;
 
+  const sell = st.side === "sell";
+  const sym = e && e.symbol ? `$${e.symbol}` : t("b_token");
+  for (const b of box.querySelectorAll("[data-side]")) b.setAttribute("aria-pressed", String(b.dataset.side === st.side));
+  box.classList.toggle("is-sell", sell);
+
+  // The chips are amounts of the pair on a buy and shares of the balance on a sell, so they are
+  // relabelled rather than reused: "0.05" of a token nobody has any of is not an offer.
+  const chips = box.querySelector(".buy-in .chips");
+  const want = sell ? SELL_PCTS.map((v) => [String(v), v + "%"]) : CHIPS.map((c) => [c, c]);
+  const have = [...chips.children].map((b) => b.dataset.chip).join("|");
+  if (have !== want.map((w) => w[0]).join("|")) {
+    chips.innerHTML = want.map(([v, label]) => `<button type="button" data-chip="${esc(v)}" aria-pressed="false">${esc(label)}</button>`).join("");
+  }
+  const chosen = sell ? String(st.pct) : st.amt;
+  for (const c of chips.children) c.setAttribute("aria-pressed", String(c.dataset.chip === chosen));
+  for (const c of box.querySelectorAll("[data-slip]")) c.setAttribute("aria-pressed", String(Number(c.dataset.slip) === st.slip));
+
   const inp = box.querySelector("input");
-  if (document.activeElement !== inp) inp.value = st.amt;
-  for (const c of box.querySelectorAll("[data-chip]")) c.setAttribute("aria-pressed", String(c.dataset.chip === st.amt));
+  const shown = sell ? (st.pct > 0 ? fmtUnits(sellUnits(st)) : (st.sellAmt || "")) : st.amt;
+  if (document.activeElement !== inp) inp.value = shown;
+  box.querySelector(".pair").textContent = sell ? sym : "ETH";
+
+  const held = box.querySelector(".held");
+  held.hidden = !sell;
+  if (sell) {
+    held.textContent = !ACC ? t("b_held_unknown")
+      : st.balance === null ? t("b_held_reading")
+      : t("b_held", { n: fmtUnits(st.balance), s: sym });
+  }
 
   // one control, whatever the next real step happens to be
-  const go = box.querySelector(".buy-in [data-act]");
-  let act = "quote", label = st.q ? t("b_requote") : t("b_quote"), dis = st.busy;
+  const go = box.querySelector(".act");
+  let act = "quote", label = st.q ? t("b_requote") : sell ? t("b_quote_sell") : t("b_quote"), dis = st.busy;
   if (st.busy) label = t("b_working");
   if (!eth()) { act = "none"; label = t("w_none"); dis = true; }
   else if (!ACC) { act = "connect"; label = t("w_connect"); dis = WBUSY; }
@@ -2728,21 +2905,27 @@ function paintBuy(tok, into) {
   if (!st.q) { qb.hidden = true; qb.textContent = ""; }
   else {
     const q = st.q;
-    const sym = e && e.symbol ? ` $${e.symbol}` : "";
+    const tick = e && e.symbol ? `$${e.symbol}` : t("b_token");
     const left = Math.max(0, st.deadline - Date.now());
     const line = (k, v) => `<div class="buy-f"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`;
+    // A sell that has not been allowed yet is two signatures, and the second one is the one that
+    // moves the money. Saying so before the first popup is the whole point of showing it here.
+    const needsApprove = q.side === "sell" && !!q.approve && !st.approved;
     qb.hidden = false;
     qb.innerHTML =
-      line(t("b_spend"), `${fmtUnits(q.quoteIn)} ${q.pairSymbol}`)
-      + line(t("b_out"), fmtUnits(q.tokensOut) + sym)
-      + line(t("b_min"), fmtUnits(q.minOut) + sym)
+      (q.side === "sell"
+        ? line(t("b_sell_in"), `${fmtUnits(q.quoteIn)} ${tick}`) + line(t("b_sell_out"), `${fmtUnits(q.tokensOut)} ${q.pairSymbol}`)
+          + line(t("b_min"), `${fmtUnits(q.minOut)} ${q.pairSymbol}`)
+        : line(t("b_spend"), `${fmtUnits(q.quoteIn)} ${q.pairSymbol}`) + line(t("b_out"), `${fmtUnits(q.tokensOut)} ${tick}`)
+          + line(t("b_min"), `${fmtUnits(q.minOut)} ${tick}`))
       + line(t("b_slip"), pctBps(q.slippageBps))
       + line(t("b_fee"), pctBps(q.feeBps))
       + line(t("b_creator"), pctBps(q.creatorTaxBps))
-      + line(t("b_open"), pctBps(q.openingTaxBps))
+      + (q.side === "sell" ? "" : line(t("b_open"), pctBps(q.openingTaxBps)))
+      + (needsApprove ? `<div class="buy-f two"><span class="k">${esc(t("b_two_steps"))}</span></div>` : "")
       + `<div class="buy-go">
            <span class="buy-left${left > 0 ? "" : " out"}">${esc(left > 0 ? t("b_left", { s: Math.ceil(left / 1000) }) : t("b_stale"))}</span>
-           <button type="button" class="solid" data-act="send"${st.busy || left <= 0 ? " disabled" : ""}>${esc(t("b_send"))}</button>
+           <button type="button" class="act ${q.side === "sell" ? "sell" : "buy"}" data-act="${needsApprove ? "approve" : "send"}"${st.busy || left <= 0 ? " disabled" : ""}>${esc(needsApprove ? t("b_approve") : q.side === "sell" ? t("b_send_sell") : t("b_send"))}</button>
          </div>`;
   }
 
@@ -2772,10 +2955,13 @@ async function doQuote(tok) {
   if (!chainOk()) { st.msg = t("b_need_chain"); st.tone = ""; paintBuy(tok); return; }
 
   st.busy = true; st.msg = null; st.tone = ""; st.q = null; st.deadline = 0; st.stale = false;
-  st.hash = null; st.status = null;
+  st.approved = false; st.hash = null; st.status = null;
   paintBuy(tok);
 
-  const url = `/quote?token=${encodeURIComponent(tok)}&buyer=${encodeURIComponent(ACC)}&wei=${encodeURIComponent(toWei(st.amt))}&slippageBps=${SLIPPAGE_BPS}`;
+  // one `wei` parameter for both sides: the pair on a buy, raw token units on a sell
+  const amount = st.side === "sell" ? sellUnits(st) : toWei(st.amt);
+  const url = `/quote?token=${encodeURIComponent(tok)}&buyer=${encodeURIComponent(ACC)}`
+    + `&wei=${encodeURIComponent(amount)}&side=${st.side}&slippageBps=${st.slip}`;
   let body = null, ok = false;
   try {
     const r = await fetch(url, { headers: { accept: "application/json" } });
@@ -2791,12 +2977,63 @@ async function doQuote(tok) {
     st.tone = "bad";
   } else {
     st.q = body;
+    // the server read the balance while it was pricing; no reason to ask twice
+    if (typeof body.balance === "string") st.balance = body.balance;
     // The TTL is the server's, but the two clocks are not the same clock. A window that is not
     // plausibly the one the server meant falls back to the TTL measured from right now.
     const ttl = Number(body.expiresAt) - Date.now();
     st.deadline = ttl > 0 && ttl <= 30_000 ? Number(body.expiresAt) : Date.now() + 20_000;
   }
   paintBuy(tok);
+}
+
+/**
+ * The allowance a sell needs, signed on its own.
+ *
+ * Bundled into the send it would be one button producing two wallet popups, the first of which
+ * moves nothing and the second of which moves everything. They are separate here, and the quote
+ * says so before either of them opens. Approving exactly this sell rather than an unlimited amount
+ * is the server's decision; this only signs what it was handed.
+ */
+async function doApprove(tok) {
+  const st = BUY.get(tok), p = eth();
+  if (!st || !st.q || !st.q.approve || !p || st.busy) return;
+  if (!chainOk()) { st.msg = t("b_need_chain"); st.tone = ""; paintBuy(tok); return; }
+
+  st.busy = true; st.msg = t("b_approving"); st.tone = "dim"; paintBuy(tok);
+  let hash = null;
+  try {
+    hash = await p.request({ method: "eth_sendTransaction", params: [st.q.approve] });
+  } catch (err) {
+    st.busy = false; st.msg = walletWords(err); st.tone = codeOf(err) === 4001 ? "" : "bad";
+    paintBuy(tok); return;
+  }
+
+  // the sell cannot be signed until this one is mined, so it is waited for rather than assumed
+  st.msg = t("b_approve_wait"); paintBuy(tok);
+  const ok = await waitMined(hash);
+  st.busy = false;
+  if (ok) {
+    st.approved = true;
+    st.msg = t("b_approved"); st.tone = "";
+    // the quote's clock has been running through all of that
+    if (Date.now() >= st.deadline) { st.q = null; st.msg = t("b_stale"); }
+  } else { st.msg = t("b_approve_failed"); st.tone = "bad"; }
+  paintBuy(tok);
+}
+
+/** Polls for a receipt. The wallet has no callback and the board has no websocket to the reader. */
+async function waitMined(hash, ms = 90_000) {
+  const p = eth();
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 1500));
+    try {
+      const r = await p.request({ method: "eth_getTransactionReceipt", params: [hash] });
+      if (r && r.status) return r.status === "0x1";
+    } catch { /* keep waiting; a flaky read is not a failed transaction */ }
+  }
+  return false;
 }
 
 async function doSend(tok) {

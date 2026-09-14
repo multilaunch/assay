@@ -1,8 +1,8 @@
 import { encodeFunctionData, isAddress, type Address, type Hex } from "viem";
-import { curveAbi, factoryAbi } from "../abi/pons.js";
+import { curveAbi, erc20Abi, factoryAbi } from "../abi/pons.js";
 import { client } from "../chain/clients.js";
 import { CHAIN_ID, PONS, ZERO } from "../chain/config.js";
-import { minOutWithSlippage, quoteBuy } from "../pons/curve.js";
+import { minOutWithSlippage, quoteBuy, quoteSell } from "../pons/curve.js";
 import { curveState } from "../trade/state.js";
 
 /**
@@ -25,16 +25,30 @@ import { curveState } from "../trade/state.js";
 /** How long a quote is worth acting on. The curve moves with every trade. */
 export const QUOTE_TTL_MS = 20_000;
 
+export type Side = "buy" | "sell";
+
 export interface BuyQuote {
   chainId: number;
+  side: Side;
   /** the transaction to sign, exactly as the wallet needs it */
   tx: { to: Address; data: Hex; value: string; from: Address };
+  /**
+   * A sell has to be allowed before it can happen: the curve pulls the tokens, so the token
+   * contract must be told first. That is a second signature, and hiding it behind the first would
+   * mean a wallet popup the reader did not ask for. It is handed over separately, and it is null
+   * when the standing allowance already covers the amount.
+   */
+  approve?: { to: Address; data: Hex; value: string; from: Address } | null;
   /** what the numbers mean, so the page can show them before the wallet does */
   token: Address;
   curve: Address;
+  /** what goes in: wei of the pair on a buy, raw token units on a sell */
   quoteIn: string;
+  /** what comes out: raw token units on a buy, wei of the pair on a sell */
   tokensOut: string;
   minOut: string;
+  /** the seller's token balance, so the page can offer a share of it and refuse more */
+  balance?: string;
   slippageBps: number;
   openingTaxBps: number;
   feeBps: number;
@@ -99,6 +113,8 @@ export async function buyQuote(input: { token: string; buyer: string; quoteIn: s
     ok: true,
     quote: {
       chainId: CHAIN_ID,
+      side: "buy",
+      approve: null,
       tx: {
         to: rec.curve,
         data: encodeFunctionData({ abi: curveAbi, functionName: "buy", args: [quoteIn, minOut, buyer] }),
@@ -111,6 +127,82 @@ export async function buyQuote(input: { token: string; buyer: string; quoteIn: s
       minOut: minOut.toString(),
       slippageBps,
       openingTaxBps: Number(cv.openingTaxBps),
+      feeBps: Number(cv.feeBps),
+      creatorTaxBps: Number(cv.creatorTaxBps),
+      pairSymbol: "ETH",
+      expiresAt: Date.now() + QUOTE_TTL_MS,
+    },
+  };
+}
+
+/**
+ * Prices a sell on the bonding curve and encodes it.
+ *
+ * Two differences from a buy, and both are the reader's problem rather than the code's. There is no
+ * opening tax on the way out, so the 99% window does not apply. And the curve takes the tokens with
+ * `transferFrom`, which needs an allowance — so this may hand back two transactions, and the page
+ * has to say so before the first popup rather than after it.
+ *
+ * The amount is in raw token units, not a share: a percentage computed here would be computed
+ * against a balance read at a different moment than the one the reader saw.
+ */
+export async function sellQuote(input: { token: string; seller: string; tokensIn: string; slippageBps?: number }): Promise<QuoteResult> {
+  if (!isAddress(input.token, { strict: false })) return { ok: false, error: "that is not a token address", code: "bad_token" };
+  if (!isAddress(input.seller, { strict: false })) return { ok: false, error: "connect a wallet first", code: "no_wallet" };
+
+  const raw = (input.tokensIn ?? "").trim();
+  if (!/^\d+$/.test(raw)) return { ok: false, error: "amount must be an integer number of token units", code: "amount_nan" };
+  let tokensIn: bigint;
+  try { tokensIn = BigInt(raw); } catch { return { ok: false, error: "amount must be an integer number of token units", code: "amount_nan" }; }
+  if (tokensIn <= 0n) return { ok: false, error: "nothing to sell", code: "amount_small" };
+
+  const slippageBps = Math.max(0, Math.min(5_000, Math.round(input.slippageBps ?? 300)));
+  const token = input.token as Address;
+  const seller = input.seller as Address;
+
+  const rec = await client.readContract({ address: PONS.factory, abi: factoryAbi, functionName: "getLaunchedToken", args: [token] }).catch(() => null);
+  if (!rec || !rec.exists) return { ok: false, error: "the factory has no record of that token", code: "no_token" };
+  if (rec.pairToken.toLowerCase() !== ZERO) return { ok: false, error: "this launch is not paired with ETH; sell it from the terminal instead", code: "not_eth_pair" };
+
+  const [cv, balance, allowed] = await Promise.all([
+    curveState(rec.curve, seller).catch(() => null),
+    client.readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [seller] }).catch(() => 0n),
+    client.readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [seller, rec.curve] }).catch(() => 0n),
+  ]);
+  if (!cv) return { ok: false, error: "could not read the curve just now; try again", code: "curve_unread" };
+  if (cv.graduated || cv.readyToGraduate) return { ok: false, error: "this launch has left the curve; it trades in its Uniswap pool now", code: "graduated" };
+  if (balance < tokensIn) return { ok: false, error: "that is more than the wallet holds", code: "over_balance" };
+
+  const q = quoteSell(cv, tokensIn);
+  if (q.quoteOut === 0n) return { ok: false, error: "the curve gives zero back for that amount", code: "zero_out" };
+  const minOut = minOutWithSlippage(q.quoteOut, slippageBps);
+
+  return {
+    ok: true,
+    quote: {
+      chainId: CHAIN_ID,
+      side: "sell",
+      tx: {
+        to: rec.curve,
+        data: encodeFunctionData({ abi: curveAbi, functionName: "sell", args: [tokensIn, minOut, seller] }),
+        value: "0x0",
+        from: seller,
+      },
+      // exactly this sell, not an unlimited allowance: a board that leaves a standing permission
+      // behind is handing the curve a claim on tokens the reader may keep for months
+      approve: allowed >= tokensIn ? null : {
+        to: token,
+        data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [rec.curve, tokensIn] }),
+        value: "0x0",
+        from: seller,
+      },
+      token, curve: rec.curve,
+      quoteIn: tokensIn.toString(),
+      tokensOut: q.quoteOut.toString(),
+      minOut: minOut.toString(),
+      balance: balance.toString(),
+      slippageBps,
+      openingTaxBps: 0,
       feeBps: Number(cv.feeBps),
       creatorTaxBps: Number(cv.creatorTaxBps),
       pairSymbol: "ETH",

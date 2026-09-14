@@ -14,8 +14,8 @@ import { client } from "../chain/clients.js";
 import { candlesFor } from "./candles.js";
 import { holdersFor } from "./holders.js";
 import { logoFor } from "./logo.js";
-import { buyQuote } from "./quote.js";
-import { factoryAbi } from "../abi/pons.js";
+import { buyQuote, sellQuote } from "./quote.js";
+import { factoryAbi, erc20Abi } from "../abi/pons.js";
 import { MATURE_MS, lift, report, thinFor, wilsonLower } from "../track/accuracy.js";
 import { all } from "../track/journal.js";
 
@@ -461,15 +461,33 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     // here, and the only thing it can do to the caller is quote them a trade their own wallet then
     // refuses or signs. Public, because the whole point is that a visitor needs no account.
     if (method === "GET" && path === "/quote") {
-      void buyQuote({
-        token: url.searchParams.get("token") ?? "",
-        buyer: url.searchParams.get("buyer") ?? "",
-        quoteIn: url.searchParams.get("wei") ?? "0",
-        ...(url.searchParams.has("slippageBps") ? { slippageBps: Number(url.searchParams.get("slippageBps")) } : {}),
-      }).then(
+      const slip = url.searchParams.has("slippageBps") ? { slippageBps: Number(url.searchParams.get("slippageBps")) } : {};
+      const who = url.searchParams.get("buyer") ?? "";
+      const tok = url.searchParams.get("token") ?? "";
+      // `wei` on a buy is the pair; on a sell it is raw token units. One parameter, because it is
+      // the same field on the page and naming it twice would let the two drift apart.
+      const amount = url.searchParams.get("wei") ?? "0";
+      const priced = url.searchParams.get("side") === "sell"
+        ? sellQuote({ token: tok, seller: who, tokensIn: amount, ...slip })
+        : buyQuote({ token: tok, buyer: who, quoteIn: amount, ...slip });
+      void priced.then(
         (r) => (r.ok ? json(res, 200, r.quote) : json(res, 400, { error: r.error, code: r.code })),
         () => json(res, 502, { error: "the chain would not answer just now", code: "chain_silent" }),
       );
+      return;
+    }
+
+    // What a wallet holds of one launch. The page needs it before it can offer to sell a share of
+    // it, and asking the reader's own wallet to encode an ERC-20 read is work the board can do.
+    if (method === "GET" && path === "/balance") {
+      const tok = url.searchParams.get("token") ?? "";
+      const who = url.searchParams.get("owner") ?? "";
+      if (!isAddress(tok, { strict: false }) || !isAddress(who, { strict: false })) {
+        json(res, 400, { error: "that is not a token address", code: "bad_token" }); return;
+      }
+      void client.readContract({ address: tok as Address, abi: erc20Abi, functionName: "balanceOf", args: [who as Address] })
+        .then((b) => json(res, 200, { token: tok, owner: who, balance: b.toString() }))
+        .catch(() => json(res, 502, { error: "the chain would not answer just now", code: "chain_silent" }));
       return;
     }
 
