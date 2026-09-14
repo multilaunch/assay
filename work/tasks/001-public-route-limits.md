@@ -1,6 +1,6 @@
 # 001 — per-caller limits on the RPC-amplifying routes
 
-status: **built, deploying** · opened 2026-09-15
+status: **done** · opened and closed 2026-09-15 · deployed at `aa8081a`
 
 ## Goal
 
@@ -103,16 +103,20 @@ Numbers in [`work/logs/001-baseline.md`](../logs/001-baseline.md).
   That is the case for a CDN in front — see the proposal in `DECISIONS.md`, still the
   user's call, and now answerable with numbers rather than by feel.
 
-## Still unknown
+## Verified in production — `aa8081a`
 
-- **Whether `X-Forwarded-For` actually arrives in production.** Caddy sets it by default and
-  the Caddyfile does not override it, but that is a documented default, not a measurement.
-  The whole per-caller bound rests on it: without it every visitor is one caller. The board
-  now logs a warning once if a non-loopback request arrives without it — **check the
-  production log after deploying; absence of that line is the verification.**
+- **`X-Forwarded-For` arrives.** Zero occurrences of the warning in `docker logs assay-board`
+  after live traffic. This was the assumption the whole per-caller bound rested on; it is now
+  a measurement, not a documented default.
+- **The limit fires.** 30 parallel `/holders` for real tokens from one address: **5 served,
+  25 refused with 429**. Reading the board during it: `GET /` 200 in 0.53 s, unaffected.
 
-## Next step
+## Closed. What a reader picking this up should know
 
-Deploy, then read `docker logs assay-board` for the forwarded-header warning. If it appears,
-the per-caller bound is not working in production and the Caddyfile needs the header stated
-explicitly.
+The board now refuses instead of queueing, and says so with a code the page can translate
+(`too_busy`, `too_fast`, `board_busy`) and a `retry-after`. The page does not yet do anything
+with those three codes beyond printing the sentence — a reader who trips the limit sees the
+refusal but no countdown. Small, and deliberately left: nobody has tripped it in normal use.
+
+If the board is ever moved behind something that is not Caddy, re-run the warning check
+first. The bound is only as good as that header.

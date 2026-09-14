@@ -57,6 +57,11 @@ Proposals — things considered and not decided — are at the bottom, kept apar
   sentence is what a `curl` of the route should print. Twenty-three of them used to reach a
   Russian reader untranslated.
 - **Verbose logging stays out of the documents.** `work/logs/`, referenced by filename.
+- **What is rationed is reaching the chain, not asking a question.** The limiter sits behind
+  the caches, so a warm answer costs nobody anything. Three bounds — per caller in flight,
+  per caller over time, and a ceiling for the whole board. The ceiling is what makes the
+  failure legible: a fast 429 with a retry-after, rather than everyone waiting a minute
+  while nothing says why. Measured both ways in `work/logs/001-baseline.md`.
 
 ### Look
 
@@ -75,8 +80,11 @@ Recorded in full in `DESIGN.md`. The two that constrain code rather than CSS:
   token images so launchers cannot see them; and it does not address the cheap attack that
   actually exists here — walking distinct token addresses to force cache misses on
   `/candles` and `/holders`, each of which costs many `getLogs` against a rate-limited
-  public RPC. That is fixed in the board, and is task 001. **Recommendation: do the limits
-  first, then decide on Cloudflare knowing what is left.** The user's call, not taken.
+  public RPC. That was fixed in the board — task 001, done. **What is left after it, measured:**
+  a distributed flood still costs readers 7.9 s instead of 0.5 s, and nothing in the
+  application can help with a flood that never reaches it. Those two are the honest case for
+  a CDN, and they are smaller than the case looked like before the limits existed. Still the
+  user's call, still not taken.
 - **Holders in the index.** Measured before deferring: ~17 transfers per block chain-wide,
   ~7M rows and ~0.5 GB for the board's window, to speed up a panel opened for a handful of
   tokens. Better shape if it is ever wanted: index a token's transfers lazily on first
