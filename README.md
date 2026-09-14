@@ -121,6 +121,10 @@ chain's own bytes and simulated against the live router, but never signed.
 - [docs/GROUND_TRUTH.md](./docs/GROUND_TRUTH.md) — every protocol number, read from the chain rather
   than from documentation. Read it before you trust anything above.
 - [docs/NOTES.md](./docs/NOTES.md) — what broke, what was measured, and how the journal is mined.
+- [PROJECT.md](./PROJECT.md) — what it has to be right about, where things live, what is in flight.
+- [DECISIONS.md](./DECISIONS.md) — what was decided and why. Proposals kept apart from decisions.
+- [AGENTS.md](./AGENTS.md) — how to work in this repository, and what has to be verified.
+- [DESIGN.md](./DESIGN.md) — the visual system, and the gates a visual change passes.
 
 ## Credit
 
