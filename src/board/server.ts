@@ -11,10 +11,12 @@ import { progress } from "../pons/curve.js";
 import { allPositions, openPositions, pnlPct } from "../trade/positions.js";
 import { EXPLORER, PONS } from "../chain/config.js";
 import { client } from "../chain/clients.js";
-import { candlesFor } from "./candles.js";
-import { holdersFor } from "./holders.js";
-import { logoFor } from "./logo.js";
+import { cachedCandles, candlesFor } from "./candles.js";
+import { cachedHolders, holdersFor } from "./holders.js";
+import { cachedLogo, logoFor } from "./logo.js";
 import { buyQuote, sellQuote } from "./quote.js";
+import { WorkLimit } from "./limit.js";
+import { log } from "../util/log.js";
 import { factoryAbi, erc20Abi } from "../abi/pons.js";
 import { MATURE_MS, lift, report, thinFor, wilsonLower } from "../track/accuracy.js";
 import { all } from "../track/journal.js";
@@ -73,9 +75,26 @@ const adminHash = (): string => (process.env.BOARD_ADMIN_PASSWORD_HASH ?? "").tr
 const isSecure = (req: IncomingMessage): boolean =>
   (req.headers["x-forwarded-proto"] ?? "").toString().split(",")[0]?.trim() === "https";
 
-/** Who to throttle. The proxy's own address would throttle everyone at once, so prefer the header. */
-const clientKey = (req: IncomingMessage): string =>
-  (req.headers["x-forwarded-for"] ?? "").toString().split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+/**
+ * Who to throttle. The proxy's own address would throttle everyone at once, so prefer the header.
+ *
+ * The whole per-caller limit rests on this being the visitor's address and not Caddy's. Caddy sets
+ * `X-Forwarded-For` by default and the Caddyfile does not override it, but a default is not a
+ * measurement — so a request that plainly came through a proxy and carries no such header says so,
+ * once, loudly. Silently bucketing the entire internet as one caller is the failure this is for.
+ */
+let warnedNoXff = false;
+const clientKey = (req: IncomingMessage): string => {
+  const fwd = (req.headers["x-forwarded-for"] ?? "").toString().split(",")[0]?.trim();
+  if (fwd) return fwd;
+  const host = (req.headers.host ?? "").split(":")[0]?.toLowerCase() ?? "";
+  const local = host === "" || host === "127.0.0.1" || host === "localhost" || host === "::1";
+  if (!local && !warnedNoXff) {
+    warnedNoXff = true;
+    log.warn(`no x-forwarded-for on a request for ${host}: every visitor is being rate-limited as one caller. Check the proxy.`);
+  }
+  return req.socket.remoteAddress || "unknown";
+};
 
 /** Host names this board answers to. Behind a proxy, add the public one via BOARD_HOSTS. */
 const knownHosts = (): Set<string> => {
@@ -378,6 +397,33 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
   const frozen = readOnly();
   const sessions = new Sessions();
   const throttle = new LoginThrottle();
+
+  /**
+   * How much of the chain one caller may make the board read.
+   *
+   * Measured before this existed: forty concurrent requests for distinct real tokens took
+   * a reader's chart from 1.2 s to 61 s and held it there for two minutes, every response a
+   * 200. The board did not fall over — it queued, which is worse, because nothing said so.
+   * work/logs/001-baseline.md.
+   */
+  const work = new WorkLimit();
+
+  /** Spend one of this caller's slots on reaching the chain, and always give it back. */
+  const metered = (req: IncomingMessage, res: ServerResponse, run: () => Promise<void>): void => {
+    const key = clientKey(req);
+    const slot = work.take(key);
+    if (!slot.ok) {
+      res.setHeader("retry-after", String(slot.retryAfterSec));
+      const said = slot.reason === "board"
+        ? { error: "the board is reading as much of the chain as it can right now", code: "board_busy" }
+        : slot.reason === "busy"
+          ? { error: "too many requests at once from here", code: "too_busy" }
+          : { error: "too many requests from here", code: "too_fast" };
+      json(res, 429, { ...said, wait: slot.retryAfterSec });
+      return;
+    }
+    void run().finally(() => work.done(key));
+  };
   const SESSION_SEC = 12 * 60 * 60;
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -467,13 +513,15 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
       // `wei` on a buy is the pair; on a sell it is raw token units. One parameter, because it is
       // the same field on the page and naming it twice would let the two drift apart.
       const amount = url.searchParams.get("wei") ?? "0";
-      const priced = url.searchParams.get("side") === "sell"
-        ? sellQuote({ token: tok, seller: who, tokensIn: amount, ...slip })
-        : buyQuote({ token: tok, buyer: who, quoteIn: amount, ...slip });
-      void priced.then(
-        (r) => (r.ok ? json(res, 200, r.quote) : json(res, 400, { error: r.error, code: r.code })),
-        () => json(res, 502, { error: "the chain would not answer just now", code: "chain_silent" }),
-      );
+      metered(req, res, async () => {
+        const priced = url.searchParams.get("side") === "sell"
+          ? sellQuote({ token: tok, seller: who, tokensIn: amount, ...slip })
+          : buyQuote({ token: tok, buyer: who, quoteIn: amount, ...slip });
+        await priced.then(
+          (r) => (r.ok ? json(res, 200, r.quote) : json(res, 400, { error: r.error, code: r.code })),
+          () => json(res, 502, { error: "the chain would not answer just now", code: "chain_silent" }),
+        );
+      });
       return;
     }
 
@@ -485,9 +533,9 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
       if (!isAddress(tok, { strict: false }) || !isAddress(who, { strict: false })) {
         json(res, 400, { error: "that is not a token address", code: "bad_token" }); return;
       }
-      void client.readContract({ address: tok as Address, abi: erc20Abi, functionName: "balanceOf", args: [who as Address] })
+      metered(req, res, () => client.readContract({ address: tok as Address, abi: erc20Abi, functionName: "balanceOf", args: [who as Address] })
         .then((b) => json(res, 200, { token: tok, owner: who, balance: b.toString() }))
-        .catch(() => json(res, 502, { error: "the chain would not answer just now", code: "chain_silent" }));
+        .catch(() => json(res, 502, { error: "the chain would not answer just now", code: "chain_silent" })));
       return;
     }
 
@@ -522,14 +570,17 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
 
     // The token's picture, fetched by us. See logo.ts for why the reader's browser must not.
     if (method === "GET" && path === "/logo") {
-      void logoFor(url.searchParams.get("token") ?? "").then(
-        (l) => {
-          if (!l) { json(res, 404, { error: "no image" }); return; }
-          res.writeHead(200, { "content-type": l.type, "content-length": l.body.length, "cache-control": "public, max-age=1800" });
-          res.end(l.body);
-        },
-        () => json(res, 404, { error: "no image" }),
-      );
+      const who = url.searchParams.get("token") ?? "";
+      const send = (l: { body: Buffer; type: string } | null) => {
+        if (!l) { json(res, 404, { error: "no image", code: "no_image" }); return; }
+        res.writeHead(200, { "content-type": l.type, "content-length": l.body.length, "cache-control": "public, max-age=1800" });
+        res.end(l.body);
+      };
+      // this one reaches a host the launcher chose rather than the chain, but it is the same
+      // shape of amplification: one request in, one outbound fetch with a 12 s ceiling
+      const warmL = cachedLogo(who);
+      if (warmL) { send(warmL.logo); return; }
+      metered(req, res, () => logoFor(who).then(send, () => json(res, 404, { error: "no image", code: "no_image" })));
       return;
     }
 
@@ -537,10 +588,13 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     if (method === "GET" && path === "/holders") {
       const tok = url.searchParams.get("token") ?? "";
       if (!isAddress(tok, { strict: false })) { json(res, 400, { error: "that is not a token address", code: "bad_token" }); return; }
-      void holdersFor(tok as Address).then(
+      // a warm answer is free: what is rationed is reaching the chain, not asking
+      const warmH = cachedHolders(tok as Address);
+      if (warmH) { json(res, 200, warmH); return; }
+      metered(req, res, () => holdersFor(tok as Address).then(
         (h) => (h ? json(res, 200, h) : json(res, 404, { error: "the factory has no record of that token", code: "no_token" })),
         () => json(res, 502, { error: "the chain would not answer just now", code: "chain_silent" }),
-      );
+      ));
       return;
     }
 
@@ -549,10 +603,13 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
       const tok = url.searchParams.get("token") ?? "";
       if (!isAddress(tok, { strict: false })) { json(res, 400, { error: "that is not a token address", code: "bad_token" }); return; }
       const b = Number(url.searchParams.get("bucket") ?? "0");
-      void candlesFor(tok as Address, Number.isFinite(b) && b > 0 ? Math.min(3600, Math.round(b)) : undefined).then(
+      const bucket = Number.isFinite(b) && b > 0 ? Math.min(3600, Math.round(b)) : undefined;
+      const warmC = cachedCandles(tok as Address, bucket);
+      if (warmC) { json(res, 200, warmC); return; }
+      metered(req, res, () => candlesFor(tok as Address, bucket).then(
         (c) => (c ? json(res, 200, c) : json(res, 404, { error: "the factory has no record of that token", code: "no_token" })),
         () => json(res, 502, { error: "the chain would not answer just now", code: "chain_silent" }),
-      );
+      ));
       return;
     }
 

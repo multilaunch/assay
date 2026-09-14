@@ -134,6 +134,18 @@ export function pickBucketSec(spanSec: number, trades = TARGET_CANDLES * 3): num
 
 const cache = new Map<string, { at: number; data: Candles }>();
 
+/**
+ * What is already in hand, without reaching for anything.
+ *
+ * The route asks this first so that serving a warm answer costs the caller nothing from
+ * their budget. Rationing requests rather than work would charge a reader for the twenty
+ * second refresh of a chart the board did not have to fetch.
+ */
+export function cachedCandles(token: Address, bucketSec?: number): Candles | null {
+  const hit = cache.get(`${token.toLowerCase()}:${bucketSec ?? "auto"}`);
+  return hit && Date.now() - hit.at < TTL_MS ? hit.data : null;
+}
+
 export async function candlesFor(token: Address, bucketSec?: number): Promise<Candles | null> {
   const key = `${token.toLowerCase()}:${bucketSec ?? "auto"}`;
   const hit = cache.get(key);

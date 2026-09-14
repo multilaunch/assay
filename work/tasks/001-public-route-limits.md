@@ -1,6 +1,6 @@
 # 001 — per-caller limits on the RPC-amplifying routes
 
-status: **in progress** · opened 2026-09-15
+status: **built, deploying** · opened 2026-09-15
 
 ## Goal
 
@@ -36,22 +36,83 @@ The first step below is to find out.
 
 ## Done so far
 
-- Read the routes and confirmed the gap. Nothing changed yet.
+- Read the routes and confirmed the gap. `LoginThrottle` guards `/admin/login` only.
+- Measured the baseline. Numbers in [`work/logs/001-baseline.md`](../logs/001-baseline.md).
 
 ## Checks run
 
-None yet.
+Load measurement against a local board, index warm:
 
-## Unknown
+| | |
+|---|---|
+| reader's `/candles`, board idle | 1 179 ms |
+| reader's `/candles`, 40 distinct `/holders` in flight | **61 573 ms** |
+| flood drain time | 133 s; slowest single response 134 s; every code 200 |
 
-- What a normal reader's actual request rate is — needs measuring before a limit can be
-  chosen, or the limit will be picked out of the air.
-- Whether the failure under load is refusal, queueing, or the process falling over.
-- Whether Caddy already applies anything (believed not; `deploy/Caddyfile` has no
-  rate-limit directive, unverified).
+**40 requests is enough to make the board 52× slower for everyone, for two minutes.**
+Cheaper than assumed. The earlier guess that the process might fall over was wrong — it
+stays up and stays correct, it just queues.
+
+## Unknown — resolved
+
+- ~~Whether the failure is refusal, queueing, or falling over~~ → queueing, measured above.
+- ~~Whether random addresses are enough~~ → no. They 404 on one `readContract` before any
+  log range is touched. Real addresses are required, and 86k of them are in our own index.
+
+## Still unknown
+
+- A normal reader's real request rate, which sets where the limit goes without hurting
+  anyone. Estimated from the code — a reader with five rows open re-asks `/candles` and
+  `/holders` every 20 s, so under one request per second sustained — but **not measured**.
+- Whether Caddy applies anything already. `deploy/Caddyfile` has no rate-limit directive;
+  read, not tested.
+
+## Built
+
+`src/board/limit.ts` — `WorkLimit`, three bounds, 10 unit tests in `test/limit.test.ts`:
+
+| bound | default | why that number |
+|---|---|---|
+| per caller, in flight | 4 | a reader with five rows open never has more than a handful |
+| per caller, burst / refill | 20 / 0.5 per s | five rows re-ask every 20 s: under 1 per s sustained |
+| **whole board, in flight** | 12 | the RPC gate runs 3 at a time with 400 ms between log calls, so ~4 deep |
+
+Metered: `/candles`, `/holders`, `/logo`, `/quote`, `/balance`. Not metered: `/`, `/state`,
+`/events`, `/stats`, `/og.png`, `/vendor/*` — they cost nothing and `/events` is long-lived.
+
+**A warm cache is free.** `cachedCandles` / `cachedHolders` / `cachedLogo` answer before the
+limiter is consulted, so what is rationed is reaching the chain, not asking a question.
+
+## Checks run — after
+
+Numbers in [`work/logs/001-baseline.md`](../logs/001-baseline.md).
+
+| reader's chart | before | per-caller | + ceiling |
+|---|---|---|---|
+| 40 requests, one caller | 61 573 ms | 6 893 ms | — |
+| 40 requests, forty callers | — | 71 872 ms | **7 883 ms** |
+
+162 tests pass, typecheck and build clean.
+
+## What this does not fix
+
+- A distributed flood still costs readers something: 7.9 s instead of 0.5 s. The ceiling
+  bounds the damage, it does not remove it. Removing it needs more RPC capacity, which is
+  money, not code.
+- Nothing here defends against a volumetric flood that never reaches the application.
+  That is the case for a CDN in front — see the proposal in `DECISIONS.md`, still the
+  user's call, and now answerable with numbers rather than by feel.
+
+## Still unknown
+
+- **Whether `X-Forwarded-For` actually arrives in production.** Caddy sets it by default and
+  the Caddyfile does not override it, but that is a documented default, not a measurement.
+  The whole per-caller bound rests on it: without it every visitor is one caller. The board
+  now logs a warning once if a non-loopback request arrives without it — **check the
+  production log after deploying; absence of that line is the verification.**
 
 ## Next step
 
-Measure the baseline: drive `/holders` with distinct token addresses against a local board
-and record where response time for an unrelated `/state` request starts to degrade. Write
-the numbers to `work/logs/001-baseline.md`. Only then choose a limit.
+Deploy, then read `docker logs assay-board` for the forwarded-header warning. If it appears,
+the per-caller bound is not working in production and the Caddyfile needs the header stated
+explicitly.

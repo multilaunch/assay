@@ -176,6 +176,13 @@ function evict(): void {
   }
 }
 
+/** Already fetched, including a remembered failure. See `cachedCandles`. */
+export function cachedLogo(token: string): { logo: Logo | null } | null {
+  if (!isAddress(token, { strict: false })) return null;
+  const hit = cache.get(token.toLowerCase());
+  return hit && Date.now() - hit.at < TTL_MS ? { logo: hit.logo } : null;
+}
+
 export async function logoFor(token: string): Promise<Logo | null> {
   if (!isAddress(token, { strict: false })) return null;
   const key = token.toLowerCase();

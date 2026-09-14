@@ -77,6 +77,12 @@ export function foldTransfers(events: readonly Transfer[]): Map<string, bigint> 
 
 const cache = new Map<string, { at: number; data: Holders }>();
 
+/** What is already in hand. See the note on `cachedCandles`: a warm answer is free. */
+export function cachedHolders(token: Address): Holders | null {
+  const hit = cache.get(token.toLowerCase());
+  return hit && Date.now() - hit.at < TTL_MS ? hit.data : null;
+}
+
 export async function holdersFor(token: Address, top = 12): Promise<Holders | null> {
   const key = token.toLowerCase();
   const hit = cache.get(key);
