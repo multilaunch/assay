@@ -554,6 +554,8 @@ tr.detail td{position:relative}
 .soc.s-web{color:oklch(75% 0.13 200)}
 .soc.s-tg{color:oklch(72% 0.13 240)}
 .soc.none{color:var(--warn); border-style:dashed}
+/* something was written in the field, but it is not an address anything can open */
+.soc.dead{color:var(--ink-3); border-style:dashed; text-decoration:line-through}
 /* touch targets: this is the row people open on a phone to decide something */
 @media(max-width:560px){.soc{padding:7px 12px}}
 
@@ -1378,6 +1380,30 @@ const bEx  = (n) => n == null ? "unk" : n === 0 ? "ok" : n <= 3 ? "warn" : "crit
    colour-blind reader. The tooltip says the band anyway, for the reader who wants the rule. */
 const why = (group, band) => t(`why_${group}_${band}`);
 
+/**
+ * Where a link actually goes: the host, and the account on it.
+ *
+ * A chip reading "X" told the reader nothing — not which account, not even that it was a link. Two
+ * things are worth a glance here and both fit. The host, because this is a page full of launches
+ * competing to look legitimate and "x.com" against "twitter-verify.top" is the whole difference.
+ * And the first path segment, because on x.com and t.me that is the account, which is the part a
+ * person recognises or does not. Anything deeper — the rest of a link to a particular post — is
+ * dropped: it is long, and it says nothing the handle has not already said.
+ */
+function linkHost(url) {
+  let u;
+  // Absolute http(s) only, and no base. Resolved against this page, a launcher's junk string
+  // ("@handle", "soon") came out as a link to the board's own domain — a chip that looks like it
+  // points somewhere trustworthy precisely because it points at us.
+  try { u = new URL(url); } catch { return ""; }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return "";
+  const host = u.hostname.replace(/^www\./, "");
+  const first = u.pathname.split("/").filter(Boolean)[0] ?? "";
+  if (!first) return host;
+  const who = first.length > 22 ? first.slice(0, 21) + "…" : first;
+  return `${host}/${who}`;
+}
+
 const shortAge = (ms) => {
   const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return s + t("u_s");
@@ -1982,11 +2008,27 @@ function detailRow(e, close) {
      are the first thing anyone opening a launch goes looking for. They were three grey words in a
      row of grey words. Now they are chips, each in its own colour, and the absence of them says so
      in the colour of a warning — because having none is a finding, not a blank. */
-  const socChip = (href, cls, label) => `<a class="soc ${cls}" href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}</a>`;
+  /* Whatever the launcher wrote is shown, but only a real http(s) address becomes clickable. The
+     rest is a chip with the raw text in it, so a reader can see that the "socials" are the word
+     "soon" rather than seeing nothing at all. */
+  const socChip = (href, cls) => {
+    const label = linkHost(href);
+    if (!label) return `<span class="soc ${cls} dead">${esc(String(href).slice(0, 40))}</span>`;
+    return `<a class="soc ${cls}" href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}</a>`;
+  };
+  // Launchers routinely paste one link into every field. Three identical chips in a row read as a
+  // rendering fault rather than as what they are, so the same address is only drawn once.
+  const seenSoc = new Set();
+  const once = (href, cls) => {
+    const key = String(href).trim().toLowerCase();
+    if (!key || seenSoc.has(key)) return "";
+    seenSoc.add(key);
+    return socChip(href, cls);
+  };
   const soc = [
-    e.socials?.x && socChip(e.socials.x, "s-x", "X"),
-    e.socials?.web && socChip(e.socials.web, "s-web", t("soc_web")),
-    e.socials?.tg && socChip(e.socials.tg, "s-tg", "Telegram"),
+    e.socials?.x && once(e.socials.x, "s-x"),
+    e.socials?.web && once(e.socials.web, "s-web"),
+    e.socials?.tg && once(e.socials.tg, "s-tg"),
   ].filter(Boolean).join("") || `<span class="soc none">${esc(t("soc_none"))}</span>`;
   tr.innerHTML = `<td colspan="10">
     ${e.description ? `<p class="blurb">${esc(e.description)}</p>` : ""}
