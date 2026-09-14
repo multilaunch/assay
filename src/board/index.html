@@ -133,6 +133,34 @@ button:disabled{opacity:.4; cursor:not-allowed}
 /* ---- the activity ribbon -------------------------------------------------
    The one thing neither competitor shows: this chain lands ~40 launches a
    minute in bursts. A number cannot show a burst; ninety seconds of history can. */
+/* One line, the width of the page. Everything in it is a number the reader can check on the page
+   itself; the paragraph that says why the numbers mean anything is behind the button, because it
+   is read once and the numbers are glanced at every time. */
+.proof{
+  flex:none; display:flex; align-items:center; gap:var(--s3); flex-wrap:wrap;
+  padding:5px var(--s4); border-bottom:1px solid var(--line); background:var(--bg);
+  font-family:var(--mono); font-size:11px; color:var(--ink-3);
+}
+.proof[hidden]{display:none}
+.proof .pv{display:flex; align-items:baseline; gap:var(--s3); flex-wrap:wrap}
+.proof .pc{display:inline-flex; align-items:baseline; gap:5px}
+.proof .pc .k{color:var(--ink-3)}
+.proof .pc .v{color:var(--ink); font-variant-numeric:tabular-nums slashed-zero}
+.proof .pc .x{color:var(--ink-3)}
+.proof .pc.good .v{color:var(--ok)}
+.proof #proof-more{margin-left:auto; border:0; background:none; padding:0; color:var(--ink-3);
+  font-family:var(--ui); font-size:11.5px; text-decoration:underline; text-underline-offset:2px}
+.proof #proof-more:hover{color:var(--ink)}
+@media(max-width:560px){.proof{padding:4px var(--s3); gap:var(--s2)} .proof .pc.minor{display:none} .proof #proof-more{margin-left:auto}}
+
+#proofwin{
+  position:fixed; z-index:62; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:min(520px, calc(100vw - 24px)); max-height:calc(100vh - 48px); overflow:auto;
+  background:var(--surface-2); border:1px solid var(--line-hard); padding:var(--s4);
+}
+#proofwin[hidden]{display:none}
+#proofwin h3{margin:0; font-size:13px; font-weight:600}
+
 .ribbon{
   flex:none; height:var(--ribbon); display:flex; align-items:stretch;
   border-bottom:1px solid var(--line); background:var(--bg);
@@ -735,6 +763,14 @@ tr.detail td{position:relative}
   <button id="toggle" class="solid" hidden>start</button>
 </header>
 
+<!-- What the score has been worth, as one line. It used to be a panel holding a 300px column open
+     for a handful of numbers; the reasoning behind them is a click away rather than always on. -->
+<div class="proof" id="proof" hidden>
+  <span class="lbl" data-i18n="s_proof">track record</span>
+  <span class="pv" id="proof-cells"></span>
+  <button type="button" id="proof-more" data-i18n="pf_more">why this means something</button>
+</div>
+
 <div class="ribbon">
   <span class="lbl ribbon-cap" data-i18n="ribbon">launches / sec · 90s</span>
   <canvas id="spark" aria-label="Launches per second over the last 90 seconds"></canvas>
@@ -782,6 +818,14 @@ tr.detail td{position:relative}
 
 <!-- The chart, given room. Inline it shares a table cell with everything else the row has to say;
      here it gets the screen, which is what a chart is for. -->
+<div id="proofwin" role="dialog" aria-modal="true" aria-labelledby="pw-h" hidden>
+  <div class="cw-top">
+    <h3 id="pw-h" data-i18n="s_proof">track record</h3>
+    <button type="button" class="cw-x" id="pw-close" aria-label="close">&times;</button>
+  </div>
+  <div id="pw-body"></div>
+</div>
+
 <div id="chartwin" role="dialog" aria-modal="true" aria-labelledby="cw-h" hidden>
   <div class="cw-top">
     <h3 id="cw-h"></h3>
@@ -938,12 +982,6 @@ tr.detail td{position:relative}
     <section class="sec" id="sec-rules" hidden>
       <h2 data-i18n="s_rules">rules</h2>
       <div id="rules"></div>
-    </section>
-    <!-- Hidden until /stats answers: an older board binary has no such route, and an empty
-         frame would be worse than no frame. -->
-    <section class="sec" id="record" hidden>
-      <h2><span data-i18n="s_proof">track record</span> <span class="c" id="rec-n"></span></h2>
-      <div id="rec"></div>
     </section>
     <section class="sec" id="sec-log" hidden>
       <h2 data-i18n="s_log">log</h2>
@@ -1106,6 +1144,7 @@ const I18N = {
     c_score:"score", c_launch:"launch", c_buy:"opening buy", c_tax:"tax", c_exempt:"exempt",
     c_pair:"pair", c_curve:"curve", c_dev:"deployer", c_age:"age",
     s_pos:"positions", s_rules:"rules", s_log:"log", s_proof:"track record",
+    pf_more:"why this means something", pf_base:"base", pf_of:"judged",
 
     signin:"sign in", signout:"sign out",
     g_title:"sign in", g_hint:"reading needs no password. the controls do.",
@@ -1336,6 +1375,7 @@ const I18N = {
     c_score:"скор", c_launch:"запуск", c_buy:"закуп дева", c_tax:"налог", c_exempt:"без налога",
     c_pair:"пара", c_curve:"кривая", c_dev:"деплоер", c_age:"возраст",
     s_pos:"позиции", s_rules:"правила", s_log:"лог", s_proof:"проверка скора",
+    pf_more:"почему это что-то значит", pf_base:"база", pf_of:"оценено",
 
     signin:"войти", signout:"выйти",
     g_title:"вход", g_hint:"смотреть можно без пароля. управлять — нет.",
@@ -2645,20 +2685,25 @@ const fig = (v, cls) => `<b class="${cls || ""}">${esc(v)}</b>`;
 
 const VERDICT_KEY = { FIRE: "f_fire", WATCH: "f_watch", SKIP: "pf_skip", all: "f_all" };
 
+/** The full panel, kept for the dialog. Built once per refresh rather than on every open. */
+let PROOF_FULL = "";
+
 function renderStats(s) {
   STATS = s;
-  const sec = $("#record");
-  if (!s) { sec.hidden = true; railLayout(); return; }
-  sec.hidden = false;
+  const strip = $("#proof");
+  if (!s) { strip.hidden = true; PROOF_FULL = ""; railLayout(); return; }
+  strip.hidden = false;
   railLayout();
 
-  const box = $("#rec");
+  const box = document.createElement("div");
   const overall = (s.buckets || []).find((b) => b.verdict === "all");
   const judged = overall ? overall.judged : 0;
-  $("#rec-n").textContent = judged ? numv(judged) : "";
 
   if (!s.total || !judged) {
     box.innerHTML = `<div class="blank">${esc(t("pf_empty"))}</div><div class="pf-foot">${esc(t("pf_empty2"))}</div>`;
+    PROOF_FULL = box.innerHTML;
+    $("#proof-cells").innerHTML = `<span class="pc"><span class="k">${esc(t("pf_empty"))}</span></span>`;
+    paintProofWin();
     return;
   }
 
@@ -2689,6 +2734,43 @@ function renderStats(s) {
     + `<div class="pf-claim">${claim}</div>`
     + (funnel ? `<div class="pf-split">${funnel}</div>` : "")
     + `<div class="pf-foot">${esc(t("pf_foot", { h: s.matureHours, p: numv(s.pending) }))}</div>`;
+  PROOF_FULL = box.innerHTML;
+  paintProofWin();
+
+  /* The strip: the rate each verdict actually ran at, and how many launches that is out of. The
+     lift is beside it because a rate on its own says nothing without the base it is being compared
+     to. FIRE goes green only when its lower bound clears that base — the same condition the panel
+     spells out, so the colour is not a decoration. */
+  const cell = (k, v, x, good, minor) =>
+    `<span class="pc${good ? " good" : ""}${minor ? " minor" : ""}"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span>${x ? `<span class="x">${esc(x)}</span>` : ""}</span>`;
+  // On a phone only the two that carry the claim survive — the verdict that is supposed to be worth
+  // something, and the base it has to beat. The rest is a tap away and was costing three lines.
+  $("#proof-cells").innerHTML =
+    s.buckets.filter((b) => b.verdict !== "all").map((b) =>
+      cell(t(VERDICT_KEY[b.verdict] || b.verdict), b.judged ? pctv(b.rate) : "—",
+        b.lift == null ? "" : b.lift.toFixed(1) + "×", b.verdict === "FIRE" && proven,
+        b.verdict !== "FIRE")).join("")
+    + cell(t("pf_base"), pctv(s.base), "")
+    + cell(t("pf_of"), numv(judged), "", false, true);
+}
+
+function paintProofWin() {
+  const w = $("#pw-body");
+  if (w) w.innerHTML = PROOF_FULL;
+}
+
+function openProofWin() {
+  if (!PROOF_FULL) return;
+  paintProofWin();
+  $("#proofwin").hidden = false;
+  $("#veil").classList.add("on");
+  $("#pw-close").focus();
+}
+
+function closeProofWin() {
+  if ($("#proofwin").hidden) return;
+  $("#proofwin").hidden = true;
+  if ($("#gate").hidden && $("#farm").hidden && $("#fx").hidden && $("#chartwin").hidden) $("#veil").classList.remove("on");
 }
 
 /* An older board has no /stats, and a journal can be missing or unreadable. None of that is a
@@ -3510,12 +3592,15 @@ $("#gate-cancel").addEventListener("click", closeGate);
 // the veil belongs to whichever of the two is up; only the dialog treats a click on it as cancel
 $("#veil").addEventListener("click", () => {
   if (!$("#gate").hidden) closeGate();
+  else if (!$("#proofwin").hidden) closeProofWin();
   else if (!$("#chartwin").hidden) closeChartWin();
   else if (!$("#farm").hidden) closeFarm();
   else if (!$("#fx").hidden) closeFx();
 });
 $("#cw-close").addEventListener("click", () => closeChartWin());
 $("#dk-close").addEventListener("click", () => closeDock());
+$("#proof-more").addEventListener("click", () => openProofWin());
+$("#pw-close").addEventListener("click", () => closeProofWin());
 $("#gate-go").addEventListener("click", () => { void signIn(); });
 $("#gate").addEventListener("keydown", (e) => {
   if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeGate(); return; }
@@ -3560,7 +3645,8 @@ document.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (!$("#gate").hidden || !$("#fx").hidden) return;   // the dialog owns the keyboard while it is up
   if (e.target.closest("input, textarea, select, [contenteditable]")) { if (e.key === "Escape") e.target.blur(); return; }
-  // innermost first: the window, then the farm, then whichever row was opened last
+  // innermost first: the windows, then the farm, then whichever row was opened last
+  if (e.key === "Escape" && !$("#proofwin").hidden) { e.preventDefault(); closeProofWin(); return; }
   if (e.key === "Escape" && !$("#chartwin").hidden) { e.preventDefault(); closeChartWin(); return; }
   if (e.key === "Escape" && !$("#farm").hidden) { e.preventDefault(); closeFarm(); return; }
   if (e.key === "Escape" && OPEN_ROWS.size && TOUR_AT < 0) {
