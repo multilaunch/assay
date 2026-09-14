@@ -151,6 +151,11 @@ button:disabled{opacity:.4; cursor:not-allowed}
 /* A visitor who has not signed in may end up with nothing in the rail at all; an empty 300px
    column is worse than no column. */
 .shell.solo{grid-template-columns:minmax(0,1fr)}
+/* The trade dock is a column of its own rather than a block inside the row it belongs to. A trade
+   is the one thing here somebody does in a hurry, and hunting for it inside an expanded row —
+   below the reasons, the links and the holders — is the opposite of in a hurry. */
+.shell.trading{grid-template-columns:minmax(0,1fr) 340px 300px}
+.shell.trading.solo{grid-template-columns:minmax(0,1fr) 340px}
 main{display:flex; flex-direction:column; min-width:0; min-height:0}
 
 .bar{
@@ -273,7 +278,9 @@ a:hover{border-bottom-color:var(--hot)}
    control is what our own journal measured, not a disclaimer. */
 .buy{margin-top:var(--s3); padding-top:var(--s3); border-top:1px solid var(--line)}
 .buy-in{display:flex; align-items:center; gap:var(--s2); flex-wrap:wrap}
-.buy-in input{width:98px; text-align:right}
+.amt{display:inline-flex; align-items:center; border:1px solid var(--line-hard)}
+.amt input{width:98px; text-align:right; border:0; background:none}
+.amt .pair{padding:0 8px 0 4px; font-family:var(--mono); font-size:11px; color:var(--ink-3)}
 .chips{display:flex; border:1px solid var(--line-hard)}
 .chips button{border:0; padding:3px 9px; font-family:var(--mono); font-size:11px; color:var(--ink-3)}
 .chips button+button{border-left:1px solid var(--line)}
@@ -340,6 +347,53 @@ a:hover{border-bottom-color:var(--hot)}
   .act{width:100%; padding:12px 0}
   .slipbox{margin-left:0; width:100%}
 }
+
+/* ---- the trade dock ----------------------------------------------------- */
+.dock{border-left:1px solid var(--line-hard); background:var(--surface);
+  display:flex; flex-direction:column; min-height:0; overflow:auto}
+.dock[hidden]{display:none}
+.dock-top{flex:none; display:flex; align-items:baseline; gap:var(--s2);
+  padding:var(--s3) var(--s4); border-bottom:1px solid var(--line)}
+.dock-top .tick{font-family:var(--mono); font-size:13px; font-weight:600; color:var(--ink)}
+.dock-top .nm{font-size:11.5px; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.dock-top .x{margin-left:auto; border:0; background:none; color:var(--ink-3); font-size:17px; line-height:1; padding:0 4px}
+.dock-top .x:hover{color:var(--ink)}
+.dock-body{padding:var(--s3) var(--s4) var(--s4)}
+/* Inside the dock the swap is the whole column, so it drops the rule above it and the width caps
+   that made sense when it was one block among many inside a table cell. */
+.dock .buy{margin-top:0; padding-top:0; border-top:0}
+/* One control per line, each the full width of the column. Left as a wrapping row it came out as
+   an amount box on one line and the word ETH stranded on the next. */
+.dock .buy-in{flex-direction:column; align-items:stretch; gap:var(--s2)}
+.dock .side{width:100%}
+.dock .side button{flex:1; text-align:center}
+.dock .buy-in .chips{width:100%}
+.dock .buy-in .chips button{flex:1; text-align:center}
+.dock .amt{width:100%}
+.dock .amt input{flex:1; min-width:0}
+/* Label on its own line and the controls filling the next one. Side by side, the label plus three
+   presets plus the box ran off the right edge of a 375px screen. */
+.dock .slipbox{margin-left:0; width:100%; flex-wrap:wrap; row-gap:var(--s1)}
+.dock .slipbox .lbl{width:100%}
+.dock .chips.slip{flex:1}
+.dock .chips.slip button{flex:1}
+.dock .slip-own{flex:none}
+.dock .buy-q,.dock .buy-truth,.dock .buy-msg{max-width:none}
+/* Big and lit, because this is the control the whole column exists for. The glow is the accent at
+   low alpha rather than a second colour: it reads as the button being live, and it goes out with
+   the colour the moment the button is disabled. */
+.dock .act{width:100%; min-width:0; padding:15px 0; font-size:14px; letter-spacing:.05em}
+.dock .act:not([disabled]){box-shadow:0 0 22px -6px var(--ok)}
+.dock .buy.is-sell .act:not([disabled]),.dock .buy-go .act.sell:not([disabled]){box-shadow:0 0 22px -6px var(--crit)}
+.dock .side button{padding:10px 0; font-size:13px}
+.dock .side .s-buy[aria-pressed="true"]{box-shadow:inset 0 0 18px -6px oklch(18% 0.02 152)}
+.dock .side .s-sell[aria-pressed="true"]{box-shadow:inset 0 0 18px -6px oklch(18% 0.03 27)}
+.dock .buy-go{flex-wrap:wrap}
+.dock .buy-go .act{width:100%}
+/* Inside a row this only opens the panel; it must not wear the colour of a control that spends. */
+.act.to-dock{background:none; border:1px solid var(--line-hard); color:var(--ink-2);
+  font-weight:500; min-width:0; padding:6px 16px; font-size:12px}
+.act.to-dock:hover{border-color:var(--hot); color:var(--ink)}
 
 /* ---- rail --------------------------------------------------------------- */
 /* The rail scrolls when it has to. Four sections fit a laptop; on a short window the log used to be
@@ -609,11 +663,31 @@ tr.detail td{position:relative}
    need that scroll: it is pinned to something a thumb can reach with the columns at rest. */
 @media(max-width:560px){
   .buy,.buy-q,.buy-truth,.buy-msg{max-width:300px}
-  .buy-in input{width:78px}
+  .amt input{width:78px}
 }
 
+/* Two side columns need the width for it. Below this the rail — operator numbers, not trading —
+   gives way to the dock rather than squeezing both into slivers. */
+@media(max-width:1439px){
+  .shell.trading,.shell.trading.solo{grid-template-columns:minmax(0,1fr) 340px}
+  .shell.trading .rail{display:none}
+}
 @media(max-width:1080px){
-  .shell{grid-template-columns:minmax(0,1fr); overflow:auto}
+  /* A column, not a one-column grid. Grid rows are auto-sized but will still be squeezed below
+     their content when the container has a definite height, and that is what happened: the dock
+     got a 65px row — exactly its header — and the swap drew itself over the feed. Flex items with
+     `flex:none` are the height of what is in them and the shell scrolls past all of it. */
+  .shell,.shell.solo,.shell.trading,.shell.trading.solo{
+    display:flex; flex-direction:column; overflow:auto}
+  .shell > *{flex:none}
+  /* Stacked, the dock goes first: on a phone the alternative is scrolling past the whole feed to
+     reach it. It also stops being its own scrolling pane — the shell already scrolls, and a column
+     with `overflow:auto` in a stacked grid collapsed it to a 100px strip with the swap inside it. */
+  /* `display:block`, not the flex column it is beside the feed. As a flex item in a grid row the
+     shell had already bounded, the body shrank to nothing and the swap drew itself over the rows
+     underneath. Stacked there is nothing to distribute: it is as tall as what is in it. */
+  .dock{order:-1; display:block; border-left:0; border-bottom:1px solid var(--line-hard);
+    border-top:0; overflow:visible}
   main{min-height:62vh}
   /* Below the feed the rail is not a pane of its own; the whole shell scrolls, so it must not
      become a 200px window with its own scrollbar inside a page that already scrolls. */
@@ -842,6 +916,18 @@ tr.detail td{position:relative}
     </div>
   </main>
 
+  <!-- The trade panel. It follows whichever launch was opened last and stays put until it is
+       closed, so a decision made while reading one row can be acted on without hunting for the
+       control again. -->
+  <aside class="dock" id="dock" hidden aria-label="trade">
+    <div class="dock-top">
+      <span class="tick" id="dk-tick"></span>
+      <span class="nm" id="dk-name"></span>
+      <button type="button" class="x" id="dk-close" aria-label="close">&times;</button>
+    </div>
+    <div class="dock-body" id="dk-body"></div>
+  </aside>
+
   <aside class="rail">
     <!-- What this wallet holds, what it is told to buy, and what it has done are the operator's
          business. They stay out of the document until /state says the reader is the operator. -->
@@ -897,7 +983,7 @@ const I18N = {
     soc_web:"Website", soc_none:"no socials at all",
     b_slip_own:"own", b_slip_low:"under 1% a curve trade usually reverts before it lands",
     b_slip_high:"above 10% the quote stops protecting you: you can be filled far below it",
-    b_side:"buy or sell", b_sell:"SELL", b_token:"tokens",
+    b_side:"buy or sell", b_sell:"SELL", b_token:"tokens", b_trade:"trade {s}",
     b_quote_sell:"price this sell", b_send_sell:"sign and sell",
     b_sell_in:"you sell", b_sell_out:"you get",
     b_held:"in this wallet: {n} {s}", b_held_reading:"reading the balance…", b_held_unknown:"connect a wallet to see what it holds",
@@ -1131,7 +1217,7 @@ const I18N = {
     soc_web:"Сайт", soc_none:"соцсетей нет вообще",
     b_slip_own:"своё", b_slip_low:"ниже 1% сделка на кривой обычно отваливается, не дойдя до блока",
     b_slip_high:"выше 10% котировка уже не защищает: могут исполнить сильно ниже неё",
-    b_side:"покупка или продажа", b_sell:"ПРОДАТЬ", b_token:"токенов",
+    b_side:"покупка или продажа", b_sell:"ПРОДАТЬ", b_token:"токенов", b_trade:"торговать {s}",
     b_quote_sell:"посчитать продажу", b_send_sell:"подписать и продать",
     b_sell_in:"отдаёте", b_sell_out:"получаете",
     b_held:"в этом кошельке: {n} {s}", b_held_reading:"читаю баланс…", b_held_unknown:"подключите кошелёк, чтобы увидеть баланс",
@@ -2061,7 +2147,17 @@ function detailRow(e, close) {
   x.addEventListener("click", (ev) => { ev.stopPropagation(); close(); });
   tr.querySelector("td").prepend(x);
 
-  if (e.pairNative && (e.progress == null || e.progress < 1)) tr.querySelector("td").append(buyBox(e));
+  /* The swap itself is in the dock. What stays here is the way back to it, for a reader who closed
+     the panel and then decided after all. Only for launches this page can actually trade. */
+  if (e.pairNative && (e.progress == null || e.progress < 1)) {
+    const go = document.createElement("button");
+    go.type = "button";
+    go.className = "act to-dock";
+    go.dataset.i18n = "b_trade";
+    go.textContent = t("b_trade", { s: e.symbol ? "$" + e.symbol : "" });
+    go.addEventListener("click", (ev) => { ev.stopPropagation(); openDock(e); });
+    tr.querySelector("td").append(go);
+  }
 
   const chart = chartBox(e);
   tr.querySelector("td").append(chart);
@@ -2167,6 +2263,9 @@ function launchRow(e) {
     tr.after(open);
     tr.setAttribute("aria-expanded", "true");
     OPEN_ROWS.add(tr);
+    // opening a launch is how you say which one you are thinking about, so the panel follows.
+    // Only for the ones this page can trade; loading a dead end into it would be a false offer.
+    if (e.pairNative && (e.progress == null || e.progress < 1)) openDock(e);
   };
   tr._collapse = collapse;
   tr._expand = () => { if (!open) toggle(); };
@@ -2879,6 +2978,43 @@ function txUrl(e, hash) {
   try { return `${new URL(e.links.explorer).origin}/tx/${hash}`; } catch { return ""; }
 }
 
+/* ---- the trade dock ----------------------------------------------------------
+   One trade surface, not two. The swap used to sit inside the expanded row, below
+   everything the row had to say; it lives here instead, in a column that stays
+   where it is while the feed keeps moving underneath. Opening a launch loads it;
+   closing the row does not close it, because the reason to read a row is usually
+   to decide something and the decision comes after the reading. */
+let DOCKED = null;   // the token the panel is showing, or null
+
+function openDock(e) {
+  if (!e || !e.token) return;
+  if (DOCKED === e.token) { $("#dock").hidden = false; layoutShell(); return; }
+  DOCKED = e.token;
+  $("#dk-tick").textContent = e.symbol ? "$" + e.symbol : short(e.token);
+  $("#dk-name").textContent = e.name || "";
+  const body = $("#dk-body");
+  body.innerHTML = "";
+  body.append(buyBox(e));
+  $("#dock").hidden = false;
+  layoutShell();
+}
+
+function closeDock() {
+  if ($("#dock").hidden) return;
+  $("#dock").hidden = true;
+  $("#dk-body").innerHTML = "";
+  DOCKED = null;
+  layoutShell();
+}
+
+/** The shell is one, two or three columns depending on what is actually in them. */
+function layoutShell() {
+  const sh = $(".shell");
+  sh.classList.toggle("trading", !$("#dock").hidden);
+  const shown = [...document.querySelectorAll(".rail .sec")].filter((x) => !x.hidden);
+  sh.classList.toggle("solo", shown.length === 0);
+}
+
 function buyBox(e) {
   const st = buySt(e.token, e);
   const box = document.createElement("div");
@@ -2891,8 +3027,10 @@ function buyBox(e) {
     </div>
     <div class="buy-in">
       <div class="chips">${CHIPS.map((c) => `<button type="button" data-chip="${esc(c)}" aria-pressed="false">${esc(c)}</button>`).join("")}</div>
-      <input type="number" min="0" step="0.001" inputmode="decimal" placeholder="${esc(t("b_amount"))}" aria-label="${esc(t("b_amount"))}">
-      <span class="pair">ETH</span>
+      <span class="amt">
+        <input type="number" min="0" step="0.001" inputmode="decimal" placeholder="${esc(t("b_amount"))}" aria-label="${esc(t("b_amount"))}">
+        <span class="pair">ETH</span>
+      </span>
       <span class="slipbox">
         <span class="lbl">${esc(t("b_slip"))}</span>
         <span class="chips slip">${SLIPS.map((v) => `<button type="button" data-slip="${v}" aria-pressed="false">${slipPct(v)}%</button>`).join("")}</span>
@@ -2937,7 +3075,7 @@ function buyBox(e) {
   // leaving "0" or "abc" sitting in the box while a different number is in force is a small lie,
   // and it is the number people will believe. On the way out it says what is actually set.
   slipIn.addEventListener("blur", () => paintBuy(e.token));
-  box.querySelector(".buy-in > input").addEventListener("input", (ev) => {
+  box.querySelector(".amt input").addEventListener("input", (ev) => {
     // on a sell this is a token amount, on a buy an amount of the pair; the state keeps them apart
     // so switching sides does not silently reuse the other side's number
     if (st.side === "sell") { st.sellAmt = ev.target.value; st.pct = 0; }
@@ -2948,6 +3086,7 @@ function buyBox(e) {
 
   // painted before it is in the document, so the panel is handed over rather than looked up
   paintBuy(e.token, box);
+  if (ACC && st.balance === null) void loadBalance(e.token);
   return box;
 }
 
@@ -2983,14 +3122,17 @@ function paintBuy(tok, into) {
   wl.hidden = !warn;
   wl.textContent = warn;
 
-  const inp = box.querySelector(".buy-in > input");
+  const inp = box.querySelector(".amt input");
   const shown = sell ? (st.pct > 0 ? fmtUnits(sellUnits(st)) : (st.sellAmt || "")) : st.amt;
   if (document.activeElement !== inp) inp.value = shown;
   box.querySelector(".pair").textContent = sell ? sym : "ETH";
 
+  /* Shown on both sides. What you already hold of a launch is part of deciding whether to buy more
+     of it, not only part of deciding to sell — and on the sell side it is the thing the percentages
+     are a share of. */
   const held = box.querySelector(".held");
-  held.hidden = !sell;
-  if (sell) {
+  held.hidden = !ACC && !sell;
+  if (!held.hidden) {
     held.textContent = !ACC ? t("b_held_unknown")
       : st.balance === null ? t("b_held_reading")
       : t("b_held", { n: fmtUnits(st.balance), s: sym });
@@ -3211,6 +3353,7 @@ function railLayout() {
   for (const el of secs) el.classList.toggle("grow", el === last);
   $(".rail").hidden = shown.length === 0;
   $(".shell").classList.toggle("solo", shown.length === 0);
+  layoutShell();
 }
 
 function applyAudience() {
@@ -3372,6 +3515,7 @@ $("#veil").addEventListener("click", () => {
   else if (!$("#fx").hidden) closeFx();
 });
 $("#cw-close").addEventListener("click", () => closeChartWin());
+$("#dk-close").addEventListener("click", () => closeDock());
 $("#gate-go").addEventListener("click", () => { void signIn(); });
 $("#gate").addEventListener("keydown", (e) => {
   if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeGate(); return; }
