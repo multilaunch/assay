@@ -226,6 +226,17 @@ table{width:100%; border-collapse:collapse; table-layout:auto}
 @container feed (max-width:780px){ .c-pair{display:none} }
 @container feed (max-width:680px){ .c-tax{display:none} }
 @container feed (max-width:560px){ .c-curve{display:none} }
+/* A phone. Five columns is the floor — verdict, score, ticker, opening buy, age — and they did not
+   fit: the table came out 478px in a 375px pane. Not because of the numbers but the headers, set in
+   one uppercase line with wide tracking, which made "opening buy" a 147px column for a 5-character
+   value. Headers may wrap here and the gutters tighten; the ticker takes whatever is left and
+   ellipsises. An earlier check reported no overflow at this width because it measured the document,
+   and on a phone the pane scrolls, not the document. */
+@container feed (max-width:480px){
+  thead th{white-space:normal; line-height:1.25; padding:6px var(--s2); letter-spacing:.06em; vertical-align:bottom}
+  td{padding:0 var(--s2)}
+  td.mk{padding-left:var(--s2)}
+}
 thead th{
   position:sticky; top:0; z-index:9; background:var(--bg);
   border-bottom:1px solid var(--line-hard); text-align:left; white-space:nowrap;
@@ -317,6 +328,16 @@ tr.detail>td{
 .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:var(--s2) var(--s5)}
 .kv{display:flex; gap:var(--s2); font-size:12px; line-height:1.55}
 .kv dt{color:var(--ink-3); min-width:78px; flex:none}
+/* short, one line, and it says it is a link without shouting it */
+.addr{font-family:var(--mono); color:var(--ink-2); text-decoration:none; white-space:nowrap;
+  border-bottom:1px dotted var(--line-hard)}
+.addr:hover{color:var(--hot); border-bottom-color:var(--hot)}
+.ex-n{font-family:var(--mono); color:var(--ink); margin-right:4px}
+.more{display:inline}
+.more summary{display:inline; cursor:pointer; color:var(--hot); font-size:11.5px; list-style:none}
+.more summary::-webkit-details-marker{display:none}
+.more[open] summary{color:var(--ink-3)}
+.more-list{display:flex; flex-wrap:wrap; gap:4px 10px; margin-top:6px}
 .kv dd{margin:0; font-family:var(--mono); font-size:11.5px; overflow-wrap:anywhere}
 .why{margin-top:var(--s3); font-size:11.5px; line-height:1.75; color:var(--ink-2)}
 .why b{color:var(--ink); font-weight:500; font-family:var(--mono)}
@@ -404,6 +425,22 @@ a:hover{border-bottom-color:var(--hot)}
 }
 
 /* ---- the trade dock ----------------------------------------------------- */
+/* Between a phone and a wide screen the dock stays a column. It used to stack above the feed from
+   1080px down, and on a 1024px laptop that stretched a panel drawn for 340px across a thousand:
+   buy and sell became 390px slabs and the swap took the top third of the screen. The feed beside it
+   drops columns on its own, so there is room for both until a phone. */
+@media(max-width:860px){
+  .shell.trading,.shell.trading.solo{display:flex; flex-direction:column; overflow:auto}
+  .shell.trading > *{flex:none}
+  /* Stacked, the dock goes first: the alternative is scrolling past the whole feed to reach it.
+     Not its own scrolling pane, and `display:block` rather than a flex column — as a flex item in a
+     row the shell had already bounded, the body shrank to its header and the swap drew itself over
+     the rows underneath. As tall as what is in it. */
+  .dock{order:-1; display:block; border-left:0; border-bottom:1px solid var(--line-hard);
+    border-top:0; overflow:visible}
+  /* and never wider than a hand: a buy button the width of a tablet is a slab, not a button */
+  .dock-top,.dock-body{max-width:560px}
+}
 .dock{border-left:1px solid var(--line-hard); background:var(--surface);
   display:flex; flex-direction:column; min-height:0; overflow:auto}
 .dock[hidden]{display:none}
@@ -655,9 +692,13 @@ tr.detail td{position:relative}
    at a glance in a wall of monospace. Having none is not a blank — it is the
    thing the score deducts for — so it is drawn in the warning colour instead of
    being left empty. */
+/* A chip is one line. In the narrow socials column a long handle broke mid-word onto a second line
+   inside its own border, which reads as two broken chips; now it truncates, with the whole address
+   in the title and one click away. */
 .soc{display:inline-flex; align-items:center; gap:4px; padding:3px 10px; margin:0 6px 4px 0;
   border:1px solid currentColor; font-size:11.5px; font-weight:500; line-height:1.3;
-  text-decoration:none; border-radius:2px}
+  text-decoration:none; border-radius:2px;
+  white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis}
 .soc:hover{filter:brightness(1.25)}
 .soc.s-x{color:oklch(88% 0.02 240)}
 .soc.s-web{color:oklch(75% 0.13 200)}
@@ -732,17 +773,8 @@ tr.detail td{position:relative}
      their content when the container has a definite height, and that is what happened: the dock
      got a 65px row — exactly its header — and the swap drew itself over the feed. Flex items with
      `flex:none` are the height of what is in them and the shell scrolls past all of it. */
-  .shell,.shell.solo,.shell.trading,.shell.trading.solo{
-    display:flex; flex-direction:column; overflow:auto}
-  .shell > *{flex:none}
-  /* Stacked, the dock goes first: on a phone the alternative is scrolling past the whole feed to
-     reach it. It also stops being its own scrolling pane — the shell already scrolls, and a column
-     with `overflow:auto` in a stacked grid collapsed it to a 100px strip with the swap inside it. */
-  /* `display:block`, not the flex column it is beside the feed. As a flex item in a grid row the
-     shell had already bounded, the body shrank to nothing and the swap drew itself over the rows
-     underneath. Stacked there is nothing to distribute: it is as tall as what is in it. */
-  .dock{order:-1; display:block; border-left:0; border-bottom:1px solid var(--line-hard);
-    border-top:0; overflow:visible}
+  .shell:not(.trading){display:flex; flex-direction:column; overflow:auto}
+  .shell:not(.trading) > *{flex:none}
   main{min-height:62vh}
   /* Below the feed the rail is not a pane of its own; the whole shell scrolls, so it must not
      become a 200px window with its own scrollbar inside a page that already scrolls. */
@@ -761,6 +793,9 @@ tr.detail td{position:relative}
   .ch-tf button{min-height:44px}
   .soc{padding:13px 14px}
   .row-links a{display:inline-block; padding:13px 0; margin-right:var(--s3)}
+  /* the shortened addresses are links now, and a 16px-tall link is a miss on a phone */
+  .addr{display:inline-block; padding:14px 2px; margin:-6px 0}
+  .more summary{display:inline-block; padding:13px 0}
   /* styled as a button but it is an anchor, so the button rule above never reached it */
   .ghlink{min-height:44px; display:inline-flex; align-items:center}
   button.mini{min-height:40px}
@@ -1054,6 +1089,7 @@ const I18N = {
     ch_pool:"pool",
     ch_auto:"auto", ch_tf:"candle size", ch_open:"open", ch_open_t:"open the chart in a window",
     soc_web:"Website", soc_none:"no socials at all",
+    d_more:"and {n} more",
     b_slip_own:"own", b_slip_low:"under 1% a curve trade usually reverts before it lands",
     b_slip_high:"above 10% the quote stops protecting you: you can be filled far below it",
     b_side:"buy or sell", b_sell:"SELL", b_token:"tokens", b_trade:"trade {s}",
@@ -1290,6 +1326,7 @@ const I18N = {
     ch_pool:"пул",
     ch_auto:"авто", ch_tf:"размер свечи", ch_open:"развернуть", ch_open_t:"открыть график в окне",
     soc_web:"Сайт", soc_none:"соцсетей нет вообще",
+    d_more:"и ещё {n}",
     b_slip_own:"своё", b_slip_low:"ниже 1% сделка на кривой обычно отваливается, не дойдя до блока",
     b_slip_high:"выше 10% котировка уже не защищает: могут исполнить сильно ниже неё",
     b_side:"покупка или продажа", b_sell:"ПРОДАТЬ", b_token:"токенов", b_trade:"торговать {s}",
@@ -1671,7 +1708,7 @@ function paintHolders(box, h) {
   const rest = Math.max(0, h.floatPct - h.creatorPct);
   const rows = h.holders.map((x) => {
     const tag = x.tag === "curve" ? t("h_tag_curve") : x.tag === "creator" ? t("h_tag_creator") : "";
-    return `<tr><td>${esc(x.address)}${tag ? ` <span class="tagged">${esc(tag)}</span>` : ""}</td><td class="r">${esc(pctOf(x.pct))}</td></tr>`;
+    return `<tr><td>${addrLink(x.address)}${tag ? ` <span class="tagged">${esc(tag)}</span>` : ""}</td><td class="r">${esc(pctOf(x.pct))}</td></tr>`;
   }).join("");
   box.innerHTML = `
     <div class="hd">
@@ -2167,7 +2204,40 @@ function feeLine(e) {
   return `<span class="t-warn">${esc(t("d_third"))}</span> ${esc(e.feeRecipient)}`;
 }
 
+/**
+ * An address the way an explorer shows one: short enough to sit on a line, linked to the whole thing.
+ *
+ * They used to be printed in full, and a 42-character word has to break somewhere — mid-hex, which
+ * is unreadable and uncopyable. Worse, measured on a launch with 31 exempt wallets: the expanded row
+ * was 1 651px tall, 1 105px of it addresses, and the chart started 1 420px down — two screens below
+ * the fold. "Where did the chart go" had that as a real answer. The full address is one hover or one
+ * click away, which is where an explorer keeps it too.
+ */
+/* The explorer is the same for every launch on the page, so it is learned once from whichever launch
+   arrives first rather than threaded through every renderer. The holders table has no launch in hand
+   and printed full addresses because of it — which is what widened the feed on a phone. */
+let EXPLORER_ORIGIN = "https://robinhoodchain.blockscout.com";
+function learnExplorer(e) {
+  try { if (e && e.links && e.links.explorer) EXPLORER_ORIGIN = new URL(e.links.explorer).origin; } catch { /* keep the default */ }
+}
+
+function addrLink(a, kind) {
+  const full = String(a);
+  const cut = full.length > 14 ? `${full.slice(0, 6)}…${full.slice(-4)}` : full;
+  const href = `${EXPLORER_ORIGIN}/${kind || "address"}/${full}`;
+  return `<a class="addr" href="${esc(href)}" target="_blank" rel="noopener" title="${esc(full)}">${esc(cut)}</a>`;
+}
+
+/** A list of addresses: the first few inline, the rest behind a native disclosure. */
+function addrList(list) {
+  const shown = list.slice(0, 3).map((a) => addrLink(a)).join(" ");
+  if (list.length <= 3) return shown;
+  return `${shown} <details class="more"><summary>${esc(t("d_more", { n: list.length - 3 }))}</summary>`
+    + `<div class="more-list">${list.slice(3).map((a) => addrLink(a)).join(" ")}</div></details>`;
+}
+
 function detailRow(e, close) {
+  learnExplorer(e);
   const tr = document.createElement("tr");
   tr.className = "detail";
   /* Socials are one of the few things here that came from a person rather than the chain, and they
@@ -2180,7 +2250,7 @@ function detailRow(e, close) {
   const socChip = (href, cls) => {
     const label = linkHost(href);
     if (!label) return `<span class="soc ${cls} dead">${esc(String(href).slice(0, 40))}</span>`;
-    return `<a class="soc ${cls}" href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}</a>`;
+    return `<a class="soc ${cls}" href="${esc(href)}" target="_blank" rel="noopener" title="${esc(href)}">${esc(label)}</a>`;
   };
   // Launchers routinely paste one link into every field. Three identical chips in a row read as a
   // rendering fault rather than as what they are, so the same address is only drawn once.
@@ -2199,11 +2269,11 @@ function detailRow(e, close) {
   tr.innerHTML = `<td colspan="10">
     ${e.description ? `<p class="blurb">${esc(e.description)}</p>` : ""}
     <div class="grid">
-      <dl class="kv"><dt>${esc(t("d_token"))}</dt><dd>${esc(e.token)}</dd></dl>
-      <dl class="kv"><dt>${esc(t("d_deployer"))}</dt><dd>${esc(e.deployer)}${e.deployerPrior != null ? ` · ${esc(t("d_hist", { p: e.deployerPrior, g: e.deployerGraduated }))}` : ""}</dd></dl>
+      <dl class="kv"><dt>${esc(t("d_token"))}</dt><dd>${addrLink(e.token, "token")}</dd></dl>
+      <dl class="kv"><dt>${esc(t("d_deployer"))}</dt><dd>${addrLink(e.deployer)}${e.deployerPrior != null ? ` · ${esc(t("d_hist", { p: e.deployerPrior, g: e.deployerGraduated }))}` : ""}</dd></dl>
       <dl class="kv"><dt>${esc(t("d_fees"))}</dt><dd>${feeLine(e)}</dd></dl>
       <dl class="kv"><dt>${esc(t("d_socials"))}</dt><dd>${soc}</dd></dl>
-      ${e.exempt && e.exempt.length ? `<dl class="kv"><dt>${esc(t("d_exempt"))}</dt><dd>${e.exempt.map(esc).join("<br>")}</dd></dl>` : ""}
+      ${e.exempt && e.exempt.length ? `<dl class="kv"><dt>${esc(t("d_exempt"))}</dt><dd><b class="ex-n">${e.exempt.length}</b> ${addrList(e.exempt)}</dd></dl>` : ""}
     </div>
     <div class="why">${(e.reasons || []).map(reasonBit).join(" &nbsp; ")}</div>
     ${e.flags && e.flags.length ? `<div class="note">${esc(e.flags.map(noteText).join(" · "))}</div>` : ""}

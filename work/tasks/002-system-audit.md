@@ -54,6 +54,44 @@ Adding the null guard to the body reader, a replacement loop re-matched its own 
 inserted the guard 43 times. Caught by typecheck, collapsed, and then asserted: 3 call sites,
 3 guards. The rule in AGENTS.md about asserting scripted edits exists for exactly this.
 
+## Design findings — confirmed and fixed
+
+| # | defect | measured before | after |
+|---|---|---|---|
+| 8 | addresses printed in full, breaking mid-hex; a launch with 31 exempt wallets pushed **the chart 1 420 px down**, two screens below the fold — a real answer to "where did the chart go" | row 1 651 px, address block 1 105 px | row **527 px**, block **71 px**, chart at **401 px** |
+| 9 | the holders table printed full addresses in `nowrap` cells; with a row open it widened the feed to **478 px in a 375 px pane** — sideways scroll on every phone | pane 478 / 375 | **375 / 375**, verified with holders painted |
+| 10 | a long social handle broke mid-word onto a second line inside its own border | chip wrapped | one line, ellipsis, full URL in title |
+| 11 | on a 1024 px laptop the dock stacked above the feed and stretched to full width: buy and sell were **390 px slabs**, the swap took the top third | buy button 390 px | side column; buy **152 px**, feed drops to 7 columns |
+| 12 | the new short-address links were **16 px** tall on a phone | 16 px | 44 px |
+
+Short addresses link to the explorer with the full address in the title; lists longer than three
+collapse behind a native `<details>` ("and 28 more") that opens without closing the row.
+
+## Another mistake of mine, recorded
+
+Twice in this pass a check reported "no overflow" and was wrong:
+
+- On a phone the pane scrolls, not the document. Measuring `document.documentElement` said
+  clean while the feed was 478 px in a 375 px pane. The check now walks **every** element that
+  can scroll sideways.
+- My first fix for that targeted the table headers. The headers were not the cause — an open
+  row's holders table was, and the table spread its extra width across every column, which is
+  why "score" measured 88 px. Found by shrinking the cell and listing what refused to fit.
+- Then "fixed" was nearly reported before the holders had painted. They load in 7–10 s; the
+  first re-check ran with zero holder rows on screen and proved nothing. Re-run after waiting
+  for them explicitly.
+
+## Checks run — design
+
+| width | sideways scroll (every scroller) | columns | notes |
+|---|---|---|---|
+| 1440 | none | 10 | dock open, 7 type sizes |
+| 1024 | none | 7 | dock beside the feed |
+| 768 | none | 7 | stacked, dock body capped at 560 px |
+| 375, three rows open, holders painted | none | 5 | table exactly 375 |
+
+165 tests pass; slopcheck 0 critical.
+
 ## Next step
 
-Design pass over the live page with the gates in DESIGN.md.
+Deploy, then confirm on production at 375 px with a row open and its holders loaded.
