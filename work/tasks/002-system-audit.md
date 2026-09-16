@@ -1,6 +1,6 @@
 # 002 — system audit: bugs, flaws, design
 
-status: **in progress** · opened 2026-09-16
+status: **done** · opened and closed 2026-09-16 · deployed at `ecdb1cf`
 
 ## Goal
 
@@ -92,6 +92,24 @@ Twice in this pass a check reported "no overflow" and was wrong:
 
 165 tests pass; slopcheck 0 critical.
 
-## Next step
+## Verified on production — `ecdb1cf`
 
-Deploy, then confirm on production at 375 px with a row open and its holders loaded.
+- 375 px, the row with the most exempt wallets opened, **holders painted**: no element scrolls
+  sideways, table 375 / 375.
+- Oversized login body: `413 {"code":"too_large"}` (was a reset with no response).
+- A buy quote carries `chainId 0x1237`.
+
+## Not done, and why
+
+- **The trade path is still unproven with real money.** Findings 3–5 make the wallet flow safer
+  and more honest, but no buy or sell has been signed from the board. Still the largest unknown
+  in the product; it needs the owner's wallet and a small amount, not more code.
+- `chainId` rejection on the wrong network is **documented wallet behaviour, not tested** —
+  there is no wallet in this environment to switch networks on.
+- The "trade $X" button inside a row stays visible when the dock already shows that token.
+  Harmless and slightly redundant; left.
+
+## Continuation point
+
+Nothing in flight. A next audit would start with what this one did not reach: the operator's
+engine (`src/engine/`) under a live session, and the CLI trade commands.
