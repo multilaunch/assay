@@ -1064,6 +1064,7 @@ const I18N = {
     b_approve:"1 · allow", b_approving:"waiting for the wallet to allow it…",
     b_approve_wait:"allowance sent — waiting for it to be mined", b_approved:"allowed. sign the sale.",
     b_approve_failed:"the allowance did not go through, so the sale was not attempted",
+    b_approve_slow:"the allowance is sent but not mined yet. price the sale again in a moment — do not sign the allowance twice.",
     /* Refusals from the server. It answers with a code as well as a sentence; the sentence is
        English because that is what a curl of the route should print, and these are what the page
        says instead. A code with no entry here falls back to the server's own words, which is worse
@@ -1299,6 +1300,7 @@ const I18N = {
     b_approve:"1 · разрешить", b_approving:"жду разрешения в кошельке…",
     b_approve_wait:"разрешение отправлено — жду, пока попадёт в блок", b_approved:"разрешено. подпишите продажу.",
     b_approve_failed:"разрешение не прошло, поэтому продажу не пробовал",
+    b_approve_slow:"разрешение отправлено, но ещё не в блоке. посчитайте продажу чуть позже — второй раз разрешение не подписывайте.",
     e_bad_password:"неверный пароль", e_need_signin:"сначала войдите",
     e_read_only:"доска только для чтения", e_rule_locked:"это правило отсюда не меняется",
     e_not_a_number:"это не число", e_bad_token:"это не адрес токена",
@@ -3380,29 +3382,51 @@ async function doApprove(tok) {
 
   // the sell cannot be signed until this one is mined, so it is waited for rather than assumed
   st.msg = t("b_approve_wait"); paintBuy(tok);
-  const ok = await waitMined(hash);
+  const got = await waitMined(hash);
   st.busy = false;
-  if (ok) {
+  if (got === "ok") {
     st.approved = true;
     st.msg = t("b_approved"); st.tone = "";
     // the quote's clock has been running through all of that
     if (Date.now() >= st.deadline) { st.q = null; st.msg = t("b_stale"); }
+  } else if (got === "pending") {
+    // not a failure: say so, and let a re-quote find the allowance once it lands
+    st.msg = t("b_approve_slow"); st.tone = "";
   } else { st.msg = t("b_approve_failed"); st.tone = "bad"; }
   paintBuy(tok);
 }
 
-/** Polls for a receipt. The wallet has no callback and the board has no websocket to the reader. */
+/**
+ * A receipt's status, however the wallet answering happens to spell it.
+ *
+ * The spec says a hex string. Wallets say "0x1", 1, true, or "1". The send path already knew that
+ * and the approve path did not: it compared against "0x1" alone, so a wallet that answered with a
+ * number reported a successful approval as a failure, and the sale that should have followed it
+ * was never offered. One reading of the receipt, used by both.
+ */
+function receiptState(r) {
+  if (!r || r.status === undefined || r.status === null) return null;
+  const s = r.status;
+  return s === "0x1" || s === 1 || s === true || s === "1" ? "ok" : "reverted";
+}
+
+/**
+ * Polls for a receipt: "ok", "reverted", or "pending" when the wait ran out first.
+ *
+ * Running out of patience is not the transaction failing. Reporting it as a failure told the
+ * reader to try again, which on an approval that was about to land means signing it twice.
+ */
 async function waitMined(hash, ms = 90_000) {
   const p = eth();
   const until = Date.now() + ms;
   while (Date.now() < until) {
     await new Promise((r) => setTimeout(r, 1500));
     try {
-      const r = await p.request({ method: "eth_getTransactionReceipt", params: [hash] });
-      if (r && r.status) return r.status === "0x1";
+      const got = receiptState(await p.request({ method: "eth_getTransactionReceipt", params: [hash] }));
+      if (got) return got;
     } catch { /* keep waiting; a flaky read is not a failed transaction */ }
   }
-  return false;
+  return "pending";
 }
 
 async function doSend(tok) {
@@ -3441,9 +3465,9 @@ async function watchTx(tok, hash) {
     let r = null;
     try { r = await p.request({ method: "eth_getTransactionReceipt", params: [hash] }); }
     catch { continue; }
-    if (!r) continue;
-    const s = r.status;
-    st.status = s === "0x1" || s === 1 || s === true ? "ok" : "bad";
+    const got = receiptState(r);
+    if (!got) continue;
+    st.status = got === "ok" ? "ok" : "bad";
     paintBuy(tok);
     return;
   }

@@ -22,6 +22,17 @@ import { curveState } from "../trade/state.js";
  * cannot get.
  */
 
+/**
+ * The chain, stated inside the transaction the wallet signs.
+ *
+ * Without it the page's own "are you on Robinhood Chain" check was the only guard, and that check
+ * runs before the wallet popup — a reader who switches network while the popup is open signs our
+ * calldata on whatever chain they switched to. The `to` of a buy is a curve address and the value
+ * is real ETH; on another chain that address is somebody else's contract, or nobody's. A wallet
+ * that sees a `chainId` it is not on refuses to sign, which turns a race into a refusal.
+ */
+const CHAIN_HEX = `0x${CHAIN_ID.toString(16)}` as Hex;
+
 /** How long a quote is worth acting on. The curve moves with every trade. */
 export const QUOTE_TTL_MS = 20_000;
 
@@ -31,14 +42,14 @@ export interface BuyQuote {
   chainId: number;
   side: Side;
   /** the transaction to sign, exactly as the wallet needs it */
-  tx: { to: Address; data: Hex; value: string; from: Address };
+  tx: { to: Address; data: Hex; value: string; from: Address; chainId: Hex };
   /**
    * A sell has to be allowed before it can happen: the curve pulls the tokens, so the token
    * contract must be told first. That is a second signature, and hiding it behind the first would
    * mean a wallet popup the reader did not ask for. It is handed over separately, and it is null
    * when the standing allowance already covers the amount.
    */
-  approve?: { to: Address; data: Hex; value: string; from: Address } | null;
+  approve?: { to: Address; data: Hex; value: string; from: Address; chainId: Hex } | null;
   /** what the numbers mean, so the page can show them before the wallet does */
   token: Address;
   curve: Address;
@@ -120,6 +131,7 @@ export async function buyQuote(input: { token: string; buyer: string; quoteIn: s
         data: encodeFunctionData({ abi: curveAbi, functionName: "buy", args: [quoteIn, minOut, buyer] }),
         value: `0x${quoteIn.toString(16)}`,
         from: buyer,
+        chainId: CHAIN_HEX,
       },
       token, curve: rec.curve,
       quoteIn: quoteIn.toString(),
@@ -187,6 +199,7 @@ export async function sellQuote(input: { token: string; seller: string; tokensIn
         data: encodeFunctionData({ abi: curveAbi, functionName: "sell", args: [tokensIn, minOut, seller] }),
         value: "0x0",
         from: seller,
+        chainId: CHAIN_HEX,
       },
       // exactly this sell, not an unlimited allowance: a board that leaves a standing permission
       // behind is handing the curve a claim on tokens the reader may keep for months
@@ -195,6 +208,7 @@ export async function sellQuote(input: { token: string; seller: string; tokensIn
         data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [rec.curve, tokensIn] }),
         value: "0x0",
         from: seller,
+        chainId: CHAIN_HEX,
       },
       token, curve: rec.curve,
       quoteIn: tokensIn.toString(),

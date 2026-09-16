@@ -65,6 +65,7 @@ npm run typecheck && npm test && npm run build
 | task | state |
 | --- | --- |
 | Per-caller and board-wide limits on the RPC-amplifying routes | [`work/tasks/001-public-route-limits.md`](work/tasks/001-public-route-limits.md) — **done**, deployed |
+| System audit: bugs, flaws, design | [`work/tasks/002-system-audit.md`](work/tasks/002-system-audit.md) — in progress |
 
 ## Known and unfixed
 

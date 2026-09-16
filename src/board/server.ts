@@ -386,12 +386,34 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     res.end(JSON.stringify(body));
   };
 
-  const readBody = (req: IncomingMessage): Promise<Record<string, unknown>> =>
+  /**
+   * A request body, or null when there is not a usable one.
+   *
+   * It used to destroy an oversized request and wait for `end` — which never comes after a destroy —
+   * so the promise never settled, the handler awaiting it was held forever with its response, and
+   * the client got a reset with no status. Reproduced on /admin/login, the one POST an anonymous
+   * caller can reach. Every way out now settles exactly once: too big, aborted, errored, or done.
+   */
+  const MAX_BODY = 10_000;
+  const readBody = (req: IncomingMessage): Promise<Record<string, unknown> | null> =>
     new Promise((resolve) => {
       let s = "";
-      req.on("data", (c) => { s += c; if (s.length > 10_000) req.destroy(); });
-      req.on("end", () => { try { resolve(JSON.parse(s || "{}") as Record<string, unknown>); } catch { resolve({}); } });
+      let settled = false;
+      const done = (v: Record<string, unknown> | null) => { if (!settled) { settled = true; resolve(v); } };
+      req.on("data", (c: Buffer) => {
+        if (settled) return;
+        s += c;
+        if (s.length > MAX_BODY) { done(null); req.pause(); }
+      });
+      req.on("end", () => { try { done(JSON.parse(s || "{}") as Record<string, unknown>); } catch { done({}); } });
+      req.on("error", () => done(null));
+      req.on("close", () => done(null));
     });
+
+  /** The answer to a body that could not be read, so the handler never has to guess. */
+  const tooBig = (res: ServerResponse): void => {
+    if (!res.headersSent) json(res, 413, { error: "that request body is too large", code: "too_large" });
+  };
 
   const hosts = knownHosts();
   const frozen = readOnly();
@@ -407,6 +429,11 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
    * work/logs/001-baseline.md.
    */
   const work = new WorkLimit();
+
+  /** Live streams: a reader with several tabs open is normal; a hundred from one address is not. */
+  const STREAMS_PER_CALLER = 8;
+  const STREAMS_TOTAL = 2_000;
+  const streamsBy = new Map<string, number>();
 
   /** Spend one of this caller's slots on reaching the chain, and always give it back. */
   const metered = (req: IncomingMessage, res: ServerResponse, run: () => Promise<void>): void => {
@@ -446,6 +473,7 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
       if (wait > 0) { json(res, 429, { error: `too many attempts, wait ${Math.ceil(wait / 1000)} s`, code: "throttled", wait: Math.ceil(wait / 1000) }); return; }
       const hash = adminHash();
       void readBody(req).then(async (b) => {
+        if (!b) { tooBig(res); return; }
         const ok = hash !== "" && (await verifyPassword(String(b.password ?? ""), hash));
         if (!ok) {
           throttle.fail(clientKey(req));
@@ -619,11 +647,29 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
     }
 
     if (method === "GET" && path === "/events") {
+      // A stream costs a socket, a file descriptor, and a turn in every broadcast, and it stays
+      // open by design. Uncapped, one address opened 300 of 300 — reproduced — which is how a board
+      // stops accepting connections for everyone without a single expensive request being made.
+      const who = clientKey(req);
+      const mine = streamsBy.get(who) ?? 0;
+      if (mine >= STREAMS_PER_CALLER || clients.size >= STREAMS_TOTAL) {
+        res.setHeader("retry-after", "30");
+        json(res, 429, { error: "too many live streams open", code: "too_many_streams", wait: 30 });
+        return;
+      }
+      streamsBy.set(who, mine + 1);
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
       res.write(`data: ${JSON.stringify({ kind: "hello", at: Date.now(), live: opts.live, paused: engine.isPaused() })}\n\n`);
       const sub = { res, admin };
       clients.add(sub);
-      req.on("close", () => clients.delete(sub));
+      let released = false;
+      req.on("close", () => {
+        if (released) return;          // close can be reported more than once; count it once
+        released = true;
+        clients.delete(sub);
+        const n = (streamsBy.get(who) ?? 1) - 1;
+        if (n <= 0) streamsBy.delete(who); else streamsBy.set(who, n);
+      });
       return;
     }
 
@@ -632,6 +678,7 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
 
     if (method === "POST" && path === "/close") {
       void readBody(req).then(async (b) => {
+        if (!b) { tooBig(res); return; }
         const id = String(b.id ?? "");
         try { const r = await engine.closeNow(id); json(res, 200, { ok: true, quoteOut: r.quoteOut.toString(), pnlPct: r.pnlPct, venue: r.venue }); }
         catch (e) { json(res, 400, { ok: false, error: (e as Error).message }); }
@@ -641,6 +688,7 @@ export function startBoard(opts: BoardOptions): { engine: Engine; close: () => v
 
     if (method === "POST" && path === "/rule") {
       void readBody(req).then((b) => {
+        if (!b) { tooBig(res); return; }
         const key = String(b.key ?? "") as EditableKey;
         const bound = EDITABLE[key];
         if (!bound) { json(res, 400, { ok: false, error: "that rule cannot be changed from here", code: "rule_locked" }); return; }

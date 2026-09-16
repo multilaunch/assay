@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 /**
@@ -67,7 +67,11 @@ CREATE TABLE IF NOT EXISTS blocks (
 
 let handle: DatabaseSync | null = null;
 let ro: DatabaseSync | null = null;
-let roTried = false;
+/** the inode the read-only handle was opened on, so a replaced file can be told from the same one */
+let roIno = 0;
+let roCheckedAt = 0;
+/** how often the board looks at the path again. A stat is cheap; a stale chart is not. */
+const RECHECK_MS = 5_000;
 
 export const dbPath = (): string =>
   resolve(process.env.ASSAY_DATA ?? resolve(process.cwd(), "data"), "index.sqlite");
@@ -94,18 +98,38 @@ export function db(): DatabaseSync {
  * Everything that serves a page goes through here rather than through `db()`. The board must not
  * create this file, must not need a writable directory to start, and must not fail a chart because
  * a cache it does not depend on is missing — in a container the data volume may be absent entirely.
- * The failure is remembered so a missing index costs one syscall rather than one per request.
+ *
+ * It looks at the path again every few seconds, and that is not caution for its own sake. It used to
+ * decide once and remember, and both halves of that were wrong, measured:
+ *
+ *  - The board and the indexer start together. If the board asked first, before the indexer had
+ *    created the file, it concluded there was no index and never asked again until a restart.
+ *  - After `assay index reset` the indexer writes a new file at the same path. The board kept
+ *    reading the old one through a handle to a deleted inode — its own cursor, its own trades,
+ *    frozen — and nothing anywhere said so. That is the one way a cache is worse than none.
+ *
+ * So the handle is kept only while the path still names the file it was opened on.
  */
 export function reader(): DatabaseSync | null {
-  if (ro || roTried) return ro;
-  roTried = true;
-  if (handle) { ro = handle; return ro; }
-  try {
-    if (!existsSync(dbPath())) return null;
-    ro = new DatabaseSync(dbPath(), { readOnly: true });
-  } catch { ro = null; }
+  if (handle) return handle;
+  const now = Date.now();
+  if (now - roCheckedAt < RECHECK_MS) return ro;
+  roCheckedAt = now;
+
+  let ino = 0;
+  try { ino = statSync(dbPath()).ino; } catch { ino = 0; }
+  if (ro && ino !== 0 && ino === roIno) return ro;
+
+  // gone, or replaced by a different file at the same path: let go of what we held
+  if (ro) { try { ro.close(); } catch { /* already unusable */ } ro = null; roIno = 0; }
+  if (!ino) return null;
+  try { ro = new DatabaseSync(dbPath(), { readOnly: true }); roIno = ino; }
+  catch { ro = null; roIno = 0; }
   return ro;
 }
+
+/** For tests: make the next `reader()` look at the path now instead of waiting out the interval. */
+export function recheckReader(): void { roCheckedAt = 0; }
 
 /** For tests and for `index reset`: forget the open handles so the next call reopens. */
 export function closeDb(): void {
@@ -113,7 +137,8 @@ export function closeDb(): void {
   if (ro && ro !== handle) ro.close();
   handle = null;
   ro = null;
-  roTried = false;
+  roIno = 0;
+  roCheckedAt = 0;
 }
 
 function readMeta(d: DatabaseSync, k: string): string | null {
