@@ -326,7 +326,9 @@ tr.detail>td{
   overflow-wrap:anywhere;
 }
 .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:var(--s2) var(--s5)}
-.kv{display:flex; gap:var(--s2); font-size:12px; line-height:1.55}
+/* margin:0. <dl> carries the browser's own 12px above and below, which nobody wrote and nobody
+   noticed on a wide screen; on a phone five short facts took 431px and the chart began 700px down. */
+.kv{display:flex; gap:var(--s2); font-size:12px; line-height:1.55; margin:0}
 .kv dt{color:var(--ink-3); min-width:78px; flex:none}
 /* short, one line, and it says it is a link without shouting it */
 .addr{font-family:var(--mono); color:var(--ink-2); text-decoration:none; white-space:nowrap;
@@ -430,17 +432,39 @@ a:hover{border-bottom-color:var(--hot)}
    buy and sell became 390px slabs and the swap took the top third of the screen. The feed beside it
    drops columns on its own, so there is room for both until a phone. */
 @media(max-width:860px){
-  .shell.trading,.shell.trading.solo{display:flex; flex-direction:column; overflow:auto}
+  /* The feed keeps the whole screen and scrolls; the dock is not part of the flow at all. The
+     padding is what lets the last rows be scrolled clear of the strip that sits over them. */
+  .shell.trading,.shell.trading.solo{display:flex; flex-direction:column; overflow:auto; padding-bottom:76px}
   .shell.trading > *{flex:none}
-  /* Stacked, the dock goes first: the alternative is scrolling past the whole feed to reach it.
-     Not its own scrolling pane, and `display:block` rather than a flex column — as a flex item in a
-     row the shell had already bounded, the body shrank to its header and the swap drew itself over
-     the rows underneath. As tall as what is in it. */
-  .dock{order:-1; display:block; border-left:0; border-bottom:1px solid var(--line-hard);
-    border-top:0; overflow:visible}
-  /* and never wider than a hand: a buy button the width of a tablet is a slab, not a button */
+  .shell.trading > .dock{flex:none}
+
+  /* Fixed to the bottom of the screen, so it is on screen wherever the feed is scrolled to. */
+  .dock{position:fixed; left:0; right:0; bottom:0; z-index:55; display:block; overflow:visible;
+    border-left:0; border-top:1px solid var(--line-hard); background:var(--surface-2)}
+  .dock .dock-top,.dock .dock-body{display:none}
+  .dock .dock-peek{display:flex}
+  /* the sheet: sits over the dialogs' layer and scrolls inside itself, never past the screen */
+  .dock.full{z-index:62; max-height:88vh; max-height:88dvh; overflow:auto; overscroll-behavior:contain}
+  .dock.full .dock-peek{display:none}
+  .dock.full .dock-top{display:flex}
+  .dock.full .dock-body{display:block; padding-bottom:calc(var(--s4) + env(safe-area-inset-bottom, 0px))}
+  /* never wider than a hand: a buy button the width of a tablet is a slab, not a button */
   .dock-top,.dock-body{max-width:560px}
 }
+
+/* The strip. Two coloured buttons, big enough to hit with a thumb, on a bar that is on screen
+   whether or not the reader has scrolled — it exists because the previous layout put them
+   off-screen. Hidden above 860px, where the dock is a column beside the feed. */
+.dock-peek{display:none; align-items:center; gap:var(--s2); padding:var(--s2) var(--s3);
+  padding-bottom:calc(var(--s2) + env(safe-area-inset-bottom, 0px))}
+.dock-peek .pk-id{flex:1; min-width:0; display:flex; align-items:baseline; gap:var(--s2)}
+.dock-peek .pk-id b{font-family:var(--mono); font-size:13px; font-weight:600; color:var(--ink); white-space:nowrap}
+.dock-peek .pk-id span{font-size:11.5px; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.dock-peek .pk-buy,.dock-peek .pk-sell{min-width:76px; min-height:44px; border:0; font-size:13px;
+  font-weight:700; letter-spacing:.05em}
+.dock-peek .pk-buy{background:var(--ok); color:oklch(18% 0.02 152); box-shadow:0 0 18px -6px var(--ok)}
+.dock-peek .pk-sell{background:var(--crit); color:oklch(18% 0.03 27); box-shadow:0 0 18px -6px var(--crit)}
+.dock-peek .x{border:0; background:none; color:var(--ink-3); font-size:20px; line-height:1; padding:0 8px; min-width:44px}
 .dock{border-left:1px solid var(--line-hard); background:var(--surface);
   display:flex; flex-direction:column; min-height:0; overflow:auto}
 .dock[hidden]{display:none}
@@ -1034,6 +1058,14 @@ tr.detail td{position:relative}
        closed, so a decision made while reading one row can be acted on without hunting for the
        control again. -->
   <aside class="dock" id="dock" hidden aria-label="trade">
+    <!-- Phones only: the strip that is always on screen while a launch is selected. The full swap is
+         one tap behind it. Hidden by CSS above 860px, where the dock is a column and needs no peek. -->
+    <div class="dock-peek" id="dk-peek">
+      <span class="pk-id"><b id="pk-tick"></b><span id="pk-name"></span></span>
+      <button type="button" class="pk-buy" data-pk="buy" data-i18n="b_buy">BUY</button>
+      <button type="button" class="pk-sell" data-pk="sell" data-i18n="b_sell">SELL</button>
+      <button type="button" class="x" id="pk-close" aria-label="close">&times;</button>
+    </div>
     <div class="dock-top">
       <span class="tick" id="dk-tick"></span>
       <span class="nm" id="dk-name"></span>
@@ -1090,6 +1122,7 @@ const I18N = {
     ch_auto:"auto", ch_tf:"candle size", ch_open:"open", ch_open_t:"open the chart in a window",
     soc_web:"Website", soc_none:"no socials at all",
     d_more:"and {n} more",
+    h_retry:"try again", h_retrying:"the connection dropped — trying again in {s} s…",
     b_slip_own:"own", b_slip_low:"under 1% a curve trade usually reverts before it lands",
     b_slip_high:"above 10% the quote stops protecting you: you can be filled far below it",
     b_side:"buy or sell", b_sell:"SELL", b_token:"tokens", b_trade:"trade {s}",
@@ -1327,6 +1360,7 @@ const I18N = {
     ch_auto:"авто", ch_tf:"размер свечи", ch_open:"развернуть", ch_open_t:"открыть график в окне",
     soc_web:"Сайт", soc_none:"соцсетей нет вообще",
     d_more:"и ещё {n}",
+    h_retry:"ещё раз", h_retrying:"связь оборвалась — пробую снова через {s} с…",
     b_slip_own:"своё", b_slip_low:"ниже 1% сделка на кривой обычно отваливается, не дойдя до блока",
     b_slip_high:"выше 10% котировка уже не защищает: могут исполнить сильно ниже неё",
     b_side:"покупка или продажа", b_sell:"ПРОДАТЬ", b_token:"токенов", b_trade:"торговать {s}",
@@ -1702,14 +1736,27 @@ const HOLDERS = new Map();
 /* A holder who exists must not print as 0.00% — that reads as a bug rather than as a small bag. */
 const pctOf = (v) => { const n = v ?? 0; return n > 0 && n < 0.01 ? "<0.01%" : `${n.toFixed(2)}%`; };
 
-function paintHolders(box, h) {
-  if (!h) { box.innerHTML = `<div class="hd">${esc(t("h_fail"))}</div>`; return; }
+function paintHolders(box, h, retry) {
+  if (!h) {
+    box.innerHTML = `<div class="hd">${esc(t("h_fail"))}${retry ? ` <button type="button" class="mini retry">${esc(t("h_retry"))}</button>` : ""}</div>`;
+    const b = box.querySelector(".retry");
+    if (b && retry) b.addEventListener("click", (ev) => { ev.stopPropagation(); retry(); });
+    return;
+  }
   if (!h.count) { box.innerHTML = `<div class="hd">${esc(t("h_none"))}</div>`; return; }
   const rest = Math.max(0, h.floatPct - h.creatorPct);
-  const rows = h.holders.map((x) => {
+  const row = (x) => {
     const tag = x.tag === "curve" ? t("h_tag_curve") : x.tag === "creator" ? t("h_tag_creator") : "";
     return `<tr><td>${addrLink(x.address)}${tag ? ` <span class="tagged">${esc(tag)}</span>` : ""}</td><td class="r">${esc(pctOf(x.pct))}</td></tr>`;
-  }).join("");
+  };
+  /* Twelve holders is twelve tap targets at 44px each — 650px of a token window that was already two
+     screens tall. The top five say who matters; the rest are one tap behind, as with exempt wallets. */
+  const keep = narrow() ? 5 : h.holders.length;
+  const rows = h.holders.slice(0, keep).map(row).join("");
+  const more = h.holders.length - keep;
+  const tail = more > 0
+    ? `<details class="more holders-more"><summary>${esc(t("d_more", { n: more }))}</summary><table>${h.holders.slice(keep).map(row).join("")}</table></details>`
+    : "";
   box.innerHTML = `
     <div class="hd">
       <span>${esc(t("h_curve"))} <b>${esc(pctOf(h.curvePct))}</b></span>
@@ -1722,22 +1769,43 @@ function paintHolders(box, h) {
       <i class="b-creator" style="width:${h.creatorPct}%"></i>
       <i class="b-rest" style="width:${rest}%"></i>
     </div>
-    <table>${rows}</table>
+    <table>${rows}</table>${tail}
     <div class="hd" style="margin-top:var(--s2)">${esc(t("h_why"))}</div>
     ${h.failedChunks ? `<div class="note">${esc(t("h_partial", { n: h.failedChunks }))}</div>` : ""}
     ${h.truncated ? `<div class="note">${esc(t("h_truncated"))}</div>` : ""}`;
 }
 
-async function loadHolders(box, token) {
+/**
+ * Holders for one launch. A *failure is not an answer* and is never remembered.
+ *
+ * It used to be: any dropped request, 429 or 502 was stored in the cache as the result, and the row
+ * said "could not read the holders" for the rest of the session — reproduced by dropping one request
+ * and then reopening the row on a healthy connection. On a phone's network, where a request now and
+ * then simply does not come back, that is most of what "the token window does not fully load" was.
+ * Now a failure paints a retry button, and a refusal that says when to come back is waited out once.
+ */
+async function loadHolders(box, token, attempt = 0) {
   if (HOLDERS.has(token)) { paintHolders(box, HOLDERS.get(token)); return; }
   box.innerHTML = `<div class="hd">${esc(t("h_load"))}</div>`;
-  let data = null;
+  let data = null, wait = 0;
   try {
     const r = await fetch("/holders?token=" + encodeURIComponent(token));
     if (r.ok) data = await r.json();
-  } catch { /* paintHolders says so */ }
-  HOLDERS.set(token, data);
-  paintHolders(box, data);
+    else if (r.status === 429 || r.status >= 500) {
+      const b = await r.json().catch(() => null);
+      wait = Math.min(15, Number(b && b.wait) || Number(r.headers.get("retry-after")) || 4);
+    }
+  } catch { wait = 3; /* the network dropped it; try once more before asking the reader to */ }
+
+  if (data) { HOLDERS.set(token, data); paintHolders(box, data); return; }
+  if (!box.isConnected) return;                       // the row was closed while this was in the air
+  if (wait && attempt < 1) {
+    box.innerHTML = `<div class="hd">${esc(t("h_retrying", { s: wait }))}</div>`;
+    await new Promise((r) => setTimeout(r, wait * 1000));
+    if (box.isConnected) void loadHolders(box, token, attempt + 1);
+    return;
+  }
+  paintHolders(box, null, () => void loadHolders(box, token, 0));
 }
 
 /* ---- price on the curve ----------------------------------------------------
@@ -2305,7 +2373,12 @@ function detailRow(e, close) {
     go.className = "act to-dock";
     go.dataset.i18n = "b_trade";
     go.textContent = t("b_trade", { s: e.symbol ? "$" + e.symbol : "" });
-    go.addEventListener("click", (ev) => { ev.stopPropagation(); openDock(e); });
+    go.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      openDock(e);
+      // beside the feed the panel is already visible; on a phone this button used to do nothing at all
+      if (narrow()) expandDock();
+    });
     tr.querySelector("td").append(go);
   }
 
@@ -3178,12 +3251,36 @@ function txUrl(e, hash) {
    to decide something and the decision comes after the reading. */
 let DOCKED = null;   // the token the panel is showing, or null
 
+/* On a phone the dock is a bottom bar, and it has two states: a strip that is always on screen while a
+   launch is selected, and the full swap as a sheet. It used to be a block stacked *above* the feed, and
+   the shell scrolls itself — so tapping a row fifteen deep opened the dock 1 686px above the screen and
+   the reader saw the launch and no trade buttons at all. Reported as "buy and sell do not load".
+   Measured in task 003. A control that has to be scrolled to is a control that is not there. */
+const narrow = () => window.matchMedia("(max-width:860px)").matches;
+let DOCK_FULL = false;
+
+function expandDock(side) {
+  if (!DOCKED) return;
+  DOCK_FULL = true;
+  $("#dock").classList.add("full");
+  if (side) setSide(DOCKED, side);
+  $("#dock").scrollTop = 0;
+}
+
+function collapseDock() {
+  DOCK_FULL = false;
+  $("#dock").classList.remove("full");
+}
+
 function openDock(e) {
   if (!e || !e.token) return;
   if (DOCKED === e.token) { $("#dock").hidden = false; layoutShell(); return; }
   DOCKED = e.token;
+  collapseDock();                // a new launch starts as the strip, whatever the last one was
   $("#dk-tick").textContent = e.symbol ? "$" + e.symbol : short(e.token);
   $("#dk-name").textContent = e.name || "";
+  $("#pk-tick").textContent = e.symbol ? "$" + e.symbol : short(e.token);
+  $("#pk-name").textContent = e.name || "";
   const body = $("#dk-body");
   body.innerHTML = "";
   body.append(buyBox(e));
@@ -3196,6 +3293,7 @@ function closeDock() {
   $("#dock").hidden = true;
   $("#dk-body").innerHTML = "";
   DOCKED = null;
+  collapseDock();
   layoutShell();
 }
 
@@ -3730,7 +3828,10 @@ $("#veil").addEventListener("click", () => {
   else if (!$("#fx").hidden) closeFx();
 });
 $("#cw-close").addEventListener("click", () => closeChartWin());
-$("#dk-close").addEventListener("click", () => closeDock());
+// in the sheet, × puts it back to the strip; on the strip and beside the feed it closes the panel
+$("#dk-close").addEventListener("click", () => { if (narrow() && DOCK_FULL) collapseDock(); else closeDock(); });
+$("#pk-close").addEventListener("click", () => closeDock());
+document.querySelectorAll("#dk-peek [data-pk]").forEach((b) => b.addEventListener("click", () => expandDock(b.dataset.pk)));
 $("#proof-more").addEventListener("click", () => openProofWin());
 $("#pw-close").addEventListener("click", () => closeProofWin());
 $("#gate-go").addEventListener("click", () => { void signIn(); });
@@ -3781,6 +3882,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("#proofwin").hidden) { e.preventDefault(); closeProofWin(); return; }
   if (e.key === "Escape" && !$("#chartwin").hidden) { e.preventDefault(); closeChartWin(); return; }
   if (e.key === "Escape" && !$("#farm").hidden) { e.preventDefault(); closeFarm(); return; }
+  if (e.key === "Escape" && DOCK_FULL && narrow()) { e.preventDefault(); collapseDock(); return; }
   if (e.key === "Escape" && OPEN_ROWS.size && TOUR_AT < 0) {
     e.preventDefault();
     [...OPEN_ROWS].pop()._collapse();

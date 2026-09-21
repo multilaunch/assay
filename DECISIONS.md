@@ -63,6 +63,11 @@ Proposals — things considered and not decided — are at the bottom, kept apar
   failure legible: a fast 429 with a retry-after, rather than everyone waiting a minute
   while nothing says why. Measured both ways in `work/logs/001-baseline.md`.
 
+- **On a phone the trade panel is a bottom bar, not a block in the flow.** Ticker, BUY, SELL always on
+  screen while a launch is selected; a tap opens the swap as a sheet. Stacking it above the feed put it
+  off screen (task 003). Above 860px it stays a 340px column beside the feed.
+- **A failed read is never a cached answer.** Retried once automatically, then a button.
+
 ### Look
 
 Recorded in full in `DESIGN.md`. The two that constrain code rather than CSS:

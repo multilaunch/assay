@@ -40,12 +40,21 @@ wrong about the rest — on a page where nothing is lit, nothing reads as live.
   of the whole table if allowed to.
 - **Grid rows squeeze.** A grid row will shrink an item below its content when the container
   has a definite height. Stacked layouts use a flex column with `flex:none`.
+- **A control that has to be scrolled to is not there.** On a phone the trade panel was stacked
+  above the feed; the shell scrolls itself, so tapping a row fifteen deep left the buy and sell
+  buttons 1 686px off screen and a tester reported that they "do not load". The primary action is a
+  fixed bottom bar on phones. Test any primary control by tapping from a **scrolled** position, not
+  from the top of the page.
+- **A failure is never cached as an answer.** A dropped request stored as the result made a row say
+  "could not read" for the whole session. Failures are retried and offer a button.
+- **Reset browser margins on anything semantic.** `<dl>` carried 12px above and below that nobody
+  wrote, and five short facts took 431px on a phone.
 - **Type scale is 10 / 11.5 / 12 / 13, plus 14–17 for headings.** Nothing half a pixel from
   anything else; that is two people deciding the same thing on different days.
 
 ## Gates before calling any visual change done
 
-1. Screenshot it at a wide viewport, at 375px, and with the trade dock open. Then measure —
+1. Screenshot it at a wide viewport, at 375px **after scrolling into the feed and tapping a row**, and with the trade dock open. Then measure —
    horizontal overflow, contrast, touch targets, recipe dominance. `getComputedStyle` returns
    `oklch(...)` here, so a contrast check that parses `rgb()` reports nonsense; the page's own
    `toRgb()` goes through a canvas and handles it.
