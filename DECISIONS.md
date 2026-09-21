@@ -77,8 +77,18 @@ Recorded in full in `DESIGN.md`. The two that constrain code rather than CSS:
 - **The feed table has no minimum width.** Columns leave, least useful first, measured
   against the pane — the trade dock takes 340px off it independently of the window.
 
+- **A phone visitor with no wallet is handed to a wallet's in-app browser, not connected remotely.**
+  Deep links for MetaMask, Coinbase Wallet and Trust Wallet, each checked against its own
+  documentation; discovery by `window.ethereum` then EIP-6963. No dependency, nothing from another
+  host, CSP untouched. Rabby is left out because no documented link exists, and a guessed one is worse
+  than none. Task 004.
+
 ## Proposed — not decided
 
+- **WalletConnect, for connecting from an ordinary phone browser.** Needs a vendored library of hundreds of
+  kilobytes, a project id from a third party, and a CSP that allows their relay servers — whose operators
+  would see who connects and when, which is what proxying token images exists to avoid. Not taken; revisit
+  if many visitors arrive on a phone and leave at "open in wallet".
 - **Cloudflare in front of the origin.** It would absorb a volumetric flood and hide the
   VPS address, and the free tier covers it. Two things argue against reaching for it first:
   it puts a third party in the TLS path for every reader, which sits badly beside proxying

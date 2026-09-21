@@ -166,6 +166,23 @@ button:disabled{opacity:.4; cursor:not-allowed}
 .proof #proof-more:hover{color:var(--ink)}
 @media(max-width:560px){.proof{padding:4px var(--s3); gap:var(--s2)} .proof .pc.minor{display:none} .proof #proof-more{margin-left:auto}}
 
+#wpick{
+  position:fixed; z-index:62; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:min(420px, calc(100vw - 24px)); max-height:calc(100vh - 48px); overflow:auto;
+  background:var(--surface-2); border:1px solid var(--line-hard); padding:var(--s4);
+}
+#wpick[hidden]{display:none}
+#wpick h3{margin:0 0 var(--s2); font-size:13px; font-weight:600}
+#wpick .lede{margin:0 0 var(--s3); font-size:12px; line-height:1.6; color:var(--ink-2)}
+#wpick .caveat{margin:var(--s3) 0; font-size:11.5px; line-height:1.5; color:var(--ink-3)}
+#wpick .foot{display:flex; justify-content:flex-end}
+/* Big, because this is the one thing on the screen the visitor came to press. */
+.wp-link{display:flex; align-items:center; justify-content:space-between; min-height:52px;
+  padding:0 var(--s4); margin-bottom:var(--s2); border:1px solid var(--line-hard); border-bottom-width:1px;
+  color:var(--ink); font-size:13px; font-weight:600; text-decoration:none; background:var(--surface-3)}
+.wp-link span{color:var(--hot); font-size:16px}
+.wp-link:hover,.wp-link:active{border-color:var(--hot); background:var(--hot-w)}
+
 #proofwin{
   position:fixed; z-index:62; top:50%; left:50%; transform:translate(-50%,-50%);
   width:min(520px, calc(100vw - 24px)); max-height:calc(100vh - 48px); overflow:auto;
@@ -912,6 +929,16 @@ tr.detail td{position:relative}
 
 <!-- The chart, given room. Inline it shares a table cell with everything else the row has to say;
      here it gets the screen, which is what a chart is for. -->
+<!-- A phone browser has no wallet to sign with. These hand the visitor to a wallet's own in-app
+     browser, which has one. Built at open time from the current address. -->
+<div id="wpick" role="dialog" aria-modal="true" aria-labelledby="wp-h" hidden>
+  <h3 id="wp-h" data-i18n="wp_title">open in a wallet app</h3>
+  <p class="lede" data-i18n="wp_lede">a phone browser cannot sign a transaction. these open this same page inside the wallet's own browser, which can.</p>
+  <div id="wp-list"></div>
+  <p class="caveat" data-i18n="wp_note">it opens the page fresh, so pick the launch again once you are in.</p>
+  <div class="foot"><button type="button" id="wp-close" data-i18n="fm_close">close</button></div>
+</div>
+
 <div id="proofwin" role="dialog" aria-modal="true" aria-labelledby="pw-h" hidden>
   <div class="cw-top">
     <h3 id="pw-h" data-i18n="s_proof">track record</h3>
@@ -1258,6 +1285,11 @@ const I18N = {
 
     w_connect:"connect", w_disconnect:"disconnect", w_none:"no wallet",
     w_none_t:"no wallet in this browser — install one, or open the board where you keep yours",
+    w_open:"open in wallet", w_open_t:"a phone browser has no wallet — open this page inside a wallet app",
+    w_phone_t:"a phone browser cannot sign. open this page inside your wallet app — the button above does it.",
+    wp_title:"open in a wallet app",
+    wp_lede:"a phone browser cannot sign a transaction. these open this same page inside the wallet's own browser, which can.",
+    wp_note:"it opens the page fresh, so pick the launch again once you are in.",
     w_switch:"wrong chain, switch", w_switching:"switching", w_declined:"you turned that down",
     b_buy:"BUY", b_amount:"eth", b_quote:"quote", b_requote:"re-quote", b_working:"pricing",
     b_send:"sign and send", b_sending:"waiting for the wallet",
@@ -1492,6 +1524,11 @@ const I18N = {
 
     w_connect:"подключить", w_disconnect:"отключить", w_none:"нет кошелька",
     w_none_t:"в этом браузере нет кошелька — поставьте расширение или откройте доску там, где он есть",
+    w_open:"открыть в кошельке", w_open_t:"в браузере телефона нет кошелька — откройте эту страницу внутри приложения-кошелька",
+    w_phone_t:"браузер телефона не умеет подписывать. откройте страницу внутри приложения-кошелька — кнопка выше это делает.",
+    wp_title:"открыть в приложении-кошельке",
+    wp_lede:"браузер телефона не может подписать транзакцию. эти ссылки открывают ту же страницу внутри браузера самого кошелька — там это можно.",
+    wp_note:"страница откроется заново, так что выберите запуск ещё раз.",
     w_switch:"не та сеть, сменить", w_switching:"меняю сеть", w_declined:"вы отказались",
     b_buy:"КУПИТЬ", b_amount:"eth", b_quote:"цена", b_requote:"пересчитать", b_working:"считаю",
     b_send:"подписать и отправить", b_sending:"ждём кошелёк",
@@ -3066,7 +3103,60 @@ function sellUnits(st) {
   return toWei(st.sellAmt || "0");
 }
 
-const eth = () => window.ethereum || null;
+/**
+ * The wallet this page will talk to.
+ *
+ * `window.ethereum` first, because that is what an in-app wallet browser injects and what every
+ * wallet has always done. EIP-6963 second: a wallet announces itself by event instead of by taking the
+ * global, which is how several can coexist and how some now ship. The request for announcements is not
+ * sent here but from `walletBoot`, once the page is fully initialised — a wallet may answer
+ * synchronously, and the handler repaints things that do not exist yet if it fires too early.
+ */
+let ANNOUNCED = null;
+addEventListener("eip6963:announceProvider", (ev) => {
+  const d = ev && ev.detail;
+  if (!d || !d.provider || ANNOUNCED) return;
+  ANNOUNCED = d.provider;
+  if (!window.ethereum) void walletBoot();
+});
+const eth = () => window.ethereum || ANNOUNCED || null;
+
+/** A finger and no keyboard: the visitors for whom "install an extension" is not an option. */
+const phoneLike = () => window.matchMedia("(pointer: coarse)").matches;
+
+/**
+ * Where to send a visitor who has no wallet in this browser. Each is the wallet's documented link
+ * into its own in-app browser, checked against its documentation rather than remembered:
+ * MetaMask takes the address with no scheme, the other two take it percent-encoded.
+ * Rabby is absent because no documented link was found, and a guessed one is worse than none.
+ */
+const WALLET_LINKS = [
+  { id: "mm", name: "MetaMask", href: (u) => `https://link.metamask.io/dapp/${u.host}${u.path}` },
+  { id: "cb", name: "Coinbase Wallet", href: (u) => `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(u.full)}` },
+  { id: "tw", name: "Trust Wallet", href: (u) => `https://link.trustwallet.com/open_url?coin_id=60&url=${encodeURIComponent(u.full)}` },
+];
+function walletTargets() {
+  const u = { host: location.host, path: location.pathname, full: location.origin + location.pathname };
+  return WALLET_LINKS.map((w) => ({ id: w.id, name: w.name, href: w.href(u) }));
+}
+function openWalletPick(from) {
+  if (TOUR_AT >= 0) tourEnd();
+  $("#wp-list").innerHTML = walletTargets()
+    .map((w) => `<a class="wp-link" data-w="${esc(w.id)}" href="${esc(w.href)}" rel="noopener">${esc(w.name)}<span aria-hidden="true">→</span></a>`)
+    .join("");
+  WPICK_FROM = from || null;
+  $("#wpick").hidden = false;
+  $("#veil").classList.add("on");
+  $("#wp-close").focus();
+}
+let WPICK_FROM = null;
+function closeWalletPick() {
+  if ($("#wpick").hidden) return;
+  $("#wpick").hidden = true;
+  if ($("#gate").hidden && $("#farm").hidden && $("#fx").hidden && $("#chartwin").hidden && $("#proofwin").hidden) $("#veil").classList.remove("on");
+  if (WPICK_FROM && WPICK_FROM.isConnected) WPICK_FROM.focus();
+  WPICK_FROM = null;
+}
 /* WMSG is what the wallet last said when there was no panel to say it in — a dismissed connect
    prompt otherwise leaves the masthead looking as though the click did nothing. */
 let ACC = null, CHAIN = null, WBUSY = false, WMSG = null;
@@ -3141,7 +3231,9 @@ function walletBind(p) {
   p.on("chainChanged", (c) => { CHAIN = c; dropQuotes(); paintWallet(); });
 }
 
+let ASKED_6963 = false;
 async function walletBoot() {
+  if (!ASKED_6963) { ASKED_6963 = true; dispatchEvent(new Event("eip6963:requestProvider")); }
   const p = eth();
   if (!p) {
     // Some wallets inject after the page has parsed. One listener, no polling.
@@ -3161,7 +3253,10 @@ async function walletBoot() {
 function paintWallet() {
   const p = eth(), b = $("#wallet"), a = $("#wal-addr"), c = $("#wal-chain");
   if (!p) {
-    b.textContent = t("w_none"); b.disabled = true; b.title = t("w_none_t");
+    // On a phone there is a way forward, so the control is a way forward. Anywhere else there is not,
+    // and it stays a disabled statement of fact rather than a button that does nothing.
+    if (phoneLike()) { b.textContent = t("w_open"); b.disabled = false; b.title = t("w_open_t"); }
+    else { b.textContent = t("w_none"); b.disabled = true; b.title = t("w_none_t"); }
     a.hidden = true; c.hidden = true;
   } else {
     b.disabled = WBUSY;
@@ -3178,7 +3273,10 @@ function paintWallet() {
   for (const tok of BUY.keys()) paintBuy(tok);
 }
 
-$("#wallet").addEventListener("click", () => { if (ACC) walletForget(); else void walletConnect(); });
+$("#wallet").addEventListener("click", (ev) => {
+  if (!eth()) { if (phoneLike()) openWalletPick(ev.currentTarget); return; }
+  if (ACC) walletForget(); else void walletConnect();
+});
 $("#wal-chain").addEventListener("click", () => { void walletSwitch(); });
 
 /* ---- buying a launch ------------------------------------------------------
@@ -3349,6 +3447,7 @@ function buyBox(e) {
     }
     switch (b.dataset.act) {
       case "connect": void walletConnect(); break;
+      case "pick": openWalletPick(b); break;
       case "switch": void walletSwitch(); break;
       case "quote": void doQuote(e.token); break;
       case "approve": void doApprove(e.token); break;
@@ -3432,7 +3531,10 @@ function paintBuy(tok, into) {
   const go = box.querySelector(".act");
   let act = "quote", label = st.q ? t("b_requote") : sell ? t("b_quote_sell") : t("b_quote"), dis = st.busy;
   if (st.busy) label = t("b_working");
-  if (!eth()) { act = "none"; label = t("w_none"); dis = true; }
+  if (!eth()) {
+    if (phoneLike()) { act = "pick"; label = t("w_open"); dis = false; }
+    else { act = "none"; label = t("w_none"); dis = true; }
+  }
   else if (!ACC) { act = "connect"; label = t("w_connect"); dis = WBUSY; }
   else if (!chainOk()) { act = "switch"; label = WBUSY ? t("w_switching") : t("w_switch"); dis = WBUSY; }
   go.dataset.act = act;
@@ -3469,7 +3571,7 @@ function paintBuy(tok, into) {
   }
 
   const m = box.querySelector(".buy-msg");
-  const msg = !eth() ? t("w_none_t") : st.msg;
+  const msg = !eth() ? t(phoneLike() ? "w_phone_t" : "w_none_t") : st.msg;
   m.hidden = !msg;
   m.textContent = msg || "";
   m.className = "buy-msg " + (!eth() ? "dim" : st.tone);
@@ -3822,6 +3924,7 @@ $("#gate-cancel").addEventListener("click", closeGate);
 // the veil belongs to whichever of the two is up; only the dialog treats a click on it as cancel
 $("#veil").addEventListener("click", () => {
   if (!$("#gate").hidden) closeGate();
+  else if (!$("#wpick").hidden) closeWalletPick();
   else if (!$("#proofwin").hidden) closeProofWin();
   else if (!$("#chartwin").hidden) closeChartWin();
   else if (!$("#farm").hidden) closeFarm();
@@ -3834,6 +3937,7 @@ $("#pk-close").addEventListener("click", () => closeDock());
 document.querySelectorAll("#dk-peek [data-pk]").forEach((b) => b.addEventListener("click", () => expandDock(b.dataset.pk)));
 $("#proof-more").addEventListener("click", () => openProofWin());
 $("#pw-close").addEventListener("click", () => closeProofWin());
+$("#wp-close").addEventListener("click", () => closeWalletPick());
 $("#gate-go").addEventListener("click", () => { void signIn(); });
 $("#gate").addEventListener("keydown", (e) => {
   if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeGate(); return; }
@@ -3879,6 +3983,7 @@ document.addEventListener("keydown", (e) => {
   if (!$("#gate").hidden || !$("#fx").hidden) return;   // the dialog owns the keyboard while it is up
   if (e.target.closest("input, textarea, select, [contenteditable]")) { if (e.key === "Escape") e.target.blur(); return; }
   // innermost first: the windows, then the farm, then whichever row was opened last
+  if (e.key === "Escape" && !$("#wpick").hidden) { e.preventDefault(); closeWalletPick(); return; }
   if (e.key === "Escape" && !$("#proofwin").hidden) { e.preventDefault(); closeProofWin(); return; }
   if (e.key === "Escape" && !$("#chartwin").hidden) { e.preventDefault(); closeChartWin(); return; }
   if (e.key === "Escape" && !$("#farm").hidden) { e.preventDefault(); closeFarm(); return; }
