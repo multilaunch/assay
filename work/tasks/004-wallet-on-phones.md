@@ -94,8 +94,43 @@ shows `link.metamask.io/dapp/…`, which is what is built.
 
 No sideways scroll.
 
+## Evidence from a real phone — two screenshots, 2026-09-22, 00:15 and 00:19
+
+Observed in the images (not inferred):
+
+- production `https://assay.mlaunch.xyz/`, a wallet **connected** (address shown, button "disconnect");
+- at 00:15 the masthead offers **"wrong chain, switch"**; at 00:19 the same masthead shows only
+  "disconnect" — the chain warning is gone;
+- at 00:19 a **real quote** is on screen: 0.01 ETH → 5 756 800 of a token, minimum 5 584 096 at 3 %,
+  fee 1 %, creator tax 1 %, opening tax 0 %, "19 s left", and a lit **"sign and send"** button;
+- the status bar reads "◀ Chrome".
+
+Inferred, and worth saying so:
+
+- "◀ Chrome" is what iOS shows when one app was opened from another, so this looks like **the deep link
+  working**: Chrome → a wallet app's in-app browser. Which wallet is not identifiable from the image.
+- The chain warning disappearing between the two shots suggests **switching or adding the chain worked**
+  in that wallet, which was one of the open unknowns. It does not say whether the button was pressed.
+
+So, for the first time: the client wallet path has run against a **real** wallet on a **real** phone up to
+a priced, signable quote. **Not yet seen:** a signature, a transaction hash, or a receipt.
+
+Visible in the same images, not yet acted on:
+
+1. **Chrome above the feed.** With a wallet connected the masthead is three rows, and the first launch
+   row starts about **60 % of the way down** the visible screen. The track-record strip also spends a
+   whole second line on its "why this means something" link.
+2. **The confirm button is below the fold of the sheet.** The sheet is 88 % of the viewport and the
+   quote block sits under the amount fields, so after pricing the reader has to scroll inside the sheet
+   to reach "sign and send".
+3. A **20 s** quote on a phone is tight if signing means switching apps.
+
+## Still unknown
+
+Which wallet; whether the switch was pressed; what happens on sign. If it is signed, that is the first
+real trade this board has ever made — ask for the transaction hash and record the outcome here.
+
 ## Continuation point
 
-Nothing to build. What is left is a person with a phone: ask the tester which wallet they use, have
-them tap the matching link with the app installed, and report what opens — and, in Trust Wallet, whether
-Robinhood Chain has to be added by hand. If a link is dead, replace it from that wallet's documentation.
+Ask the owner which wallet, and whether they pressed "switch". Offered, not done: compact the phone
+masthead, scroll the sheet to the quote when it arrives.
