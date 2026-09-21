@@ -35,7 +35,7 @@ The product is a claim about numbers, so the numbers are the deliverable:
 | `src/track/` | the journal, accuracy, backfill, rule mining |
 | `src/index/` | the local copy of the chain: schema, ingester, readers |
 | `src/board/` | the HTTP server, the quote route, and `index.html` — the whole page, one file |
-| `test/` | 152 checks, no network |
+| `test/` | 165 checks, no network |
 | `deploy/`, `compose.prod.yaml` | the VPS |
 
 `src/board/index.html` is the entire front end: markup, styles, both languages and all the
@@ -66,7 +66,7 @@ npm run typecheck && npm test && npm run build
 | --- | --- |
 | Per-caller and board-wide limits on the RPC-amplifying routes | [`work/tasks/001-public-route-limits.md`](work/tasks/001-public-route-limits.md) — **done**, deployed |
 | System audit: bugs, flaws, design | [`work/tasks/002-system-audit.md`](work/tasks/002-system-audit.md) — **done**, deployed |
-| Mobile feedback: buy/sell and token window do not load | [`work/tasks/003-mobile-feedback.md`](work/tasks/003-mobile-feedback.md) — in progress |
+| Mobile feedback: buy/sell and token window do not load | [`work/tasks/003-mobile-feedback.md`](work/tasks/003-mobile-feedback.md) — fixed in an emulated phone, **awaiting the tester** |
 
 ## Known and unfixed
 

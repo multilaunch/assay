@@ -1,6 +1,6 @@
 # 003 — mobile feedback: buy/sell buttons and the token window "do not load"
 
-status: **in progress** · opened 2026-09-21
+status: **fixed in an emulated phone; awaiting the tester** · opened 2026-09-21 · deployed at `0aa9b33`
 
 ## The report (verbatim, a tester, 2026-09-19, Telegram)
 
@@ -96,6 +96,24 @@ never wrong. Worth remembering when a check contradicts an isolated one.
 - **The task 001 limiter** was not reproduced as a cause (7 rows in 17 s, all 200) but remains
   untested for slow tokens and for many phones behind one carrier address.
 
-## Next step
+## Verified on production — `0aa9b33`, 375 px, real tap
 
-Deploy, verify on production at 375 px, then ask the tester which device and browser they used.
+Scrolled 514 px into the feed, tapped `$MDOG`:
+
+- the bar is on screen at once — top 751, height 61, `position: fixed`;
+- BUY **76 × 44**, green `oklch(0.8 0.19 158)`; SELL **76 × 44**, red `oklch(0.68 0.22 22)`;
+- SELL opens the sheet on the sell side — 526 px of an allowed 715, bottom on screen, shares 25 / 50 / 100 %;
+- × folds the sheet back to the bar, and the bar stays;
+- nothing scrolls sideways.
+
+## Open
+
+The tester has not been asked which device and browser they used, and I could not use a real phone or
+a wallet's in-app browser. **This is the one step that turns "fixed in an emulator" into "fixed".**
+Ask them to reopen it, and if it is still wrong, get the phone model, the browser, and a screenshot.
+
+## Continuation point
+
+Nothing to build. If the tester reports back: start from whether they were in a wallet's browser
+(then the buttons are live rather than "no wallet") and whether the on-screen keyboard covers the
+amount field in the sheet — the two things an emulator cannot show.
