@@ -84,7 +84,18 @@ exercised at all — with a stub, not a real wallet.
 I first named MetaMask's link as `metamask.app.link/dapp/…` from memory. Its current documentation
 shows `link.metamask.io/dapp/…`, which is what is built.
 
-## Next step
+## Verified on production — `5f0ab07`
 
-Deploy, then ask the tester to try each link from a phone with the app installed, and to say which
-wallet they use.
+375 px, touch, no provider: masthead "open in wallet", picker opens, links are
+
+- `https://link.metamask.io/dapp/assay.mlaunch.xyz/`
+- `https://go.cb-w.com/dapp?cb_url=https%3A%2F%2Fassay.mlaunch.xyz%2F`
+- `https://link.trustwallet.com/open_url?coin_id=60&url=https%3A%2F%2Fassay.mlaunch.xyz%2F`
+
+No sideways scroll.
+
+## Continuation point
+
+Nothing to build. What is left is a person with a phone: ask the tester which wallet they use, have
+them tap the matching link with the app installed, and report what opens — and, in Trust Wallet, whether
+Robinhood Chain has to be added by hand. If a link is dead, replace it from that wallet's documentation.
