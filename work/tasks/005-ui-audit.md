@@ -109,3 +109,11 @@ on the scale.
   search or the status, and both earn their place.
 - Real-phone confirmation of change 3 needs the tester: open a launch, get a quote, "sign and send" should
   be on screen without scrolling.
+
+## Follow-up, 2026-09-23
+
+The owner asked what "DRY RUN" and "PAUSED" at the top are. They are the operator's engine mode and
+run state; to a visitor they said nothing about the launches, and "paused" read as the page being
+stopped. Both are now hidden unless signed in as the operator (`applyAudience`), and start hidden in
+the markup so they do not flash before `/state` answers. The tour's "dry run or live" step is skipped
+for visitors by the existing hidden-target rule (5 steps → 4).

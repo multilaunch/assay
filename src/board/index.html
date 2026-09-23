@@ -901,8 +901,8 @@ tr.detail td{position:relative}
 
 <header class="top">
   <span class="mark">assay<span>/pons v2</span></span>
-  <span class="tag" id="mode">…</span>
-  <span class="tag" id="state">paused</span>
+  <span class="tag" id="mode" hidden>…</span>
+  <span class="tag" id="state" hidden>paused</span>
   <span class="spring"></span>
   <span class="beat" id="beat" title="engine heartbeat"></span>
   <div class="langs" role="group" aria-label="Language">
@@ -3838,6 +3838,10 @@ function railLayout() {
 }
 
 function applyAudience() {
+  // The engine's mode and run state are the operator's business. To a visitor "dry run · paused"
+  // said nothing about the launches, and "paused" read as the page itself being stopped.
+  $("#mode").hidden = !ADMIN;
+  $("#state").hidden = !ADMIN;
   $("#sec-pos").hidden = !ADMIN;
   $("#sec-rules").hidden = !ADMIN;
   $("#sec-log").hidden = !ADMIN;
