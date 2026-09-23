@@ -66,8 +66,9 @@ npm run typecheck && npm test && npm run build
 | --- | --- |
 | Per-caller and board-wide limits on the RPC-amplifying routes | [`work/tasks/001-public-route-limits.md`](work/tasks/001-public-route-limits.md) — **done**, deployed |
 | System audit: bugs, flaws, design | [`work/tasks/002-system-audit.md`](work/tasks/002-system-audit.md) — **done**, deployed |
-| A way to a wallet from a phone browser | [`work/tasks/004-wallet-on-phones.md`](work/tasks/004-wallet-on-phones.md) — built; real-phone behaviour untested |
+| A way to a wallet from a phone browser | [`work/tasks/004-wallet-on-phones.md`](work/tasks/004-wallet-on-phones.md) — built; a real phone connected and priced a quote, **no signed trade yet** |
 | Mobile feedback: buy/sell and token window do not load | [`work/tasks/003-mobile-feedback.md`](work/tasks/003-mobile-feedback.md) — fixed in an emulated phone, **awaiting the tester** |
+| UI audit with the updated ui-design skill | [`work/tasks/005-ui-audit.md`](work/tasks/005-ui-audit.md) — **done**, deployed |
 
 ## Known and unfixed
 

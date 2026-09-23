@@ -55,6 +55,8 @@ State the numbers you got. If a check was skipped, say which and why.
   nothing has been reported as done here before.
 - Do not report a measurement without checking the measurement. A contrast audit that
   parsed `rgb()` against `oklch()` values produced 1097 fictional failures.
+- Do not record a CSS rule as working because it is in the file. The phone rules for the feed were
+  written in task 003, reported as applied, and overridden by source order the whole time (task 005).
 
 ## Before the session ends
 

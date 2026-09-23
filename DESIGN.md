@@ -51,11 +51,29 @@ wrong about the rest — on a page where nothing is lit, nothing reads as live.
   wrote, and five short facts took 431px on a phone.
 - **Type scale is 10 / 11.5 / 12 / 13, plus 14–17 for headings.** Nothing half a pixel from
   anything else; that is two people deciding the same thing on different days.
+- **A container query adds no specificity.** The phone block for the feed sat above the `thead th`,
+  `td` and `.who` rules it narrowed, lost to them on source order, and never applied — while task 003
+  recorded it as working. Narrowing rules go **after** the rules they narrow; check with
+  `getComputedStyle`, not by reading the CSS.
+- **One lit primary per state.** With a live quote, "re-quote" and "sign and send" were the same
+  green slab a thumb apart. The action that is not the next step drops to an outline, and gets the
+  colour back when it is again the only thing left to do (the quote expired).
+- **In the launch cell only the name gives way.** One ellipsis over the whole cell ate the count out
+  of "farm ×5"; flex shrinking the ticker and the name together cut the ticker first. Icon, ticker
+  and badges are one unit that never wraps; the name shows while five characters fit, otherwise it
+  wraps onto a line the fixed height hides.
+- **Anything sized by a library goes inside `contain:inline-size`.** The chart, sized to its box, held
+  a table cell at its old width after the window narrowed and the whole feed scrolled sideways.
+- **Numbers in copy come from the data.** The line under the swap carried figures measured once and a
+  median nothing computes. It is built from `/stats` now, or not shown.
 
 ## Gates before calling any visual change done
 
 1. Screenshot it at a wide viewport, at 375px **after scrolling into the feed and tapping a row**, and with the trade dock open. Then measure —
-   horizontal overflow, contrast, touch targets, recipe dominance. `getComputedStyle` returns
+   horizontal overflow, contrast, touch targets, recipe dominance — with the skill's `assets/audit.js`
+   (`auditLayout()`), which converts colours through a canvas. Also at 375×667 with a quote showing
+   (a wallet's in-app browser is that short), in Russian as well as English, and after resizing with
+   a chart open. `getComputedStyle` returns
    `oklch(...)` here, so a contrast check that parses `rgb()` reports nonsense; the page's own
    `toRgb()` goes through a canvas and handles it.
 2. `bash ~/.claude/skills/ui-design/scripts/slopcheck.sh src/board/index.html`

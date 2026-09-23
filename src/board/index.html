@@ -165,6 +165,16 @@ button:disabled{opacity:.4; cursor:not-allowed}
   font-family:var(--ui); font-size:11.5px; text-decoration:underline; text-underline-offset:2px}
 .proof #proof-more:hover{color:var(--ink)}
 @media(max-width:560px){.proof{padding:4px var(--s3); gap:var(--s2)} .proof .pc.minor{display:none} .proof #proof-more{margin-left:auto}}
+/* The link's short form. At 375px the long one could not share the line with the numbers and took
+   a 44px row of its own, most of it empty; the long text stays for a screen reader. */
+.proof .sh{display:none}
+@media(max-width:560px){.proof .lg{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap} .proof .sh{display:inline}
+  /* the lift goes too: the two rates side by side already say it, and in Russian the label is long
+     enough that the link wrapped again with it */
+  .proof .pc .x{display:none}}
+/* A phone, measured: the first launch began 397px down an 812px screen. The masthead was three rows
+   because its 16px gaps pushed "guide" onto a line of its own; at 8px the same controls fit two. */
+@media(max-width:560px){.top{gap:var(--s2); padding:var(--s2) var(--s3)} .bar{padding:var(--s2) var(--s3)} input[type=search]{flex:1 1 160px; min-width:0; width:auto}}
 
 #wpick{
   position:fixed; z-index:62; top:50%; left:50%; transform:translate(-50%,-50%);
@@ -243,17 +253,6 @@ table{width:100%; border-collapse:collapse; table-layout:auto}
 @container feed (max-width:780px){ .c-pair{display:none} }
 @container feed (max-width:680px){ .c-tax{display:none} }
 @container feed (max-width:560px){ .c-curve{display:none} }
-/* A phone. Five columns is the floor — verdict, score, ticker, opening buy, age — and they did not
-   fit: the table came out 478px in a 375px pane. Not because of the numbers but the headers, set in
-   one uppercase line with wide tracking, which made "opening buy" a 147px column for a 5-character
-   value. Headers may wrap here and the gutters tighten; the ticker takes whatever is left and
-   ellipsises. An earlier check reported no overflow at this width because it measured the document,
-   and on a phone the pane scrolls, not the document. */
-@container feed (max-width:480px){
-  thead th{white-space:normal; line-height:1.25; padding:6px var(--s2); letter-spacing:.06em; vertical-align:bottom}
-  td{padding:0 var(--s2)}
-  td.mk{padding-left:var(--s2)}
-}
 thead th{
   position:sticky; top:0; z-index:9; background:var(--bg);
   border-bottom:1px solid var(--line-hard); text-align:left; white-space:nowrap;
@@ -280,9 +279,44 @@ tr.v-FIRE .sc{color:var(--ok)}
 tr.v-WATCH .sc{color:var(--warn)}
 tr.v-SKIP .sc{color:var(--ink-3)}
 
-.who{max-width:1px; width:32%; overflow:hidden; text-overflow:ellipsis}
+.who{max-width:1px; width:32%; overflow:hidden}
+/* A row of its own inside the cell, so each piece decides how it gives way. With one ellipsis for the
+   whole cell the browser made room for the "…" by eating the characters before it — "farm ×5" came
+   out "farm ×…", the count gone, whenever the name had no room left. Now the name gives way first,
+   the ticker only after it, and the badges never. */
+.who-in{display:flex; flex-wrap:wrap; align-items:center; align-content:flex-start; height:22px; overflow:hidden; min-width:0}
+/* Icon, ticker and badges are one unit, and the first thing on the line, so it never wraps; inside it
+   only the ticker gives way, and only when the unit alone is wider than the cell. Flex shares a
+   shortfall out in proportion, so while the ticker and the name shrank side by side the ticker took
+   its ellipsis over a fraction of a pixel with half the name still showing. The name is a separate
+   item: shown with an ellipsis while five characters of it fit, otherwise carried onto a second line
+   the fixed height hides — squeezed to nothing in place it left a sliver of "…" behind the badge. */
+.who-in .id{display:flex; align-items:center; flex:0 1 auto; min-width:0}
+.who-in .id > *{flex:none}
+.who-in .id .tick{flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis}
+.who-in .nm{flex:1 1 0; min-width:min(5ch, 100%); overflow:hidden; text-overflow:ellipsis}
+.who-in .decay{margin-left:var(--s2)}
 .tick{font-family:var(--mono); font-weight:500; color:var(--ink)}
 .nm{color:var(--ink-3); margin-left:7px; font-size:12px}
+/* After the rules it narrows, on purpose. It used to sit above them, and a container query adds no
+   specificity: `thead th`, `td` and `.who` further down won on source order, so none of this ever
+   applied — the headers stayed on one line and the ticker kept its 120px. */
+/* A phone. Five columns is the floor — verdict, score, ticker, opening buy, age — and they did not
+   fit: the table came out 478px in a 375px pane. Not because of the numbers but the headers, set in
+   one uppercase line with wide tracking, which made "opening buy" a 147px column for a 5-character
+   value. Headers may wrap here and the gutters tighten; the ticker takes whatever is left and
+   ellipsises. An earlier check reported no overflow at this width because it measured the document,
+   and on a phone the pane scrolls, not the document. */
+@container feed (max-width:480px){
+  thead th{white-space:normal; line-height:1.25; padding:6px var(--s2); letter-spacing:.06em; vertical-align:bottom}
+  td{padding:0 var(--s2)}
+  td.mk{padding-left:var(--s2)}
+  /* The ticker is what a reader scans for and it was cut to five characters, while two digits of
+     score sat in a 68px column and "opening buy" held 113px open for "2.33%". The numbers get what
+     they need and the launch gets the rest. */
+  .c-sc,.c-buy,.c-age{width:1%}
+  .who{width:100%}
+}
 
 /* ---- the token's own picture ----------------------------------------------
    Fetched through this board, never from the launcher's host: img-src is 'self'
@@ -331,6 +365,7 @@ tr.v-SKIP .sc{color:var(--ink-3)}
 .decay .t>i{display:block; height:100%; background:var(--crit); transition:width 120ms linear}
 .decay .v{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:11.5px; color:var(--crit)}
 
+/* before the name, not after it: the name is the part of the row that can go (see .who-in) */
 .mini-flag{font-family:var(--mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase;
   border:1px solid currentColor; padding:0 4px; margin-left:6px; color:var(--crit)}
 .mini-flag.good{color:var(--ok)}
@@ -511,17 +546,24 @@ a:hover{border-bottom-color:var(--hot)}
 .dock .chips.slip{flex:1}
 .dock .chips.slip button{flex:1}
 .dock .slip-own{flex:none}
-.dock .buy-q,.dock .buy-truth,.dock .buy-msg{max-width:none}
+.dock .buy,.dock .buy-q,.dock .buy-truth,.dock .buy-msg{max-width:none}
 /* Big and lit, because this is the control the whole column exists for. The glow is the accent at
    low alpha rather than a second colour: it reads as the button being live, and it goes out with
    the colour the moment the button is disabled. */
 .dock .act{width:100%; min-width:0; padding:15px 0; font-size:14px; letter-spacing:.05em}
 .dock .act:not([disabled]){box-shadow:0 0 22px -6px var(--ok)}
 .dock .buy.is-sell .act:not([disabled]),.dock .buy-go .act.sell:not([disabled]){box-shadow:0 0 22px -6px var(--crit)}
+/* With a live quote on screen the thing to press is "sign and send". Re-quoting stayed the same lit
+   green slab right above it — two identical primaries a thumb apart, and the upper one is the one
+   that does nothing. It steps back to an outline until the quote is gone. */
+.buy .act.again:not([disabled]),.dock .buy .act.again:not([disabled]){background:none; color:var(--ink-2);
+  border:1px solid var(--line-hard); box-shadow:none; font-weight:500}
+.buy .act.again:not([disabled]):hover,.dock .buy .act.again:not([disabled]):hover{border-color:var(--hot); color:var(--ink); filter:none}
+.dock .act.again{padding:10px 0; font-size:12px}
 .dock .side button{padding:10px 0; font-size:13px}
 .dock .side .s-buy[aria-pressed="true"]{box-shadow:inset 0 0 18px -6px oklch(18% 0.02 152)}
 .dock .side .s-sell[aria-pressed="true"]{box-shadow:inset 0 0 18px -6px oklch(18% 0.03 27)}
-.dock .buy-go{flex-wrap:wrap}
+.dock .buy-go{flex-wrap:wrap; scroll-margin-bottom:var(--s4)}
 .dock .buy-go .act{width:100%}
 /* Inside a row this only opens the panel; it must not wear the colour of a control that spends. */
 .act.to-dock{background:none; border:1px solid var(--line-hard); color:var(--ink-2);
@@ -713,7 +755,11 @@ tr.detail td{position:relative}
    scroll from a thumb, and the focus ring has to be visible because the arrows work from here. */
 /* No width cap. Capped, it sat in the left two thirds of a row whose every other line ran the
    full width, and read as broken rather than compact. The window above is for going bigger still. */
-.ch-plot{width:100%; height:320px; touch-action:pan-y; transition:opacity .12s}
+/* contain:inline-size so the plot takes its width from the row and never lends one back. The library
+   sizes itself to this box, and inside a table cell its own fixed-width table was the cell's minimum:
+   a chart opened in a wide window held the whole feed at that width after the window narrowed, and
+   the pane scrolled sideways (measured: a 1084px table in a 753px pane at 768). */
+.ch-plot{width:100%; height:320px; touch-action:pan-y; transition:opacity .12s; contain:inline-size; overflow:hidden}
 /* A new candle size is several seconds of reading the chain. Without this the old chart just sits
    there and the button reads as broken, which is the whole reason the control was asked for. */
 .ch-plot.busy{opacity:.4}
@@ -844,6 +890,8 @@ tr.detail td{position:relative}
   input[type=search],input[type=number]{min-height:44px}
   .rule input{width:78px}
   tbody tr.row{height:42px}
+  .proof #proof-more{min-height:44px; margin:-10px 0; padding:0 var(--s2)}
+  .det-x{min-width:44px}
 }
 
 @media (prefers-reduced-motion: reduce){*{transition:none !important}}
@@ -879,7 +927,7 @@ tr.detail td{position:relative}
 <div class="proof" id="proof" hidden>
   <span class="lbl" data-i18n="s_proof">track record</span>
   <span class="pv" id="proof-cells"></span>
-  <button type="button" id="proof-more" data-i18n="pf_more">why this means something</button>
+  <button type="button" id="proof-more"><span class="lg" data-i18n="pf_more">why this means something</span><span class="sh" aria-hidden="true" data-i18n="pf_more_s">why?</span></button>
 </div>
 
 <div class="ribbon">
@@ -1065,7 +1113,7 @@ tr.detail td{position:relative}
         <caption class="sr">Live pons v2 launches, newest first</caption>
         <thead><tr>
           <th scope="col" aria-label="Verdict"></th>
-          <th scope="col" class="r" data-i18n="c_score">score</th>
+          <th scope="col" class="r c-sc" data-i18n="c_score">score</th>
           <th scope="col" data-i18n="c_launch">launch</th>
           <th scope="col" class="r c-buy" data-i18n="c_buy">opening buy</th>
           <th scope="col" class="r c-tax" data-i18n="c_tax">tax</th>
@@ -1276,7 +1324,7 @@ const I18N = {
     c_score:"score", c_launch:"launch", c_buy:"opening buy", c_tax:"tax", c_exempt:"exempt",
     c_pair:"pair", c_curve:"curve", c_dev:"deployer", c_age:"age",
     s_pos:"positions", s_rules:"rules", s_log:"log", s_proof:"track record",
-    pf_more:"why this means something", pf_base:"base", pf_of:"judged",
+    pf_more:"why this means something", pf_more_s:"why?", pf_base:"base", pf_of:"judged",
 
     signin:"sign in", signout:"sign out",
     g_title:"sign in", g_hint:"reading needs no password. the controls do.",
@@ -1299,7 +1347,8 @@ const I18N = {
     b_need_chain:"your wallet is on another chain",
     b_rejected:"you turned it down; nothing was sent",
     b_pending:"in the mempool", b_ok:"confirmed", b_no:"reverted on chain",
-    b_truth:"of the launches an outsider could enter, the median never went above its entry price, and about one in twenty doubled.",
+    b_truth:"Of {e} launches an outsider could have entered, {d} doubled — about one in {r}.",
+    b_truth0:"Of {e} launches an outsider could have entered, none has doubled yet.",
 
     pf_skip:"skip",
     pf_proven:"95% floor {f} clears the {b} base rate. on this sample the verdict is worth something.",
@@ -1515,7 +1564,7 @@ const I18N = {
     c_score:"скор", c_launch:"запуск", c_buy:"закуп дева", c_tax:"налог", c_exempt:"без налога",
     c_pair:"пара", c_curve:"кривая", c_dev:"деплоер", c_age:"возраст",
     s_pos:"позиции", s_rules:"правила", s_log:"лог", s_proof:"проверка скора",
-    pf_more:"почему это что-то значит", pf_base:"база", pf_of:"оценено",
+    pf_more:"почему это что-то значит", pf_more_s:"почему?", pf_base:"база", pf_of:"оценено",
 
     signin:"войти", signout:"выйти",
     g_title:"вход", g_hint:"смотреть можно без пароля. управлять — нет.",
@@ -1538,7 +1587,8 @@ const I18N = {
     b_need_chain:"кошелёк в другой сети",
     b_rejected:"вы отклонили подпись; ничего не ушло",
     b_pending:"в мемпуле", b_ok:"подтверждено", b_no:"откатилась на чейне",
-    b_truth:"из запусков, в которые чужой мог войти, медианный так и не поднялся выше цены входа, а удвоился примерно один из двадцати.",
+    b_truth:"Из {e} запусков, в которые чужой мог войти, удвоились {d} — примерно один из {r}.",
+    b_truth0:"Из {e} запусков, в которые чужой мог войти, пока не удвоился ни один.",
 
     pf_skip:"мимо",
     pf_proven:"нижняя граница 95% — {f}, это выше базовых {b}. на этой выборке вердикт чего-то стоит.",
@@ -1956,7 +2006,7 @@ function chTheme() {
     line: v("--line", "rgba(255,255,255,.09)"),
     dim: v("--n-500", "#8a8f96"),
     ink: v("--ink", "#e8eaed"),
-    bg: v("--bg-1", "#101214"),
+    bg: v("--surface-3", "#101214"),
     up: v("--ok", "#5ce39a"),
     dn: v("--crit", "#ff5a58"),
     mono: css.getPropertyValue("--mono").trim() || "ui-monospace, monospace",
@@ -2497,8 +2547,8 @@ function launchRow(e) {
   const dev = e.deployerPrior == null ? "—" : e.deployerPrior === 0 ? t("row_fresh") : `${e.deployerGraduated}/${e.deployerPrior}`;
   tr.innerHTML = `
     <td class="mk"><i></i></td>
-    <td class="r"><span class="sc">${e.score}</span></td>
-    <td class="who"><span class="ico" data-token="${esc(e.token)}"><b>${esc(icoLetters(e))}</b></span><span class="tick">${esc(e.symbol ? "$" + e.symbol : e.token.slice(0, 10))}</span><span class="nm">${esc(e.name)}</span>${e.farmTwins ? `<span class="mini-flag${e.farmKey ? " tap" : ""}"${e.farmKey ? ` role="button" tabindex="0" data-farm="${esc(e.farmKey)}"` : ""}>${esc(t("row_farm", { n: e.farmTwins }))}</span>` : ""}${e.fire ? `<span class="mini-flag good">${esc(t("row_passes"))}</span>` : ""}</td>
+    <td class="r c-sc"><span class="sc">${e.score}</span></td>
+    <td class="who"><span class="who-in"><span class="id"><span class="ico" data-token="${esc(e.token)}"><b>${esc(icoLetters(e))}</b></span><span class="tick">${esc(e.symbol ? "$" + e.symbol : e.token.slice(0, 10))}</span>${e.farmTwins ? `<span class="mini-flag${e.farmKey ? " tap" : ""}"${e.farmKey ? ` role="button" tabindex="0" data-farm="${esc(e.farmKey)}"` : ""}>${esc(t("row_farm", { n: e.farmTwins }))}</span>` : ""}${e.fire ? `<span class="mini-flag good">${esc(t("row_passes"))}</span>` : ""}</span><span class="nm">${esc(e.name)}</span></span></td>
     <td class="r c-buy"><span class="q ${bBuy(e.devPct)}" title="${esc(why("buy", bBuy(e.devPct)))}">${e.devPct == null ? "?" : e.devPct.toFixed(2) + "%"}</span></td>
     <td class="r c-tax"><span class="q ${bTax(e.taxBps)}" title="${esc(why("tax", bTax(e.taxBps)))}">${e.taxBps == null ? "?" : e.taxBps / 100 + "%"}</span></td>
     <td class="r c-ex"><span class="q ${bEx(e.exempt ? e.exempt.length : null)}" title="${esc(why("ex", bEx(e.exempt ? e.exempt.length : null)))}">${e.exempt == null ? "?" : e.exempt.length}</span></td>
@@ -2595,7 +2645,8 @@ setInterval(() => {
         d = document.createElement("span");
         d.className = "decay";
         d.innerHTML = `<span class="t"><i></i></span><span class="v"></span>`;
-        tr.querySelector(".who").append(d);
+        // with the ticker, not after the name: the name is the part that can be carried off the line
+        tr.querySelector(".who-in .id").append(d);
       }
       const frac = left / (TAX_SECONDS * 1000);
       d.querySelector("i").style.width = (frac * 100).toFixed(0) + "%";
@@ -2956,6 +3007,7 @@ function renderStats(s) {
     + `<div class="pf-foot">${esc(t("pf_foot", { h: s.matureHours, p: numv(s.pending) }))}</div>`;
   PROOF_FULL = box.innerHTML;
   paintProofWin();
+  for (const el of document.querySelectorAll(".buy-truth")) { const l = truthLine(); el.hidden = !l; el.textContent = l; }
 
   /* The strip: the rate each verdict actually ran at, and how many launches that is out of. The
      lift is beside it because a rate on its own says nothing without the base it is being compared
@@ -2972,6 +3024,16 @@ function renderStats(s) {
         b.verdict !== "FIRE")).join("")
     + cell(t("pf_base"), pctv(s.base), "")
     + cell(t("pf_of"), numv(judged), "", false, true);
+}
+
+/* The line under the swap. It used to be a fixed sentence, a fragment with its first words missing,
+   carrying numbers measured once — and a median that nothing on the server computes. Now it is the
+   same two counts the track record shows, or nothing when those are not in. */
+function truthLine() {
+  const p = STATS && STATS.priced;
+  if (!p || !p.withEntry) return "";
+  if (!p.doubled) return t("b_truth0", { e: numv(p.withEntry) });
+  return t("b_truth", { e: numv(p.withEntry), d: numv(p.doubled), r: Math.round(p.withEntry / p.doubled) });
 }
 
 function paintProofWin() {
@@ -3429,10 +3491,10 @@ function buyBox(e) {
     <p class="slip-warn" hidden></p>
     <p class="held" hidden></p>
     <button type="button" class="act" data-act="quote"></button>
-    <p class="buy-truth">${esc(t("b_truth"))}</p>
     <div class="buy-q" hidden></div>
     <p class="buy-msg" hidden></p>
-    <div class="buy-tx" hidden></div>`;
+    <div class="buy-tx" hidden></div>
+    <p class="buy-truth"${truthLine() ? "" : " hidden"}>${esc(truthLine())}</p>`;
 
   box.addEventListener("click", (ev) => {
     const b = ev.target.closest("button");
@@ -3540,6 +3602,8 @@ function paintBuy(tok, into) {
   go.dataset.act = act;
   go.textContent = label;
   go.disabled = dis;
+  // lit again the moment the quote dies: then re-quoting is the only thing left to do
+  go.classList.toggle("again", act === "quote" && !!st.q && !st.stale);
   inp.disabled = !eth();
 
   const qb = box.querySelector(".buy-q");
@@ -3626,6 +3690,9 @@ async function doQuote(tok) {
     st.deadline = ttl > 0 && ttl <= 30_000 ? Number(body.expiresAt) : Date.now() + 20_000;
   }
   paintBuy(tok);
+  // On a phone the sheet is capped at 88% of the screen and a priced quote made it taller than
+  // that, so the button that signs landed under the fold with nothing saying it was there.
+  if (ok) panelFor(tok)?.querySelector(".buy-go")?.scrollIntoView({ block: "nearest" });
 }
 
 /**
@@ -4013,9 +4080,22 @@ function teardown() {
   showEmpty();
 }
 
+/* Measured: when /state failed, boot() rejected into nothing and the page sat on "connecting" over
+   an empty feed for good — no retry, no word. A phone dropping a request is the ordinary case. */
+async function loadState() {
+  for (let i = 0; ; i++) {
+    try {
+      const r = await fetch("/state");
+      if (r.ok) return await r.json();
+    } catch { /* retried below */ }
+    LINK = "net_reconnecting"; $("#link").textContent = t(LINK);
+    await new Promise((ok) => setTimeout(ok, Math.min(15_000, 1000 * 2 ** i)));
+  }
+}
+
 async function boot() {
   teardown();
-  const s = await fetch("/state").then((r) => r.json());
+  const s = await loadState();
   LIVE = s.live; BOUNDS = s.bounds || {}; FROZEN = s.readOnly === true; ICONS = s.icons === true;
   ADMIN = s.admin === true; CAN_SIGNIN = s.canSignIn === true;
   applyAudience();
